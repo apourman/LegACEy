@@ -248,8 +248,10 @@ note, or the end of the DDD exchange (`DDD_EndDDD`) without one. Then:
 
 Addresses must be https; plain http works only for this machine and private
 networks, for local testing. A download that fails shows a toast and opens
-Enter, but the server may refuse a client whose dats are behind (below). Each
-step is logged to `legacey-avalonia.log`.
+Enter, but the server may refuse a client whose dats are behind (below). A
+patch that fails to apply leaves the dats as they were, shows a toast, and
+isn't tried again until the update list names a different patch (another
+SHA-256). Each step is logged to `legacey-avalonia.log`.
 
 With DAT patching off, ACE no longer kicks clients whose dats are older than
 the server's at connect: they reach character select, so the plugin can update

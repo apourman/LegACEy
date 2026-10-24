@@ -13,10 +13,11 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// Where a world update stands. Waiting (for the server's note), Checking, Downloading, Ready, Closing and OtherWorld hold Enter at
-/// character select; Off (a plain server: no note), UpToDate, Unavailable (the update list or patch couldn't be had, or the last apply
-/// failed) and HandedOff (the updater waits, but the game isn't closing for it) leave it alone.
+/// character select; Off (a plain server: no note), UpToDate, Unavailable (the update list or patch couldn't be had, or the updater
+/// couldn't start), InstallFailed (this patch failed to apply before) and HandedOff (the updater waits, but the game isn't closing for it)
+/// leave it alone.
 /// </summary>
-internal enum WorldState { Waiting, Off, Checking, UpToDate, Downloading, Ready, Closing, HandedOff, Unavailable, OtherWorld }
+internal enum WorldState { Waiting, Off, Checking, UpToDate, Downloading, Ready, Closing, HandedOff, Unavailable, OtherWorld, InstallFailed }
 
 /// <summary>The world manifest: the world version it brings a game to, and the patch's address, size in bytes and SHA-256.</summary>
 internal sealed record WorldManifest(int Version, string Patch, long Size, string Sha256)
@@ -37,7 +38,7 @@ internal sealed record WorldManifest(int Version, string Patch, long Size, strin
 /// the note's edition is up to date; otherwise it reads the note's update list and downloads the patch into
 /// <c>world-update\&lt;version&gt;\</c>, checks its size and SHA-256 (a bad download is thrown away and tried once more), then says Ready.
 /// <see cref="HandOff"/> then starts the updater, which applies the patch once every game client has exited. Any failure is logged and
-/// ends in Unavailable, which never holds Enter: the server decides then.
+/// ends in Unavailable, or InstallFailed for a patch that failed to apply; neither holds Enter: the server decides then.
 /// </summary>
 internal sealed class WorldUpdates
 {
@@ -69,7 +70,7 @@ internal sealed class WorldUpdates
     /// <summary>The download's progress, 0–100.</summary>
     public int Percent => Volatile.Read(ref _percent);
 
-    /// <summary>The manifest of the update being downloaded or ready; null until the check finds the folder behind.</summary>
+    /// <summary>The manifest of the update being downloaded, ready or that failed to install; null until the check finds the folder behind.</summary>
     public WorldManifest? Target { get; private set; }
 
     /// <summary>The server's world, once its note came.</summary>
@@ -156,13 +157,19 @@ internal sealed class WorldUpdates
             if (Refused(manifest.Patch)) return;
             Target = manifest;
             var stage = WorldFiles.Stage(_game, manifest.Version);
-            if (File.Exists(Path.Combine(stage, WorldFiles.FailedFile)))
+            var failed = Path.Combine(stage, WorldFiles.FailedFile);
+            if (File.Exists(failed))
             {
-                ClientUiRuntime.Log($"World update {manifest.Version} failed to apply last time: {File.ReadAllText(Path.Combine(stage, WorldFiles.FailedFile))}. "
-                    + "Its stage is thrown away and Enter is open; the next launch downloads it again.");
+                // The same patch would fail again and close the game for nothing; a new one (another SHA-256) or a damaged copy is downloaded.
+                if (Staged(stage, manifest))
+                {
+                    ClientUiRuntime.Log($"World update {manifest.Version} failed to apply: {File.ReadAllText(failed)}. Enter is open; it isn't tried again "
+                        + "until the manifest names a different patch.");
+                    Set(WorldState.InstallFailed);
+                    return;
+                }
+                ClientUiRuntime.Log($"World update {manifest.Version} failed to apply before; the manifest names a different patch or the copy here is damaged, so it is downloaded.");
                 Directory.Delete(stage, true);
-                Set(WorldState.Unavailable);
-                return;
             }
             // Names the world the patch belongs to, for the updater to record beside the dats.
             Directory.CreateDirectory(stage);

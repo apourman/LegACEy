@@ -96,8 +96,8 @@ public static class WorldFiles
     public const string PatchFile = "world.patch";
     /// <summary>Written last, holding the patch's SHA-256, so the updater checks the patch again before it applies it.</summary>
     public const string ReadyFile = "ready";
-    /// <summary>Written by the updater when applying failed: the plugin then throws the stage away and leaves Enter open, so a patch that
-    /// won't apply never closes the game at every launch.</summary>
+    /// <summary>Written by the updater when applying failed: the plugin then leaves Enter open and doesn't try that patch again (same
+    /// SHA-256 in <c>ready</c>), so a patch that won't apply never closes the game at every launch.</summary>
     public const string FailedFile = "failed";
     public const string UpdaterMutex = @"Local\LegACEy.WorldUpdater";
 
