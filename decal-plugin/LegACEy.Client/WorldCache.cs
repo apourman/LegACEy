@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace LegACEy.Client.DecalPlugin;
 
@@ -20,7 +21,6 @@ internal sealed class WorldCache
 {
     public const string FolderName = "legacey-worlds";
     private const string WorldFile = "world.json", ServersFile = "servers.json";
-    private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
 
     private readonly string _root;
 
@@ -37,7 +37,7 @@ internal sealed class WorldCache
         {
             var path = Path.Combine(Folder(address), WorldFile);
             if (!File.Exists(path)) return null;
-            var world = JsonSerializer.Deserialize<CachedWorld>(File.ReadAllText(path), Json);
+            var world = JsonSerializer.Deserialize(File.ReadAllText(path), WorldCacheJson.Default.CachedWorld);
             return world?.Address == address ? world : null;
         }
         catch (Exception) { return null; }
@@ -64,7 +64,7 @@ internal sealed class WorldCache
         var patch = Path.Combine(folder, $"world-{edition}.patch");
         File.Move(part, patch, overwrite: true);
         var world = new CachedWorld(address, name, edition, Path.GetFileName(patch), sha256, server);
-        Write(Path.Combine(folder, WorldFile), JsonSerializer.Serialize(world, Json));
+        Write(Path.Combine(folder, WorldFile), JsonSerializer.Serialize(world, WorldCacheJson.Default.CachedWorld));
         foreach (var old in Directory.GetFiles(folder, "world-*.patch"))
         {
             if (old == patch) continue;
@@ -135,7 +135,7 @@ internal sealed class WorldCache
         {
             var path = Path.Combine(_root, ServersFile);
             if (File.Exists(path))
-                return JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path), Json) ?? new Dictionary<string, string>();
+                return JsonSerializer.Deserialize(File.ReadAllText(path), WorldCacheJson.Default.DictionaryStringString) ?? new Dictionary<string, string>();
         }
         catch (Exception) { /* Unreadable: no world is switched on at startup until the next note rewrites it. */ }
         return new Dictionary<string, string>();
@@ -146,7 +146,7 @@ internal sealed class WorldCache
         try
         {
             Directory.CreateDirectory(_root);
-            Write(Path.Combine(_root, ServersFile), JsonSerializer.Serialize(servers, Json));
+            Write(Path.Combine(_root, ServersFile), JsonSerializer.Serialize(servers, WorldCacheJson.Default.DictionaryStringString));
         }
         catch (Exception exception) { ClientUiRuntime.Log($"Could not save the world cache's server list: {exception.Message}"); }
     }
@@ -197,3 +197,9 @@ internal sealed class WorldCache
     [DllImport("kernel32.dll")]
     private static extern IntPtr LocalFree(IntPtr memory);
 }
+
+/// <summary>The cache's files, read and written without reflection: the game's runtime has reflection-based JSON switched off.</summary>
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true)]
+[JsonSerializable(typeof(CachedWorld))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
+internal sealed partial class WorldCacheJson : JsonSerializerContext;
