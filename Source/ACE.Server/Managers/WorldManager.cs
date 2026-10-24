@@ -250,6 +250,9 @@ namespace ACE.Server.Managers
                 session.Network.EnqueueSend(chatMsg);
             }
 
+            if (session.DatVerdict == DatVerdict.WarnAtEnter)
+                session.Network.EnqueueSend(new GameMessageSystemChat($"Warning: {DatGate.OlderMessage}. What you see may not match this world.", ChatMessageType.System));
+
             var popup_header = PropertyManager.GetString("popup_header").Item;
             var popup_motd = PropertyManager.GetString("popup_motd").Item;
             var popup_welcome = player.IsOlthoiPlayer ? PropertyManager.GetString("popup_welcome_olthoi").Item : PropertyManager.GetString("popup_welcome").Item;

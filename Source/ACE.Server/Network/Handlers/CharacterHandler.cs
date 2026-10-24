@@ -189,6 +189,12 @@ namespace ACE.Server.Network.Handlers
                 return;
             }
 
+            if (session.DatVerdict == DatVerdict.RefuseAtEnter)
+            {
+                session.Terminate(SessionTerminationReason.DATsPatchingDisabled, new GameMessageBootAccount($" because {DatGate.OlderMessage}"));
+                return;
+            }
+
             if (WorldManager.WorldStatus == WorldManager.WorldStatusState.Open || session.AccessLevel > AccessLevel.Player)
                 session.Network.EnqueueSend(new GameMessageCharacterEnterWorldServerReady());
             else

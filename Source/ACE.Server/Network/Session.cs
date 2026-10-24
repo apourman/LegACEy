@@ -62,6 +62,9 @@ namespace ACE.Server.Network
         public bool DatWarnLanguage;
         public bool DatWarnHighRes;
 
+        /// <summary>Set by DDD_InterrogationResponse: whether this client's older dats refuse or warn it at Enter.</summary>
+        public DatVerdict DatVerdict;
+
         /// <summary>
         /// This boolean is set to true if GameMessageDDDBeginDDD is sent to the client. Used to determine when response is needed for DDD_EndDDD
         /// </summary>
