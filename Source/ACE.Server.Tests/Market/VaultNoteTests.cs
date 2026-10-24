@@ -123,17 +123,30 @@ namespace ACE.Server.Tests.Market
         {
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
+            var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
             var notes = GiveNotes(player, 10);
 
-            // a split to the ground or a partial give captures the stack, waits for an animation or a walk, then shrinks it
+            // a split or a partial give captures the stack, waits for an animation or a walk, then shrinks it
             Assert.AreEqual(VaultOutcome.NotesDeposited, VaultTestWorld.DepositNotes(player).Outcome);
 
-            var adjusted = true;
-            var adjustStack = typeof(Player).GetMethod("AdjustStack", BindingFlags.NonPublic | BindingFlags.Instance);
-            VaultTestWorld.OnWorldThread(() => adjusted = (bool)adjustStack.Invoke(player, new object[] { notes, -4, player, player }));
+            var toGround = true;
+            var toContainer = true;
+            var splitPart = VaultTestWorld.NewItem(TradeNoteWcid);
+            splitPart.SetStackSize(4);
 
-            Assert.IsFalse(adjusted, "the stack is in the Vault now, not the pack");
+            VaultTestWorld.OnWorldThread(() =>
+            {
+                // the split to the ground and the partial give shrink the stack, then make the part
+                toGround = (bool)typeof(Player).GetMethod("AdjustStack", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(player, new object[] { notes, -4, player, player });
+
+                toContainer = (bool)typeof(Player).GetMethod("DoHandleActionStackableSplitToContainer", BindingFlags.NonPublic | BindingFlags.Instance)
+                    .Invoke(player, new object[] { notes, player, player, pack, player, splitPart, 0, 4 });
+            });
+
+            Assert.IsFalse(toGround, "the stack is in the Vault now, not the pack");
+            Assert.IsFalse(toContainer, "the split into a container is refused");
             Assert.AreEqual(10, notes.StackSize, "nothing split off the banked stack");
+            Assert.AreEqual(0, NotesInPacks(player), "no split part reached a pack");
         }
 
         [TestMethod]
@@ -142,7 +155,7 @@ namespace ACE.Server.Tests.Market
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
             var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
-            GiveNotes(player, 5, pack); // the pack may be in the trade window, which only lists the pack
+            GiveNotes(player, 5, pack); // a trade window offers the side pack, not the notes in it
 
             SetTrading(player, true);
             try

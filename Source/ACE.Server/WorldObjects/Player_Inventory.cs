@@ -2538,9 +2538,17 @@ namespace ACE.Server.WorldObjects
         {
             //Console.WriteLine($"{Name}.DoHandleActionStackableSplitToContainer({stack?.Name}, {stackFoundInContainer?.Name}, {stackRootOwner?.Name}, {container?.Name}, {containerRootOwner?.Name}, {newStack?.Name}, {placementPosition}, {amount})");
 
-            // Before we modify the original stack, we make sure we can add the new stack
+            // Take the amount off the original stack first: a Vault deposit may have taken it while we walked to the container
+            if (!AdjustStack(stack, -amount, stackFoundInContainer, stackRootOwner))
+            {
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, stack.Guid.ClientGUID));
+                return false;
+            }
+
             if (!container.TryAddToInventory(newStack, placementPosition, true))
             {
+                AdjustStack(stack, amount, stackFoundInContainer, stackRootOwner);
+
                 Session.Network.EnqueueSend(new GameEventCommunicationTransientString(Session, "TryAddToInventory failed!")); // Custom error message
                 Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, stack.Guid.ClientGUID));
                 return false;
@@ -2554,9 +2562,6 @@ namespace ACE.Server.WorldObjects
 
             Session.Network.EnqueueSend(new GameMessageCreateObject(newStack));
             Session.Network.EnqueueSend(new GameEventItemServerSaysContainId(Session, newStack, container));
-
-            if (!AdjustStack(stack, -amount, stackFoundInContainer, stackRootOwner))
-                return false;
 
             if (stackRootOwner == null)
                 EnqueueBroadcast(new GameMessageSetStackSize(stack));

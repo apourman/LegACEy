@@ -57,7 +57,7 @@ namespace ACE.Server.Market
                 return;
             }
 
-            // a trade window lists a side pack, not the notes inside it
+            // the checks of the other instant deposits: a trade window offers a side pack, not the notes inside it
             if (VaultChannel.CheckStart(player) is VaultOutcome refusal)
             {
                 FinishNotes(player, refusal, 0, 0, completed);
