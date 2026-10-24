@@ -28,6 +28,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     private const uint LandscapeDrawAddress = 0x00506D90;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
+    // The portal views RenderDeviceD3D::DrawMesh draws a part through: the views of the room being drawn, left at the last room's after the
+    // world; null draws through the camera's view alone.
+    private static readonly int* PortalViews = (int*)0x00867330;
     // The player's CPhysicsObj, kept by CPhysicsObj::SetPlayer.
     private static readonly int* PlayerObject = (int*)0x00844D68;
     private const uint Gold = 0xFFFFC040;
@@ -62,6 +65,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         // Past the prologue, in case a hook patches it.
         new NativeUiEntry("CPhysicsPart::Draw reads its force flag", PartDrawAddress + 0x13, NativeUiCatalogue.Bytes("55 8B 6C 24 0C 85 ED 57 75 12"),
             Source, "ThisCall (int force): unforced, it skips a part already drawn this frame; forced, RenderDeviceD3D::DrawMesh (0x5A1970) queues it through the paperdoll's BSP path, which never reaches the device draws hooked here"),
+        new NativeUiEntry("RenderDeviceD3D::DrawMesh reads the portal views", 0x005A1973, NativeUiCatalogue.Bytes("A1 30 73 86 00 53 55 56 33 ED 57 3B C5"),
+            Source, "the global written here: null, DrawMesh tests and draws a part once, not per portal view"),
         new NativeUiEntry("The view-cone sphere test", SphereTestAddress, NativeUiCatalogue.Bytes("83 EC 1C D9 05 84 FC 81 00 8B 15 34 73 86 00"),
             Source, "Cdecl (CSphere*): 0 when a part's bounding sphere is outside the view cone; RenderDeviceD3D::DrawMesh skips the part then. Hooked only while the culled selection is drawn"),
         new NativeUiEntry("CPhysicsObj::SetLuminosity reads the part array", 0x00512374, NativeUiCatalogue.Bytes("8B 4E 10 85 C9 74 76"),
@@ -229,16 +234,16 @@ internal sealed unsafe class WorldEffects : IDisposable
     private int _frames;
     // ponytail: backlog 051 diagnostic, drop once a play-test shows the culled outline: frames the selection was culled, its parts
     // drawn forced, and the draws of them that reached the mask.
-    private int _culledFrames, _culledParts, _culledMasked;
+    private int _culledFrames, _culledParts, _culledMasked, _culledEmpty;
 
     /// <summary>The effect timings and how many of retail's indexed draws passed through the hook per world frame, then starts again.</summary>
     public string TakePerformanceSummary()
     {
         var summary = $"frames={_frames} drawCallsPerFrame={(_frames == 0 ? 0 : _drawCalls / _frames)} {_phases.TakeSummary()} " +
-            $"culledSelection={_culledFrames}/{_culledParts}/{_culledMasked}";
+            $"culledSelection={_culledFrames}/{_culledParts}/{_culledMasked}/{_culledEmpty}";
         _drawCalls = 0;
         _frames = 0;
-        _culledFrames = _culledParts = _culledMasked = 0;
+        _culledFrames = _culledParts = _culledMasked = _culledEmpty = 0;
         return summary;
     }
 
@@ -531,7 +536,8 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>
     /// Has retail draw the selected object's parts again, into the mask only: indoors, retail culls what is in rooms out of view. Unforced,
     /// with the view-cone test passing every part: retail skips a part whose sphere is outside every portal's cone, so a target a room or
-    /// two away was not outlined, and forced, the parts went through the paperdoll's path and never reached the device (backlog 051).
+    /// two away was not outlined, and forced, the parts went through the paperdoll's path and never reached the device (backlog 051). With
+    /// no portal views: after the world those left are the last room drawn's, not the selection's.
     /// ponytail: a culled object's draw position is where retail last placed it; a moving one may lag until it is in view again.
     /// </summary>
     private void DrawCulledSelection()
@@ -544,6 +550,10 @@ internal sealed unsafe class WorldEffects : IDisposable
         int count = Marshal.ReadInt32(parts, 0x58);
         var list = Marshal.ReadIntPtr(parts, 0x5C);
         _culledFrames++;
+        var masked = _culledMasked;
+        // The last room's views are not the selection's: through none of them, each part is drawn once.
+        var views = *PortalViews;
+        *PortalViews = 0;
         _forcing = true;
         _sphereHook.Enable();
         try
@@ -560,6 +570,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         {
             _sphereHook.Disable();
             _forcing = false;
+            *PortalViews = views;
+            if (_culledMasked == masked) _culledEmpty++;
         }
     }
 
