@@ -355,6 +355,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _inGame;
     // Kept apart from the UI, which may have failed: the plugin's own updates still check, and tell the player in chat.
     private readonly PluginUpdates _updates = new(PluginDirectory);
+    // World updates at character select, checked from the plugin's start; Enter is held while one is pending. Null when off.
+    private WorldUpdates? _world;
+    private RetailEnterGame? _enterGame;
+    // The world update toast last shown, so another shows only when the state or percent changes; cleared by an Enter press, which raises
+    // the toast again (and shows Checking, which otherwise stays quiet).
+    private (WorldState State, int Percent)? _worldShown;
+    private bool _worldRaised;
+    // Whether the toast's own surface was tried at character select, before any LegACEy window exists.
+    private bool _worldToastHostTried;
+    // When the game closes for a ready world update (long enough to read the toast first), and when, still running, it stops holding Enter.
+    private DateTime? _worldCloseAt, _worldGiveUpAt;
+    private static readonly TimeSpan WorldCloseDelay = TimeSpan.FromSeconds(8), WorldCloseWait = TimeSpan.FromSeconds(30);
     private bool _loggedIn;
     private bool _noticeFailLogged;
     private bool _failed;
@@ -384,6 +396,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             NativeUi.Initialize(Log);
+            StartWorldUpdates();
             // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
             if (NativeUi.Ready && RetailPanelCatalogueValid())
             {
@@ -440,6 +453,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             _updates.Dispose();
+            _enterGame?.Dispose();
+            _enterGame = null;
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
@@ -814,9 +829,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (!_quitPending) return;
         _quitPending = false;
+        CloseGame("to update");
+    }
+
+    /// <summary>Closes the game as its window's × does, never by ending the process from under it. False when it couldn't be asked to.</summary>
+    private bool CloseGame(string why)
+    {
         const int WmClose = 0x0010;
-        if (_gameWindow == IntPtr.Zero || !PostMessage(_gameWindow, WmClose, IntPtr.Zero, IntPtr.Zero))
-            Log($"Could not close the game to update: window {_gameWindow}");
+        var window = _gameWindow;
+        if (window == IntPtr.Zero)
+        {
+            using var process = Process.GetCurrentProcess();
+            window = process.MainWindowHandle;
+        }
+        if (window == IntPtr.Zero || !PostMessage(window, WmClose, IntPtr.Zero, IntPtr.Zero))
+        {
+            Log($"Could not close the game {why}: window {window}");
+            return false;
+        }
+        Log($"Closing the game {why}.");
+        return true;
     }
 
     public void Logoff()
@@ -1142,6 +1174,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // What this thread allocated since the last frame ended: hooks, the post-UI draw, Decal's events.
         if (_lastFrameEndBytes != 0) _betweenFrameBytes += GC.GetAllocatedBytesForCurrentThread() - _lastFrameEndBytes;
         var start = Stopwatch.GetTimestamp();
+        if (_world != null) Guard(TickWorldUpdates);
         if (_loggedIn)
         {
             // A failed line is tried again next frame, logged once per streak.
@@ -1297,7 +1330,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Out of game or with the windows off, the LegACEy windows are neither captured nor uploaded: they keep their last frame.
         var held = !_inGame || !_windowsEnabled;
         foreach (var surface in _featureSurfaces.Values) surface.Held = held;
-        if (_updateToastSurface != null) _updateToastSurface.Held = held;
+        // At character select the toast shows a world update, before any window can.
+        if (_updateToastSurface != null) _updateToastSurface.Held = held && _loggedIn;
         if (_dragIconSurface != null) _dragIconSurface.Held = held;
 
         var start = PhaseTimes.Start();
@@ -1454,7 +1488,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
         if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
-        if (windows)
+        if (windows || !_loggedIn)
         {
             try { _updateToastSurface?.DrawNow(); }
             catch (Exception exception) { UpdateToastFailed(exception); }
@@ -2187,18 +2221,128 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // its chat line is not written again.
         try
         {
-            if (_updateToastSurface == null)
-            {
-                var toast = new DerethNoticeToast();
-                var panel = ObservePanel(AvaloniaPanel.Create(() => toast, 1, 1, WindowScale), UpdateToastFailed);
-                panel.ApplyTheme(new DerethClientTheme());
-                _updateToastSurface = new ScreenSurface(_device, panel);
-                _updateToast = toast;
-            }
-            _updateToast!.Show(UpdateToast(notice, OpenPage, () => _updates.CheckNow(), shown => _updateToast?.Show(shown), InPeace,
+            EnsureUpdateToast().Show(UpdateToast(notice, OpenPage, () => _updates.CheckNow(), shown => _updateToast?.Show(shown), InPeace,
                 version => _updates.Install(version), LogOutToUpdate));
         }
         catch (Exception exception) { UpdateToastFailed(exception); }
+    }
+
+    private DerethNoticeToast EnsureUpdateToast()
+    {
+        if (_updateToast is { } shown) return shown;
+        var toast = new DerethNoticeToast();
+        var panel = ObservePanel(AvaloniaPanel.Create(() => toast, 1, 1, WindowScale), UpdateToastFailed);
+        panel.ApplyTheme(new DerethClientTheme());
+        _updateToastSurface = new ScreenSurface(_device, panel);
+        return _updateToast = toast;
+    }
+
+    /// <summary>Starts the world update check and, unless world updates are off, the Enter hold at character select.</summary>
+    private void StartWorldUpdates()
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            var world = new WorldUpdates(IOPath.GetDirectoryName(process.MainModule!.FileName)!, WorldUpdates.ManifestUrl(PluginDirectory));
+            world.Start();
+            if (world.State == WorldState.Off)
+            {
+                Log($"World updates are off: no {WorldUpdates.ManifestUrlFile} beside the plugin.");
+                return;
+            }
+            _world = world;
+            _enterGame = RetailEnterGame.Create(NativeUi.ReadMemory, () => world.HoldsEnter, () =>
+            {
+                _worldRaised = true;
+                _worldShown = null;
+            }, Log);
+        }
+        catch (Exception exception) { Log($"World updates are off: {exception.Message}"); }
+    }
+
+    /// <summary>
+    /// Each frame: hands a ready world update to the updater, which at character select closes the game a few seconds later; shows the
+    /// world update's toast as it changes, and places it while at character select.
+    /// </summary>
+    private void TickWorldUpdates()
+    {
+        var world = _world!;
+        if (world.State == WorldState.Ready && world.HandOff(PluginDirectory))
+        {
+            if (_loggedIn) world.StayOpen();
+            else _worldCloseAt = DateTime.UtcNow + WorldCloseDelay;
+        }
+        var shown = (world.State, world.Percent);
+        if (_worldShown != shown)
+        {
+            if (WorldToast(shown.State, shown.Percent, _worldRaised) is not { } toast) _worldShown = shown;
+            else if (ShowWorldToast(toast)) _worldShown = shown;
+        }
+        if (!_loggedIn) PlaceUpdateToast();
+        var now = DateTime.UtcNow;
+        if (_worldCloseAt is { } at && now >= at)
+        {
+            _worldCloseAt = null;
+            if (CloseGame("to install the world update")) _worldGiveUpAt = now + WorldCloseWait;
+            else world.StayOpen();
+        }
+        if (_worldGiveUpAt is { } giveUp && now >= giveUp)
+        {
+            _worldGiveUpAt = null;
+            Log("The game did not close for the world update; Enter is open and the update installs whenever the game closes.");
+            world.StayOpen();
+        }
+    }
+
+    /// <summary>
+    /// The world update's toast, or null for none. Checking shows only once Enter was pressed; a handed-off update the game isn't closing for
+    /// (the character is already in the world, or the close failed) installs at the next close.
+    /// </summary>
+    private static ToastNotice? WorldToast(WorldState state, int percent, bool raised) => state switch
+    {
+        WorldState.Checking when raised => new ToastNotice(ToastIcon.Search, "Checking for world updates…", "Enter opens once the check is done.", Busy: true),
+        WorldState.Downloading => new ToastNotice(ToastIcon.New, $"World update needed: downloading {percent}%", "Enter opens once it's installed.", Busy: true),
+        WorldState.Ready or WorldState.Closing => new ToastNotice(ToastIcon.New, "World update ready",
+            "The game will close; click Launch in ThwargLauncher to come back.", Busy: true),
+        WorldState.HandedOff => new ToastNotice(ToastIcon.New, "World update downloaded", "It installs when you close the game."),
+        WorldState.Unavailable => new ToastNotice(ToastIcon.Failed, "Couldn't check for world updates", "You can play; the next launch tries again.",
+            Lifetime: TimeSpan.FromSeconds(8)),
+        _ => null,
+    };
+
+    /// <summary>
+    /// Shows a world update toast: in the world once windows can open, at character select on the toast's own surface. False to try again
+    /// next frame.
+    /// </summary>
+    private bool ShowWorldToast(ToastNotice toast)
+    {
+        if (_failed) return true;
+        if (_loggedIn)
+        {
+            if (!(_inGame && CanOpenWindows)) return false;
+        }
+        // Tried and failed: no toast at character select, but the update goes on.
+        else if (!CharacterSelectToastHost()) return _worldToastHostTried;
+        try { EnsureUpdateToast().Show(toast); }
+        catch (Exception exception) { UpdateToastFailed(exception); }
+        return true;
+    }
+
+    /// <summary>
+    /// The device and the post-UI draw the toast needs at character select, before the UI starts at world entry. Tried once the device
+    /// exists; a draw hook that can't be placed is not tried again (each try reads the game's exe).
+    /// </summary>
+    private bool CharacterSelectToastHost()
+    {
+        if (_postUiDrawHook?.IsInstalled == true && _device != IntPtr.Zero) return true;
+        if (_worldToastHostTried) return false;
+        if (_device == IntPtr.Zero)
+        {
+            try { _device = GameDevice.Open(); }
+            catch (InvalidOperationException) { return false; }
+        }
+        _worldToastHostTried = true;
+        return EnsurePostUiDrawHook();
     }
 
     /// <summary>Runs the toast's time, and sizes and places it at the bottom centre at the UI size while it shows.</summary>
@@ -3543,6 +3687,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>
     public bool WindowMessage(int hwnd, int message, int wParam, int lParam)
     {
+        // Known from character select on, which a world update closes.
+        _gameWindow = new IntPtr(hwnd);
         if (_failed || !_inGame || _portal == null)
             return false;
         // Enter in the game, with retail's chat held and no field of ours taking keys, opens the Dereth chat window's box and eats the key.
@@ -3564,7 +3710,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 });
             return eat;
         }
-        _gameWindow = new IntPtr(hwnd);
         if (_handOff != null)
             Guard(() => ContinueHandOff(message));
         if (message == InputRouterService.WmMouseMove)
