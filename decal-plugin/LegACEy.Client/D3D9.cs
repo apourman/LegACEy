@@ -72,7 +72,7 @@ internal static unsafe class D3D9
         ZEnable = 7, FillMode = 8, ShadeMode = 9, ZWriteEnable = 14, AlphaTestEnable = 15, SrcBlend = 19, DestBlend = 20,
         CullMode = 22, ZFunc = 23, AlphaRef = 24, AlphaFunc = 25, AlphaBlendEnable = 27, FogEnable = 28, SpecularEnable = 29, FogColor = 34, FogTableMode = 35, FogDensity = 38, RangeFogEnable = 48,
         StencilEnable = 52, TextureFactor = 60, Lighting = 137, Ambient = 139, FogVertexMode = 140, ColorVertex = 141, NormalizeNormals = 143, ColorWriteEnable = 168,
-        BlendOp = 171, ScissorTestEnable = 174, SeparateAlphaBlendEnable = 206
+        ClipPlaneEnable = 152, BlendOp = 171, ScissorTestEnable = 174, SeparateAlphaBlendEnable = 206
     }
 
     public enum StageState { ColorOp = 1, ColorArg1 = 2, ColorArg2 = 3, AlphaOp = 4, AlphaArg1 = 5, AlphaArg2 = 6, TexCoordIndex = 11, TextureTransformFlags = 24 }

@@ -217,13 +217,18 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly PhaseTimes _phases = new();
     private int _drawCalls;
     private int _frames;
+    // ponytail: backlog 051 diagnostic, drop once a play-test shows the culled outline: frames the selection was culled, its parts
+    // drawn forced, and the draws of them that reached the mask.
+    private int _culledFrames, _culledParts, _culledMasked;
 
     /// <summary>The effect timings and how many of retail's indexed draws passed through the hook per world frame, then starts again.</summary>
     public string TakePerformanceSummary()
     {
-        var summary = $"frames={_frames} drawCallsPerFrame={(_frames == 0 ? 0 : _drawCalls / _frames)} {_phases.TakeSummary()}";
+        var summary = $"frames={_frames} drawCallsPerFrame={(_frames == 0 ? 0 : _drawCalls / _frames)} {_phases.TakeSummary()} " +
+            $"culledSelection={_culledFrames}/{_culledParts}/{_culledMasked}";
         _drawCalls = 0;
         _frames = 0;
+        _culledFrames = _culledParts = _culledMasked = 0;
         return summary;
     }
 
@@ -403,6 +408,9 @@ internal sealed unsafe class WorldEffects : IDisposable
                 SetRenderState(_device, RenderState.AlphaTestEnable, 0);
                 SetRenderState(_device, RenderState.FogEnable, 0);
                 SetRenderState(_device, RenderState.StencilEnable, 0);
+                // Indoors retail may hold drawing to the portal in view; the outline must show past it (backlog 051).
+                SetRenderState(_device, RenderState.ScissorTestEnable, 0);
+                SetRenderState(_device, RenderState.ClipPlaneEnable, 0);
                 SetRenderState(_device, RenderState.ColorWriteEnable, channels);
                 SetRenderState(_device, RenderState.TextureFactor, unchecked((int)0xFFFFFFFF));
                 SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
@@ -412,6 +420,7 @@ internal sealed unsafe class WorldEffects : IDisposable
                 SetStageState(_device, 1, StageState.ColorOp, OpDisable);
                 SetStageState(_device, 1, StageState.AlphaOp, OpDisable);
                 draw();
+                if (_forcing) _culledMasked++;
                 _masked = true;
                 _outlined |= channels == SelectionChannels;
             }
@@ -524,13 +533,16 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (parts == IntPtr.Zero) return;
         int count = Marshal.ReadInt32(parts, 0x58);
         var list = Marshal.ReadIntPtr(parts, 0x5C);
+        _culledFrames++;
         _forcing = true;
         try
         {
             for (var i = 0; i < count; i++)
             {
                 var part = Marshal.ReadIntPtr(list, i * 4);
-                if (part != IntPtr.Zero) _drawPart(part, 1);
+                if (part == IntPtr.Zero) continue;
+                _culledParts++;
+                _drawPart(part, 1);
             }
         }
         finally { _forcing = false; }
