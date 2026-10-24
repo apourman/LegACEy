@@ -203,6 +203,7 @@ public static class InventorySnapshotBuilder
 
         var items = new List<InventoryItem>();
         var wielded = new List<WieldedItem>();
+        var unslotted = new List<InventoryObjectRead>();
         var pyreals = 0;
         foreach (var read in objects)
         {
@@ -212,10 +213,20 @@ public static class InventorySnapshotBuilder
                     read.ValidLocations, SlotsFor(read.EquippedMask), read.EquippedMask));
                 continue;
             }
-            if (read.IsContainer || read.Slot < 0) continue;
+            if (read.IsContainer) continue;
+            if (read.Wcid == PyrealWcid) pyreals += read.StackCount;
+            if (read.Slot < 0) { unslotted.Add(read); continue; }
             items.Add(new InventoryItem(read.Id, read.Name, read.Container, read.Slot, read.Visual, read.StackCount, read.StackMax,
                 read.Wcid, read.ValidLocations));
-            if (read.Wcid == PyrealWcid) pyreals += read.StackCount;
+        }
+        // A pack picked up off the ground gets its slot list before its items, so Decal has no slot for them until a relog:
+        // they take the pack's free slots, as retail's own list shows them.
+        foreach (var read in unslotted)
+        {
+            var slot = 0;
+            while (items.Any(item => item.Container == read.Container && item.Slot == slot)) slot++;
+            items.Add(new InventoryItem(read.Id, read.Name, read.Container, slot, read.Visual, read.StackCount, read.StackMax,
+                read.Wcid, read.ValidLocations));
         }
 
         return new InventorySnapshot(mainPack, sidePacks, items, wielded, reader.Burden,
