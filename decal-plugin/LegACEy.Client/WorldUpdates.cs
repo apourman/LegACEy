@@ -149,13 +149,18 @@ internal sealed class WorldUpdates
     {
         if (State != WorldState.Switching || _pending is not { } pending) return;
         _pending = null;
-        PortalNeedsRelaunch = Portal(pending.Patch).Except(ActivePatch == null ? Array.Empty<(uint, int)>() : Portal(ActivePatch)).Any();
+        PortalNeedsRelaunch = PortalChanged(ActivePatch, pending.Patch);
         (Active, ActivePatch) = (pending.World, pending.Patch);
         Set(reported ? WorldState.On : WorldState.Relaunch);
     }
 
-    private static IEnumerable<(uint, int)> Portal(WorldPatchIndex patch) =>
-        patch.Records(PortalDat)?.Select(record => (record.Key, record.Value.Iteration)) ?? Enumerable.Empty<(uint, int)>();
+    /// <summary>Whether <paramref name="next"/> has a portal dat record <paramref name="old"/> lacks or holds different bytes for.</summary>
+    private static bool PortalChanged(WorldPatchIndex? old, WorldPatchIndex next)
+    {
+        var before = old?.Records(PortalDat);
+        return next.Records(PortalDat)?.Any(record => before == null || !before.TryGetValue(record.Key, out var was)
+            || !old!.Read(was).AsSpan().SequenceEqual(next.Read(record.Value))) == true;
+    }
 
     /// <summary>https anywhere; plain http only to this machine or a private network, for local testing.</summary>
     public static bool Allowed(string address) =>
