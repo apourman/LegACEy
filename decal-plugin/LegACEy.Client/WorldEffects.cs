@@ -12,7 +12,8 @@ using static LegACEy.Client.DecalPlugin.D3D9;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Effects drawn into retail's 3D world: the selection outline, livelier water (<see cref="Water"/>) and the storm fog preview (<see cref="StormFog"/>).
+/// Effects drawn into retail's 3D world: the selection outline, livelier water (<see cref="Water"/>), the storm fog preview (<see cref="StormFog"/>)
+/// and radar pings (<see cref="PingBeams"/>).
 /// The outline is a gold glow around the selected object, seen through walls. While retail draws a part, <c>CPhysicsPart::Draw</c> keeps the part in a
 /// global; each of the device's indexed draws made for a part of the selected object is drawn again, flat white with no depth test, into
 /// a mask. After retail's world (<c>SmartBox::Draw</c>), the mask is spread into a glow texture by drawing it several times offset, and the
@@ -117,6 +118,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly Weather _weather;
     private readonly Water _water;
     private readonly CombatText _combat;
+    private readonly PingBeams _pings;
     private GCHandle _root;
     private IntPtr _mask, _glow;
     private int _width, _height;
@@ -137,6 +139,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _weather = new Weather(device, _fog, portal, log);
         _water = new Water(device, _fog, portal, log);
         _combat = new CombatText(device, log);
+        _pings = new PingBeams(device);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         if (landscape) _landscapeHook = ReloadedHooks.Instance.CreateHook<LandscapeDrawFn>(OnLandscapeDraw, LandscapeDrawAddress);
@@ -169,6 +172,9 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     /// <summary>Floating combat text over the targets of the hits the server reports.</summary>
     public CombatText Combat => _combat;
+
+    /// <summary>Radar pings as beams on the pinged spots.</summary>
+    public PingBeams Pings => _pings;
 
     /// <summary>The weather and the landblock in the middle of it, or null for clear skies.</summary>
     public (WeatherKind Kind, int X, int Y)? Weather { get => _serverWeather; set => _weather.Current = _serverWeather = value; }
@@ -461,6 +467,7 @@ internal sealed unsafe class WorldEffects : IDisposable
                 }
                 start = PhaseTimes.Start();
                 _combat.Draw(_fog);
+                _pings.Draw(_fog);
                 if (!_outlined && Selected != 0) DrawCulledSelection();
                 _phases.Add("combat+selection", start);
                 _frames++;

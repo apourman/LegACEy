@@ -336,7 +336,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     // Each sender's pings keep one colour, picked from their name, so fellows' pings tell apart.
     private static readonly Color[] PingColours = { Color.Parse("#FF9A2E"), Color.Parse("#FF5FD2"), Color.Parse("#7CFF6B"), Color.Parse("#5CC8FF"), Color.Parse("#FFE14D") };
 
-    private static Color PingColour(string sender)
+    public static Color PingColour(string sender)
     {
         var hash = 0;
         foreach (var c in sender) hash = hash * 31 + c;

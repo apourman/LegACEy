@@ -760,7 +760,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_plugins?.SupportsAction(PingProtocol.Place) != true || _serverChannel == null)
         {
-            _radar?.ShowPing(SessionCharacter(), at);
+            ShowPing(SessionCharacter(), at);
             return;
         }
         _serverChannel.Request(PingProtocol.Place, PingProtocol.WritePlace(at), reply =>
@@ -774,9 +774,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             var (sender, at) = PingProtocol.ReadPlaced(body);
-            _radar?.ShowPing(sender, at);
+            ShowPing(sender, at);
         }
         catch (Exception exception) { Log($"Could not read a ping: {exception.Message}"); }
+    }
+
+    /// <summary>A ping on the radar and, as a beam, in the world.</summary>
+    private void ShowPing(string sender, RadarPosition at)
+    {
+        _radar?.ShowPing(sender, at);
+        _worldEffects?.Pings.Show(sender, at, RetailRadarWindow.PingColour(sender).ToUInt32());
     }
 
     private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
@@ -824,6 +831,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _worldEffects.Selected = 0;
             // The storm and weather stay for the next login, as at start (LastStormFile).
             _worldEffects.Combat.Clear();
+            _worldEffects.Pings.Clear();
         }
         Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }
