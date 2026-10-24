@@ -37,19 +37,14 @@ internal sealed class RetailDatReport
     private static readonly OnServerInterrogationFn OnServerInterrogation =
         Marshal.GetDelegateForFunctionPointer<OnServerInterrogationFn>(new IntPtr(OnServerInterrogationAddress));
 
-    private readonly Func<uint, int, byte[]> _readMemory;
     private readonly Action<string> _log;
 
-    private RetailDatReport(Func<uint, int, byte[]> readMemory, Action<string> log)
-    {
-        _readMemory = readMemory;
-        _log = log;
-    }
+    private RetailDatReport(Action<string> log) => _log = log;
 
     /// <summary>The re-send, when its entry matches the running client; null otherwise, and a first visit then needs a relaunch.</summary>
     public static RetailDatReport? Create(Func<uint, int, byte[]> readMemory, Action<string> log) =>
         NativeUiCatalogue.Validate(readMemory, log, Entries, "The dat report can't be sent again: the running client does not match its entry.")
-            ? new RetailDatReport(readMemory, log)
+            ? new RetailDatReport(log)
             : null;
 
     /// <summary>Sends the report again; false, and logged, when the client's cache isn't the one expected.</summary>
@@ -57,8 +52,8 @@ internal sealed class RetailDatReport
     {
         try
         {
-            var cache = new IntPtr(BitConverter.ToInt32(_readMemory(CacheGlobal, 4), 0));
-            if (cache == IntPtr.Zero || (uint)BitConverter.ToInt32(_readMemory((uint)cache, 4), 0) != CacheVtable)
+            var cache = Marshal.ReadIntPtr(new IntPtr(CacheGlobal));
+            if (cache == IntPtr.Zero || (uint)Marshal.ReadInt32(cache) != CacheVtable)
             {
                 _log("The dat report can't be sent again: the client's dat cache isn't the one expected.");
                 return false;
