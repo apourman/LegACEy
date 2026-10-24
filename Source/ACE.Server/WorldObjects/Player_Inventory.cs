@@ -815,6 +815,13 @@ namespace ACE.Server.WorldObjects
                 return false;
             }
 
+            // a split or give that waited on an animation or a walk still holds the stack it found; an instant Vault deposit may have taken it since
+            if (amount < 0 && container != null && !(container.Inventory.TryGetValue(stack.Guid, out var held) && held == stack))
+            {
+                log.WarnFormat("Player 0x{0:X8}:{1} tried to take {4} from stack 0x{2:X8}:{3}, which is no longer in its container.", Guid, Name, stack.Guid, stack.Name, -amount);
+                return false;
+            }
+
             stack.StackSize += amount;
             stack.EncumbranceVal = (stack.StackUnitEncumbrance ?? 0) * (stack.StackSize ?? 1);
             stack.Value = (stack.StackUnitValue ?? 0) * (stack.StackSize ?? 1);
@@ -2531,9 +2538,17 @@ namespace ACE.Server.WorldObjects
         {
             //Console.WriteLine($"{Name}.DoHandleActionStackableSplitToContainer({stack?.Name}, {stackFoundInContainer?.Name}, {stackRootOwner?.Name}, {container?.Name}, {containerRootOwner?.Name}, {newStack?.Name}, {placementPosition}, {amount})");
 
-            // Before we modify the original stack, we make sure we can add the new stack
+            // Take the amount off the original stack first: a Vault deposit may have taken it while we walked to the container
+            if (!AdjustStack(stack, -amount, stackFoundInContainer, stackRootOwner))
+            {
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, stack.Guid.ClientGUID));
+                return false;
+            }
+
             if (!container.TryAddToInventory(newStack, placementPosition, true))
             {
+                AdjustStack(stack, amount, stackFoundInContainer, stackRootOwner);
+
                 Session.Network.EnqueueSend(new GameEventCommunicationTransientString(Session, "TryAddToInventory failed!")); // Custom error message
                 Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, stack.Guid.ClientGUID));
                 return false;
@@ -2547,9 +2562,6 @@ namespace ACE.Server.WorldObjects
 
             Session.Network.EnqueueSend(new GameMessageCreateObject(newStack));
             Session.Network.EnqueueSend(new GameEventItemServerSaysContainId(Session, newStack, container));
-
-            if (!AdjustStack(stack, -amount, stackFoundInContainer, stackRootOwner))
-                return false;
 
             if (stackRootOwner == null)
                 EnqueueBroadcast(new GameMessageSetStackSize(stack));
@@ -2831,6 +2843,7 @@ namespace ACE.Server.WorldObjects
                         if (!AdjustStack(stack, -amount, stackFoundInContainer, stackRootOwner))
                         {
                             Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, stackId, WeenieError.ActionCancelled));
+                            EnqueuePickupDone(pickupMotion);
                             return;
                         }
 
