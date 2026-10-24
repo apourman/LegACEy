@@ -113,7 +113,9 @@ over the same 30 s: `layoutPasses` (layout passes its window ran in the shared s
 
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
 toolbar or item). Its vertical layout follows retail's panel: retail's width, "Inventory of" the character's name, the paperdoll over the
-main pack's six columns, and the burden and packs in a column on the right, each pack's fill in an upright bar; only its height changes. The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
+main pack's six columns, and the burden and packs in a column on the right, each pack's fill in an upright bar; only its height changes. Ctrl and Shift clicks pick several items in the open pack;
+dragged onto a pack's tile or into its slots, the set moves there one item after another, as fast as the server answers each move
+(retail refuses a second move while one is pending). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
 paperdoll alone, which drags to turn. The client reads every object's look from the game's own messages, so Inspect and the inventory's
 doll work on any server; only objects outside the world (Vault items) ask a LegACEy server (`paperdoll.inspect`). The expand button in the
