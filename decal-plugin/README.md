@@ -221,8 +221,10 @@ never sees a newer edition.
 World updates are off unless a file named `world-manifest-url` beside the main
 DLL holds a manifest address on its first line. With it, the client reads the
 manifest (`{ "version": N, "patch": "<url>", "size": <bytes>, "sha256": "<hex>" }`)
-when the plugin starts at character select. It holds the Enter button (a hook
-on retail's `gmCharacterManagementUI::EnterGame`) while it checks; when the game
+when the plugin starts at character select. It holds entering the world (hooks
+on retail's `gmCharacterManagementUI::EnterGame`, behind the Enter button, and
+`CPlayerSystem::LogOnCharacter`, which character creation and auto-login filters
+also reach) while it checks; when the game
 folder is behind it keeps holding it, downloads the patch into `<game>\world-update\<version>\` with a toast showing
 progress, checks its size and SHA-256 (a bad download is retried once), starts
 the updater in world mode, and closes the game a few seconds later; the toast
