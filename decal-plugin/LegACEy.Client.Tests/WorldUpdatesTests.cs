@@ -8,6 +8,7 @@ namespace LegACEy.Client.Tests;
 public sealed class WorldUpdatesTests : IDisposable
 {
     private static readonly byte[] Patch = Encoding.ASCII.GetBytes("a world patch");
+    private static readonly string PatchSha = Convert.ToHexStringLower(SHA256.HashData(Patch));
     private readonly string game = Path.Combine(Path.GetTempPath(), "legacey-world-check-" + Guid.NewGuid().ToString("N"));
     private int downloads;
 
@@ -16,7 +17,7 @@ public sealed class WorldUpdatesTests : IDisposable
     public void Dispose() => Directory.Delete(game, true);
 
     private static string Manifest(int version) =>
-        $$"""{ "version": {{version}}, "patch": "http://wsl.test/world-{{version}}.patch", "size": {{Patch.Length}}, "sha256": "{{Convert.ToHexStringLower(SHA256.HashData(Patch))}}" }""";
+        $$"""{ "version": {{version}}, "patch": "http://wsl.test/world-{{version}}.patch", "size": {{Patch.Length}}, "sha256": "{{PatchSha}}" }""";
 
     private WorldUpdates Updates(Func<string> manifest, params byte[][] bodies) => new(game, "http://wsl.test/world-manifest.json",
         (_, _) => Task.FromResult(manifest()),
@@ -52,7 +53,7 @@ public sealed class WorldUpdatesTests : IDisposable
         Assert.Equal(100, updates.Percent);
         var stage = WorldFiles.Stage(game, 3);
         Assert.Equal(Patch, File.ReadAllBytes(Path.Combine(stage, WorldFiles.PatchFile)));
-        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Patch)), File.ReadAllText(Path.Combine(stage, WorldFiles.ReadyFile)));
+        Assert.Equal(PatchSha, File.ReadAllText(Path.Combine(stage, WorldFiles.ReadyFile)));
     }
 
     [Fact]
@@ -82,12 +83,12 @@ public sealed class WorldUpdatesTests : IDisposable
         Assert.False(unreachable.HoldsEnter);
     }
 
-    private string FailedStage(string readySha)
+    private string FailedStage(byte[] patch)
     {
         var stage = WorldFiles.Stage(game, 2);
         Directory.CreateDirectory(stage);
-        File.WriteAllBytes(Path.Combine(stage, WorldFiles.PatchFile), Patch);
-        File.WriteAllText(Path.Combine(stage, WorldFiles.ReadyFile), readySha);
+        File.WriteAllBytes(Path.Combine(stage, WorldFiles.PatchFile), patch);
+        File.WriteAllText(Path.Combine(stage, WorldFiles.ReadyFile), Convert.ToHexStringLower(SHA256.HashData(patch)));
         File.WriteAllText(Path.Combine(stage, WorldFiles.FailedFile), "disk full");
         return stage;
     }
@@ -95,7 +96,7 @@ public sealed class WorldUpdatesTests : IDisposable
     [Fact]
     public async Task APatchThatFailedToApplyIsNotTriedAgainAndEnterOpens()
     {
-        var stage = FailedStage(Convert.ToHexStringLower(SHA256.HashData(Patch)));
+        var stage = FailedStage(Patch);
         var updates = Updates(() => Manifest(2), Patch);
 
         await updates.Start();
@@ -109,7 +110,7 @@ public sealed class WorldUpdatesTests : IDisposable
     [Fact]
     public async Task ANewPatchForAVersionThatFailedIsDownloaded()
     {
-        var stage = FailedStage("an older patch's sha256");
+        var stage = FailedStage(Encoding.ASCII.GetBytes("an older patch"));
         var updates = Updates(() => Manifest(2), Patch);
 
         await updates.Start();

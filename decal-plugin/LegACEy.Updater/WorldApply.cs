@@ -83,12 +83,14 @@ public static class WorldApply
         catch (Exception error)
         {
             StageApply.Log(install, $"World update from {stage} failed, putting the dats back: {error}");
+            // First, so the plugin won't hand this patch off again even if putting the dats back fails.
+            try { File.WriteAllText(Path.Combine(stage, WorldFiles.FailedFile), error.Message); }
+            catch (Exception markError) { StageApply.Log(install, $"Could not mark the world update as failed: {markError.Message}"); }
             try
             {
                 while (undo.Count > 0) undo.Pop()();
                 foreach (var copy in copies) if (File.Exists(copy)) File.Delete(copy);
                 if (Directory.Exists(rollback)) Directory.Delete(rollback, true);
-                File.WriteAllText(Path.Combine(stage, WorldFiles.FailedFile), error.Message);
                 StageApply.Log(install, "World dats unchanged; the plugin won't try this patch again");
             }
             catch (Exception rollbackError)

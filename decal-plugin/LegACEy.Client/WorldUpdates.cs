@@ -32,8 +32,8 @@ internal sealed record WorldManifest(int Version, string Patch, long Size, strin
 /// Keeps the game folder's dats at the world version the manifest asks for. Started once, when the plugin starts at character select: off
 /// the game thread it reads the manifest, and when the folder is behind it downloads the patch into <c>world-update\&lt;version&gt;\</c> and
 /// checks its size and SHA-256 (a bad download is thrown away and tried once more), then says Ready. <see cref="HandOff"/> then starts the
-/// updater, which applies the patch once every game client has exited. Any failure is logged and ends in Unavailable (or InstallFailed), which never holds
-/// Enter: a down update host locks nobody out. The manifest address is the first line of <c>world-manifest-url</c> beside the stub; with no
+/// updater, which applies the patch once every game client has exited. Any failure is logged and ends in Unavailable, or InstallFailed
+/// for a patch that failed to apply; neither holds Enter, so a down update host locks nobody out. The manifest address is the first line of <c>world-manifest-url</c> beside the stub; with no
 /// such file world updates are off.
 /// </summary>
 internal sealed class WorldUpdates
@@ -69,7 +69,7 @@ internal sealed class WorldUpdates
     /// <summary>The download's progress, 0–100.</summary>
     public int Percent => Volatile.Read(ref _percent);
 
-    /// <summary>The manifest of the update being downloaded or ready; null until the check finds the folder behind.</summary>
+    /// <summary>The manifest of the update being downloaded, ready or that failed to install; null until the check finds the folder behind.</summary>
     public WorldManifest? Target { get; private set; }
 
     /// <summary>Whether entering the world waits: while the check, download or hand-off runs.</summary>
@@ -117,15 +117,15 @@ internal sealed class WorldUpdates
             var failed = Path.Combine(stage, WorldFiles.FailedFile);
             if (File.Exists(failed))
             {
-                // The same patch would fail again and close the game for nothing; a new one (another SHA-256) is downloaded.
-                if (SameSha(Path.Combine(stage, WorldFiles.ReadyFile), manifest))
+                // The same patch would fail again and close the game for nothing; a new one (another SHA-256) or a damaged copy is downloaded.
+                if (Staged(stage, manifest))
                 {
                     ClientUiRuntime.Log($"World update {manifest.Version} failed to apply: {File.ReadAllText(failed)}. Enter is open; it isn't tried again "
                         + "until the manifest names a different patch.");
                     Set(WorldState.InstallFailed);
                     return;
                 }
-                ClientUiRuntime.Log($"World update {manifest.Version} failed to apply before; the manifest now names a different patch, so it is downloaded.");
+                ClientUiRuntime.Log($"World update {manifest.Version} failed to apply before; the manifest names a different patch or the copy here is damaged, so it is downloaded.");
                 Directory.Delete(stage, true);
             }
             if (Staged(stage, manifest))
@@ -181,13 +181,6 @@ internal sealed class WorldUpdates
         try { File.Delete(part); }
         catch (Exception) { }
         return false;
-    }
-
-    /// <summary>Whether the <c>ready</c> file at <paramref name="ready"/> holds the manifest's SHA-256.</summary>
-    private static bool SameSha(string ready, WorldManifest manifest)
-    {
-        try { return File.Exists(ready) && File.ReadAllText(ready).Trim().Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase); }
-        catch (Exception) { return false; }
     }
 
     /// <summary>Whether a client has already downloaded and verified this update.</summary>

@@ -231,7 +231,9 @@ the updater in world mode, and closes the game a few seconds later; the toast
 tells the player to click Launch in ThwargLauncher again. If the game hasn't
 closed 30 seconds later, Enter opens and the update installs whenever the game
 does close. An unreachable manifest or patch shows a toast and leaves Enter
-working. Each step is logged
+working. A patch that fails to apply leaves the dats as they were, shows a
+toast and isn't tried again until the manifest names a different patch
+(another SHA-256). Each step is logged
 to `legacey-avalonia.log`.
 
 Build a patch and its manifest from WSL or Windows:
