@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Numerics;
 using LegACEy.Client.Demo;
 using static LegACEy.Client.DecalPlugin.D3D9;
@@ -31,8 +32,7 @@ internal sealed class PingBeams
     /// <summary>A ping arrived: the sender's beam moves to the spot, in RGB <paramref name="color"/>.</summary>
     public void Show(string sender, RadarPosition at, uint color)
     {
-        var spot = new Vector3((at.Cell >> 24) * StormFog.Block + at.X, ((at.Cell >> 16) & 0xFF) * StormFog.Block + at.Y, at.Z);
-        lock (_gate) _beams[sender] = (spot, color & 0xFFFFFF, _clock.Elapsed.TotalSeconds);
+        lock (_gate) _beams[sender] = (StormFog.Global(at.Cell, new Vector3(at.X, at.Y, at.Z)), color & 0xFFFFFF, _clock.Elapsed.TotalSeconds);
     }
 
     public void Clear()
@@ -47,8 +47,8 @@ internal sealed class PingBeams
             if (_beams.Count == 0) return;
             var now = _clock.Elapsed.TotalSeconds;
             var lasts = RadarPing.Lasts.TotalSeconds;
-            foreach (var gone in new List<string>(_beams.Keys))
-                if (now - _beams[gone].Born >= lasts) _beams.Remove(gone);
+            foreach (var (sender, beam) in _beams)
+                if (now - beam.Born >= lasts) _beams.Remove(sender);
             if (_beams.Count == 0 || !camera.Measured) return;
             var screen = Viewport(_device);
             var viewProjection = camera.View * camera.Projection;
@@ -61,8 +61,7 @@ internal sealed class PingBeams
                 {
                     var bottom = StormFog.Render(at - new Vector3(0, 0, Below)) + camera.Offset;
                     var top = StormFog.Render(at + new Vector3(0, 0, Above)) + camera.Offset;
-                    if (CombatText.ToScreen(bottom, viewProjection, screen) is not { } foot ||
-                        CombatText.ToScreen(top, viewProjection, screen) is not { } head) continue;
+                    if (Clip(bottom, top, viewProjection, screen) is not var (foot, head)) continue;
                     var age = now - born;
                     var fade = age < lasts - FadeOut ? 1f : (float)((lasts - age) / FadeOut);
                     var pulse = 0.75f + 0.25f * MathF.Cos((float)(age / PulseSeconds * 2 * Math.PI));
@@ -79,7 +78,21 @@ internal sealed class PingBeams
         }
     }
 
-    private unsafe void Beam(Vertex* quad, System.Drawing.PointF foot, System.Drawing.PointF head, Vector2 half, uint color)
+    /// <summary>The beam's ends on the screen, the part behind the camera cut off; null when all of it is behind.</summary>
+    private static (PointF Foot, PointF Head)? Clip(Vector3 bottom, Vector3 top, Matrix4x4 viewProjection, Rectangle screen)
+    {
+        const float near = 0.1f;
+        var a = Vector4.Transform(new Vector4(bottom, 1), viewProjection);
+        var b = Vector4.Transform(new Vector4(top, 1), viewProjection);
+        if (a.W <= near && b.W <= near) return null;
+        if (a.W <= near) a = Vector4.Lerp(a, b, (near - a.W) / (b.W - a.W));
+        if (b.W <= near) b = Vector4.Lerp(b, a, (near - b.W) / (a.W - b.W));
+        PointF At(Vector4 clip) =>
+            new(screen.Left + (clip.X / clip.W + 1) / 2 * screen.Width, screen.Top + (1 - clip.Y / clip.W) / 2 * screen.Height);
+        return (At(a), At(b));
+    }
+
+    private unsafe void Beam(Vertex* quad, PointF foot, PointF head, Vector2 half, uint color)
     {
         var faded = color & 0xFFFFFF;
         quad[0] = new(foot.X - half.X, foot.Y - half.Y, color);

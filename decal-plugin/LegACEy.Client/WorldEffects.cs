@@ -469,7 +469,7 @@ internal sealed unsafe class WorldEffects : IDisposable
                 _combat.Draw(_fog);
                 _pings.Draw(_fog);
                 if (!_outlined && Selected != 0) DrawCulledSelection();
-                _phases.Add("combat+selection", start);
+                _phases.Add("combat+pings+selection", start);
                 _frames++;
             }
             catch (Exception exception) { Fail(exception); }
