@@ -199,8 +199,8 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             {
                 e.Handled = true;
                 var at = RadarScope.PositionAt(_player, Options, Radius, e.GetPosition(_scope));
-                // Indoors, on the level the radar shows: the peeked one, or the player's own.
-                if (_plan != null && _frame?.Ladder is { } ladder) at = _plan.Levels[ladder.Peek >= 0 ? ladder.Peek : ladder.Current].Pin(at);
+                // Indoors, on the level drawn under the pointer: the solid one, or a faint one where only it has floor.
+                if (_plan != null && _frame?.Ladder is { } ladder) at = _plan.Pin(at, ladder.Current, ladder.Peek);
                 PingRequested?.Invoke(at);
                 return;
             }

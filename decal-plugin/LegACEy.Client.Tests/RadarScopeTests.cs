@@ -378,18 +378,37 @@ public sealed class RadarScopeTests
     }
 
     [Fact]
-    public void A_ping_on_a_peeked_level_lands_in_that_levels_room_at_its_floor()
+    public void A_ping_lands_on_the_level_drawn_under_the_pointer_at_its_floor()
     {
-        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+        // Rooms on every level overlap at the player's spot; the one below the dungeon's middle room also runs 4 m further west of it.
+        var plan = new RadarPlan(IndoorPlan.Build(0xC6, 0xA9, new[]
+        {
+            Room(0x0100, 54, 0, 8, 0x0101), Room(0x0101, 58, 4, 4, 0x0100, 0x0102), Room(0x0102, 58, 8, 4, 0x0101),
+        }), 0x0101);
         var standing = new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 4);
 
-        var above = plan.Levels[0].Pin(standing);
-        var nowhere = plan.Levels[0].Pin(standing with { X = 90 });
+        var own = plan.Pin(standing, playerLevel: 1);
+        var peeked = plan.Pin(standing, playerLevel: 1, peekLevel: 0);
+        var faintBelow = plan.Pin(standing with { X = 56 }, playerLevel: 1);
+        var nowhere = plan.Pin(standing with { X = 90 }, playerLevel: 1);
 
-        Assert.Equal(0xC6A90102u, above.Cell);
-        Assert.Equal(8f, above.Z);
-        Assert.Equal(RadarPlanFixtures.DungeonCell, nowhere.Cell);
-        Assert.Equal(plan.Levels[0].Height, nowhere.Z);
+        Assert.Equal((0xC6A90101u, 4f), (own.Cell, own.Z));
+        Assert.Equal((0xC6A90102u, 8f), (peeked.Cell, peeked.Z));
+        Assert.Equal((0xC6A90100u, 0f), (faintBelow.Cell, faintBelow.Z));
+        Assert.Equal((RadarPlanFixtures.DungeonCell, plan.Levels[1].Height), (nowhere.Cell, nowhere.Z));
+    }
+
+    // A square room on the floor at height z, size metres a side from (x0, 82), with doorways east to the cells in beyond.
+    private static IndoorCellShape Room(ushort id, float x0, float z, float size, params ushort[] beyond)
+    {
+        var polygons = new Dictionary<ushort, Vec3[]> { [1] = new[] { new Vec3(x0, 82, z), new Vec3(x0 + size, 82, z), new Vec3(x0 + size, 82 + size, z), new Vec3(x0, 82 + size, z) } };
+        var portals = new List<(ushort Polygon, ushort OtherCell)>();
+        for (var i = 0; i < beyond.Length; i++)
+        {
+            polygons[(ushort)(7 + i)] = new[] { new Vec3(x0 + size, 82 + i, z), new Vec3(x0 + size, 83 + i, z), new Vec3(x0 + size, 83 + i, z + 4), new Vec3(x0 + size, 82 + i, z + 4) };
+            portals.Add(((ushort)(7 + i), beyond[i]));
+        }
+        return new IndoorCellShape(id, Frame.Identity, polygons, portals);
     }
 
     [Fact]

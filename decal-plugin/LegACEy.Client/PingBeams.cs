@@ -25,8 +25,10 @@ internal sealed class PingBeams : IDisposable
     private const double PulseSeconds = 1.4, FadeIn = 0.25, FadeOut = 1;
     private const float Hidden = 0.5f;
     // The scan: walls this far from the spot, drawn this high, cut into pieces this long so the wave and fall-off shade along them.
-    private const float ScanRadius = 14, WallHeight = 3.2f, Piece = 1.2f, WaveWidth = 1.8f;
-    private const double ScanSeconds = 2.2;
+    private const float ScanRadius = 24, WallHeight = 4, Piece = 1, WaveWidth = 1.2f, Trail = 5;
+    // The grid's bands up the walls.
+    private const int Bands = 5;
+    private const double ScanSeconds = 2.6;
     private const int TextureSize = 64;
 
     private readonly IntPtr _device;
@@ -162,28 +164,31 @@ internal sealed class PingBeams : IDisposable
     }
 
     /// <summary>
-    /// The walls near the spot: each piece a panel glowing at its foot and fading up, with a bright line along the floor and a faint one
-    /// along the top, fading with distance from the spot and lit up as the wave sweeps past.
+    /// The walls near the spot as a hologram: each piece a panel glowing at its foot and fading up, under a grid of bands along it (the
+    /// floor's brightest) and a rib up each piece, fading with distance from the spot and lit up as the wave sweeps past, leaving a trail.
     /// </summary>
     private unsafe void DrawScan(Beam beam, double age, float alpha)
     {
-        var front = (float)(age / ScanSeconds % 1) * ScanRadius;
+        // The wave reaches past the edge so it leaves it fully before the next starts.
+        var front = (float)(age / ScanSeconds % 1) * (ScanRadius + Trail);
         var spot = new Vector2(beam.Spot.X, beam.Spot.Z);
         var up = new Vector3(0, WallHeight, 0);
         float Glow(Vector3 at)
         {
             var distance = Vector2.Distance(new Vector2(at.X, at.Z), spot);
             var near = Math.Clamp(1 - distance / ScanRadius, 0, 1);
-            var wave = MathF.Exp(-MathF.Pow((distance - front) / WaveWidth, 2));
-            return alpha * near * (0.18f + 0.8f * wave);
+            // A sharp front, and a trail behind it that dies away.
+            var wave = distance > front ? MathF.Exp(-MathF.Pow((distance - front) / WaveWidth, 2)) : MathF.Exp(-(front - distance) / Trail);
+            return alpha * MathF.Sqrt(near) * (0.22f + 0.85f * wave);
         }
         var panels = beam.Walls.Count * 6;
-        var needed = panels + beam.Walls.Count * 4;
+        // Per piece: a line along each band (the floor's brightest, fading up) and a rib up its first corner.
+        var needed = panels + beam.Walls.Count * (Bands + 1) * 2;
         if (_scan.Length < needed) _scan = new Vertex[needed];
         var n = 0;
         foreach (var (a, b) in beam.Walls)
         {
-            uint bottomA = Tint(beam.Color, Glow(a) * 0.7f), bottomB = Tint(beam.Color, Glow(b) * 0.7f), top = beam.Color;
+            uint bottomA = Tint(beam.Color, Glow(a) * 0.6f), bottomB = Tint(beam.Color, Glow(b) * 0.6f), top = beam.Color;
             _scan[n++] = new(a, bottomA, 0, 0);
             _scan[n++] = new(b, bottomB, 0, 0);
             _scan[n++] = new(a + up, top, 0, 0);
@@ -194,10 +199,16 @@ internal sealed class PingBeams : IDisposable
         var lit = beam.Color | 0x404040;
         foreach (var (a, b) in beam.Walls)
         {
-            _scan[n++] = new(a, Tint(lit, Glow(a) * 2.2f), 0, 0);
-            _scan[n++] = new(b, Tint(lit, Glow(b) * 2.2f), 0, 0);
-            _scan[n++] = new(a + up, Tint(beam.Color, Glow(a) * 0.8f), 0, 0);
-            _scan[n++] = new(b + up, Tint(beam.Color, Glow(b) * 0.8f), 0, 0);
+            float glowA = Glow(a), glowB = Glow(b);
+            for (var band = 0; band < Bands; band++)
+            {
+                var rise = up * band / (Bands - 1);
+                var strength = band == 0 ? 2.4f : 1.1f * (1 - (float)band / Bands);
+                _scan[n++] = new(a + rise, Tint(lit, glowA * strength), 0, 0);
+                _scan[n++] = new(b + rise, Tint(lit, glowB * strength), 0, 0);
+            }
+            _scan[n++] = new(a, Tint(lit, glowA * 1.2f), 0, 0);
+            _scan[n++] = new(a + up, beam.Color, 0, 0);
         }
         fixed (Vertex* vertices = _scan)
         {
