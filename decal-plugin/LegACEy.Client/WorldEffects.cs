@@ -663,6 +663,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _weather.Dispose();
         _water.Dispose();
         _combat.Dispose();
+        _pings.Dispose();
         if (_root.IsAllocated) _root.Free();
     }
 }

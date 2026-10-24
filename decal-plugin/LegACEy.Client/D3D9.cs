@@ -82,7 +82,7 @@ internal static unsafe class D3D9
     // D3DTOP, D3DTA, D3DTEXF, D3DTADDRESS, D3DCMP, D3DCULL, D3DFILL, D3DSHADE, D3DBLEND and D3DBLENDOP values.
     public const int OpDisable = 1, OpSelectArg1 = 2, OpModulate = 4, OpModulate2x = 5, OpAddSigned = 8, OpBlendDiffuseAlpha = 12, ArgDiffuse = 0, ArgCurrent = 1, ArgTexture = 2, ArgFactor = 3, ArgComplement = 0x10;
     public const int FilterNone = 0, FilterPoint = 1, FilterLinear = 2, AddressWrap = 1, AddressClamp = 3;
-    public const int CmpLessEqual = 4, CmpGreaterEqual = 7, CullNone = 1, FillSolid = 3, ShadeGouraud = 2;
+    public const int CmpLessEqual = 4, CmpGreater = 5, CmpGreaterEqual = 7, CullNone = 1, FillSolid = 3, ShadeGouraud = 2;
     public const int BlendOne = 2, BlendSrcColor = 3, BlendSrcAlpha = 5, BlendInvSrcAlpha = 6, BlendDestColor = 9, BlendOpAdd = 1;
 
     /// <summary>D3DSURFACE_DESC.</summary>
