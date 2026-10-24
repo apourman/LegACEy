@@ -215,23 +215,24 @@ public static class InventorySnapshotBuilder
             }
             if (read.IsContainer) continue;
             if (read.Wcid == PyrealWcid) pyreals += read.StackCount;
-            if (read.Slot < 0) { unslotted.Add(read); continue; }
-            items.Add(new InventoryItem(read.Id, read.Name, read.Container, read.Slot, read.Visual, read.StackCount, read.StackMax,
-                read.Wcid, read.ValidLocations));
+            if (read.Slot < 0) unslotted.Add(read);
+            else items.Add(ItemAt(read, read.Slot));
         }
         // A pack picked up off the ground gets its slot list before its items, so Decal has no slot for them until a relog:
-        // they take the pack's free slots, as retail's own list shows them.
+        // they take the pack's free slots in read order, so they show (a relog brings back the server's order).
         foreach (var read in unslotted)
         {
             var slot = 0;
             while (items.Any(item => item.Container == read.Container && item.Slot == slot)) slot++;
-            items.Add(new InventoryItem(read.Id, read.Name, read.Container, slot, read.Visual, read.StackCount, read.StackMax,
-                read.Wcid, read.ValidLocations));
+            items.Add(ItemAt(read, slot));
         }
 
         return new InventorySnapshot(mainPack, sidePacks, items, wielded, reader.Burden,
             BurdenLimit(reader.Strength, reader.CarryingAugmentations), pyreals, reader.OpenContainer, reader.Selected, reader.CharacterName);
     }
+
+    private static InventoryItem ItemAt(InventoryObjectRead read, int slot) =>
+        new(read.Id, read.Name, read.Container, slot, read.Visual, read.StackCount, read.StackMax, read.Wcid, read.ValidLocations);
 
     /// <summary>The paperdoll slots an equip mask covers, in paperdoll order. A multi-slot mask covers every slot it touches.</summary>
     private static IReadOnlyList<PaperdollSlot> SlotsFor(uint equipMask) =>
