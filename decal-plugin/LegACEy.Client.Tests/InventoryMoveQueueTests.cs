@@ -36,7 +36,8 @@ public sealed class InventoryMoveQueueTests
     {
         var now = TimeSpan.Zero;
         var sent = new List<uint>();
-        var queue = new InventoryMoveQueue((item, _, _) => sent.Add(item), () => now, () => sent.Count > 0);
+        // Without retail's flag every request reads as pending: the first move still goes at once.
+        var queue = new InventoryMoveQueue((item, _, _) => sent.Add(item), () => now, () => true);
 
         queue.Move(1, 9, 0);
         queue.Move(2, 9, 1);
