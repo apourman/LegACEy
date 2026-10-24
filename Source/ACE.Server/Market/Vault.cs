@@ -851,6 +851,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// A refused deposit's item goes back to the place it was taken from, which the live item still names. The client was never told it left.
         /// If that pack is gone, the client is told it left and gets it as a new item wherever there is room.
+        /// With no room either, it is saved in the main pack for the next login: its row still names the old pack, which may now be another character's.
         /// </summary>
         private static void ReturnToPack(Player player, WorldObject item, string name)
         {
@@ -859,8 +860,15 @@ namespace ACE.Server.Market
 
             player.SendRemovedForVault(item);
 
-            if (!player.TryCreateInInventoryWithNetworking(item))
-                log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
+            if (player.TryCreateInInventoryWithNetworking(item))
+                return;
+
+            item.ContainerId = player.Guid.ClientGUID;
+            item.OwnerId = player.Guid.ClientGUID;
+            item.PlacementPosition = 0;
+            item.SaveBiotaToDatabase();
+
+            log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed and the pack has no room for it; the database has it in the main pack for the next login");
         }
 
         private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed, PackPlace? place)
