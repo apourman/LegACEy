@@ -25,9 +25,9 @@ internal sealed class PingBeams : IDisposable
     private const double PulseSeconds = 1.4, FadeIn = 0.25, FadeOut = 1;
     private const float Hidden = 0.5f;
     // The scan: walls this far from the spot, drawn this high, cut into pieces this long so the wave and fall-off shade along them.
-    private const float ScanRadius = 24, WallHeight = 4, Piece = 1, WaveWidth = 1.2f, Trail = 5;
+    private const float ScanRadius = 19, WallHeight = 3.6f, Piece = 1, WaveWidth = 1.2f, Trail = 3;
     // The grid's bands up the walls.
-    private const int Bands = 5;
+    private const int Bands = 4, RibEvery = 2;
     private const double ScanSeconds = 2.6;
     private const int TextureSize = 64;
 
@@ -165,7 +165,7 @@ internal sealed class PingBeams : IDisposable
 
     /// <summary>
     /// The walls near the spot as a hologram: each piece a panel glowing at its foot and fading up, under a grid of bands along it (the
-    /// floor's brightest) and a rib up each piece, fading with distance from the spot and lit up as the wave sweeps past, leaving a trail.
+    /// floor's brightest) and a rib every few metres, fading with distance from the spot and lit up as the wave sweeps past, leaving a trail.
     /// </summary>
     private unsafe void DrawScan(Beam beam, double age, float alpha)
     {
@@ -179,10 +179,10 @@ internal sealed class PingBeams : IDisposable
             var near = Math.Clamp(1 - distance / ScanRadius, 0, 1);
             // A sharp front, and a trail behind it that dies away.
             var wave = distance > front ? MathF.Exp(-MathF.Pow((distance - front) / WaveWidth, 2)) : MathF.Exp(-(front - distance) / Trail);
-            return alpha * MathF.Sqrt(near) * (0.22f + 0.85f * wave);
+            return alpha * near * (0.2f + 0.8f * wave);
         }
         var panels = beam.Walls.Count * 6;
-        // Per piece: a line along each band (the floor's brightest, fading up) and a rib up its first corner.
+        // Per piece: a line along each band (the floor's brightest, fading up) and, every RibEvery pieces, a rib up its first corner.
         var needed = panels + beam.Walls.Count * (Bands + 1) * 2;
         if (_scan.Length < needed) _scan = new Vertex[needed];
         var n = 0;
@@ -197,6 +197,7 @@ internal sealed class PingBeams : IDisposable
             _scan[n++] = new(b + up, top, 0, 0);
         }
         var lit = beam.Color | 0x404040;
+        var piece = 0;
         foreach (var (a, b) in beam.Walls)
         {
             float glowA = Glow(a), glowB = Glow(b);
@@ -207,13 +208,14 @@ internal sealed class PingBeams : IDisposable
                 _scan[n++] = new(a + rise, Tint(lit, glowA * strength), 0, 0);
                 _scan[n++] = new(b + rise, Tint(lit, glowB * strength), 0, 0);
             }
+            if (piece++ % RibEvery != 0) continue;
             _scan[n++] = new(a, Tint(lit, glowA * 1.2f), 0, 0);
             _scan[n++] = new(a + up, beam.Color, 0, 0);
         }
         fixed (Vertex* vertices = _scan)
         {
             DrawPrimitiveUP(_device, TriangleList, panels / 3, vertices, sizeof(Vertex));
-            DrawPrimitiveUP(_device, LineList, (needed - panels) / 2, vertices + panels, sizeof(Vertex));
+            DrawPrimitiveUP(_device, LineList, (n - panels) / 2, vertices + panels, sizeof(Vertex));
         }
     }
 
