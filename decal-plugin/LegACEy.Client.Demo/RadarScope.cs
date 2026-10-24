@@ -266,7 +266,7 @@ public static class RadarScope
     /// <summary>
     /// The plaque's text: the coordinates when no plan is drawn. In a building, the coordinates and the floor
     /// ("33.6N, 56.7E · Ground"). In a dungeon, the place's name and the level from the top ("Arwic Mines · Level 2 of 6"), or the level
-    /// alone without a name. The window cuts a name too long for the plaque. Null without a player.
+    /// alone without a name. The window shrinks a line too long for the plaque. Null without a player.
     /// </summary>
     /// <param name="drawn">The plan Build draws, or null when none is drawn.</param>
     /// <param name="level">The index in <paramref name="drawn"/> of the player's level, or -1.</param>

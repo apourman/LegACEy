@@ -287,6 +287,24 @@ public sealed class InventoryWindowTests
         Assert.Null(host.Host.LastError);
     });
 
+    [Fact]
+    public void A_set_picked_in_a_side_pack_drags_back_into_the_main_pack() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot(openContainer: InventorySample.Potions));
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        // The potions pack's cells: blue potion 0, yellow potion 5.
+        Click(host.Host, host.Cells[0], Avalonia.Input.KeyModifiers.Control);
+        Click(host.Host, host.Cells[5], Avalonia.Input.KeyModifiers.Control);
+
+        // The main pack holds slots 0, 4, 7 and 9, so the set takes its first free slots, 1 and 2.
+        InventoryDriver.Drop(host.Host, host.Cells[0], InventoryDriver.PackSlot(host.Host, InventorySample.Character));
+        Assert.Equal(new[] { $"move 0x{InventorySample.BluePotion:X8} to 0x{InventorySample.Character:X8} slot 1", $"move 0x{InventorySample.YellowPotion:X8} to 0x{InventorySample.Character:X8} slot 2" },
+            InventoryDriver.Sent(port));
+        Assert.Null(host.Host.LastError);
+    });
+
     private static void Click(AvaloniaPanel host, Control control, Avalonia.Input.KeyModifiers modifiers)
     {
         var point = InventoryDriver.Centre(host, control);
@@ -401,6 +419,7 @@ public sealed class InventoryWindowTests
         Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Potions:X8} slot 17" }, InventoryDriver.Sent(port));
     });
 
+    // Armour doesn't swap: the worn helm stays, the drop sends only the wield, and the server refuses it until the helm comes off.
     [Fact]
     public void Dropping_on_an_equipment_slot_wields_the_item_there() => RenderThread.Run(() =>
     {
@@ -412,6 +431,22 @@ public sealed class InventoryWindowTests
         InventoryDriver.Drop(host.Host, host.Cells[9], head);
 
         Assert.Equal(new[] { $"wield 0x{InventorySample.Cap:X8} to Head" }, InventoryDriver.Sent(port));
+    });
+
+    [Fact]
+    public void A_bow_dropped_on_the_weapon_slot_puts_the_worn_sword_in_the_main_pack_first() => RenderThread.Run(() =>
+    {
+        const uint bow = 0x90000003;
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        port.WorldLocations[bow] = 0x00400000; // MissileWeapon: not the sword's MeleeWeapon location, but the same slot
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var target = (IRetailItemDropTarget)host.Window;
+
+        Assert.True(target.RetailDrop(bow, "Bow", InventoryDriver.Centre(host.Host, Slot(host, PaperdollSlot.Weapon))));
+
+        Assert.Equal(new[] { $"move 0x{InventorySample.WieldedSword:X8} to 0x{InventorySample.Character:X8} slot 1", $"wield 0x{bow:X8} to Weapon" },
+            port.Commands);
     });
 
     [Fact]

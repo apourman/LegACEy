@@ -27,5 +27,9 @@ namespace ACE.Server.Market
             DatManager.PortalDat.SpellTable.Spells.TryGetValue(unchecked((uint)spellId), out var spell) ? AppraisalSpell.From(spell.Name, (SpellFlags)spell.Bitfield) : null;
 
         public string MaterialName(int materialType) => materials.Value.TryGetValue(unchecked((uint)materialType), out var name) ? name : null;
+
+        /// <summary>A stored item's name as the game shows it, its material first ("Steel Breastplate")</summary>
+        public string NameWithMaterial(string name, int? materialType) =>
+            AppraisalRules.NameWithMaterial(name, materialType is int material and not 0 ? MaterialName(material) : null);
     }
 }

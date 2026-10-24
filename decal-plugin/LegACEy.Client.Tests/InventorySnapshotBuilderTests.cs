@@ -94,7 +94,7 @@ public sealed class InventorySnapshotBuilderTests
     }
 
     [Fact]
-    public void A_full_robe_covers_the_shirt_and_the_pants()
+    public void A_full_robe_is_a_shirt_and_takes_only_the_shirt_slot()
     {
         var robe = ChestWear | AbdomenWear | UpperArmWear | LowerArmWear | UpperLegWear | LowerLegWear;
         var reader = new FakeReader();
@@ -102,7 +102,23 @@ public sealed class InventorySnapshotBuilderTests
 
         var snapshot = InventorySnapshotBuilder.Build(reader);
 
-        Assert.Equal(new[] { PaperdollSlot.Shirt, PaperdollSlot.Pants }, snapshot.Wielded.Single().Slots);
+        Assert.Equal(new[] { PaperdollSlot.Shirt }, snapshot.Wielded.Single().Slots);
+    }
+
+    [Fact]
+    public void A_shirt_that_covers_the_abdomen_shows_in_the_shirt_slot_only_and_the_pants_keep_theirs()
+    {
+        var shirt = ChestWear | AbdomenWear | UpperArmWear | LowerArmWear;
+        var pants = UpperLegWear | LowerLegWear;
+        var reader = new FakeReader();
+        reader.Objects.Add(Item(0x50000460, container: Character, slot: -1, equippedMask: shirt, validLocations: shirt));
+        reader.Objects.Add(Item(0x50000461, container: Character, slot: -1, equippedMask: pants, validLocations: pants));
+
+        var snapshot = InventorySnapshotBuilder.Build(reader);
+
+        Assert.Equal(new[] { PaperdollSlot.Shirt }, snapshot.Wielded.Single(item => item.Id == 0x50000460).Slots);
+        Assert.Equal(new[] { PaperdollSlot.Pants }, snapshot.Wielded.Single(item => item.Id == 0x50000461).Slots);
+        Assert.Equal(0u, InventorySnapshot.MaskFor(shirt, PaperdollSlot.Pants));
     }
 
     [Fact]

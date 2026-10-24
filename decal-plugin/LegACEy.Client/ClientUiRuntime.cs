@@ -412,6 +412,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Keys typed in LegACEy text boxes also reach the game: {exception.Message}"); }
             try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
+            try { _inventory.Request = new RetailInventoryRequest(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Moving several items at once waits two seconds between items: {exception.Message}"); }
             LoadPlugins();
         }
         catch
@@ -529,6 +531,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _settingsStore.Save("", "", WaterKey, (new Point(water.Percent, water.On ? 1 : 0), null));
         if (_worldEffects != null) _worldEffects.WaterStrength = water.Strength;
         if (_settings != null) _settings.Water = WaterOptionFor(water);
+    }
+
+    /// <summary>The Settings window's test weather: drawn around the player at once, kept for this session only.</summary>
+    private void SetTestWeather(WeatherKind weather)
+    {
+        if (_worldEffects == null) return;
+        _worldEffects.TestWeather = weather;
+        if (_settings != null) _settings.TestWeather = new OptionChoice<WeatherKind>(weather, SetTestWeather);
+    }
+
+    /// <summary>The Settings window's test fog: the storm's ring around the player's landblock at once, kept for this session only.</summary>
+    private void SetTestFog(bool on)
+    {
+        if (_worldEffects == null) return;
+        _worldEffects.TestFog = on;
+        if (_settings != null) _settings.TestFog = new OptionChoice<bool>(on, SetTestFog);
     }
 
     /// <summary>The World tab's water: the setting, and the change it asks for, with the strength kept within the bounds.</summary>
@@ -960,6 +978,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ChatInactiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, RetailChatWindows.DefaultInactiveOpacity), SetChatInactiveOpacity),
             ChatNameColour = new OptionChoice<int>(RetailChatWindows.LoadNameColour(_positionStore, SessionServer(), SessionCharacter()), SetChatNameColour),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
+            TestWeather = _worldEffects != null ? new OptionChoice<WeatherKind>(_worldEffects.TestWeather, SetTestWeather) : null,
+            TestFog = _worldEffects != null ? new OptionChoice<bool>(_worldEffects.TestFog, SetTestFog) : null,
             ResetPositions = () => _positionsResetRequested = true,
         };
         _settings = settings;
@@ -2172,10 +2192,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             toast.Tick();
+            var shown = surface.Visible;
             surface.Visible = toast.IsVisible;
             if (surface.Visible)
             {
                 var scale = surface.Panel.Scale;
+                // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
+                if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toast);
                 toast.Measure(Avalonia.Size.Infinity);
                 int width = WholePixels(toast.DesiredSize.Width * scale), height = WholePixels(toast.DesiredSize.Height * scale);
                 if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
@@ -2370,11 +2393,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             if (_toolbarFailed) return;
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
-            LoadToolbarPlace();
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
-            // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read only then, so it never
-            // shows at retail's place first and jumps.
+            // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read on the first held frame
+            // after, once the shortcut rows are in, so it never shows at retail's place first and jumps.
             if (!_inGame)
             {
                 _toolbarSurface!.Visible = false;
@@ -2383,7 +2405,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 return;
             }
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
-            if (_toolbarTakeover.Holds) EnsureShortcutBar();
+            if (_toolbarTakeover.Holds)
+            {
+                EnsureShortcutBar();
+                LoadToolbarPlace();
+            }
             else CloseShortcutBar();
             PlaceSplitTab();
         }
@@ -2400,10 +2426,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void PlaceSplitTab()
     {
         if (_splitTab is not { } tab || _splitTabSurface is not { } surface || _toolbar is not { } toolbar || _toolbarSurface is not { } bar) return;
+        var shown = surface.Visible;
         surface.Visible = bar.Visible && tab.IsShown;
         if (surface.Visible)
         {
             var scale = surface.Panel.Scale;
+            // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
+            if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(tab);
             tab.Measure(Avalonia.Size.Infinity);
             int width = WholePixels(tab.DesiredSize.Width * scale), height = WholePixels(tab.DesiredSize.Height * scale);
             if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
@@ -2417,14 +2446,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private const string ToolbarPlaceId = "dereth-toolbar";
 
-    /// <summary>Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did.</summary>
+    /// <summary>
+    /// Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did, and no
+    /// place is saved: the refits as the toolbar is scaled and its shortcut rows go in would write a place from retail's over the saved one.
+    /// It runs once the rows are in, before the frame draws, so the rows growing the toolbar do not move it off its place.
+    /// </summary>
     private void LoadToolbarPlace()
     {
         if (_toolbarPlaceLoaded || !_inGame || _toolbarPlace == null || _toolbarSurface == null) return;
-        _toolbarPlaceLoaded = true;
         ScaleToolbar();
-        if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is not { } saved) return;
-        _toolbarPlace.Location = OnScreen(saved.Location, _toolbarSurface.Bounds.Size);
+        if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is { } saved)
+        {
+            _toolbarPlace.Location = OnScreen(saved.Location, _toolbarSurface.Bounds.Size);
+            _toolbarSurface.Location = _toolbarPlace.Location.Value;
+            Log($"Put the Dereth toolbar at its saved place {saved.Location}, on screen at {_toolbarSurface.Location}.");
+        }
+        _toolbarPlaceLoaded = true;
     }
 
     /// <summary>
@@ -2473,7 +2510,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void SaveToolbarPlace(Point location)
     {
-        if (_inGame) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
+        if (_inGame && _toolbarPlaceLoaded) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
     }
 
     /// <summary>Whether a screen point is on the toolbar's top edge, where a press moves it as a window's top edge does.</summary>
@@ -2802,7 +2839,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // A history that listened while retail's chat was shown stops taking lines: the windows' own history takes them from here.
         _carriedChatHistory?.Dispose();
         _carriedChatHistory = null;
-        // The chat's own text size control moves the Settings window's value too.
+        // A text size set in Settings while the chat is open reaches the Settings window's value through the chat.
         chats.TextSizeChanged += size => { if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize); };
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
@@ -3603,8 +3640,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
-                    // Ctrl and the wheel over a LegACEy window or the toolbar make it bigger or smaller, and its content does not scroll. Over
-                    // chat they keep changing its text size.
+                    // Ctrl and the wheel over a LegACEy window or the toolbar make it bigger or smaller, and its content does not scroll.
                     if ((route.Modifiers & InputModifiers.Control) != 0 && Rescalable(route.SurfaceId))
                         RescaleWindow(route.SurfaceId!, Math.Sign(route.WheelDelta));
                     else
@@ -3836,10 +3872,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private static int WholePixels(double length) => (int)Math.Ceiling(length - 0.001);
 
-    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window other than chat.</summary>
+    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window, chat included.</summary>
     private bool Rescalable(string? id) => id == ToolbarSurfaceId
         ? _toolbarTakeover?.Holds == true
-        : id != null && _windows?.Get(id) != null && !RetailChatWindows.IsChat(id);
+        : id != null && _windows?.Get(id) != null;
 
     // How long a window's size shows over it after a wheel notch.
     private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);

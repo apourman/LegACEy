@@ -569,6 +569,26 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void Two_clients_saving_at_once_keep_each_others_places()
+    {
+        var path = TempPath();
+        try
+        {
+            var clients = new[] { new FileWindowPositionStore(path), new FileWindowPositionStore(path) };
+            System.Threading.Tasks.Parallel.For(0, 200, i =>
+                clients[i % 2].Save("server-a", "character-" + (i % 2), "window-" + i, (new Point(i, i), null)));
+
+            var reloaded = new FileWindowPositionStore(path);
+            for (var i = 0; i < 200; i++)
+                Assert.Equal(new Point(i, i), reloaded.Load("server-a", "character-" + (i % 2), "window-" + i)!.Value.Location);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void A_place_that_cannot_be_written_still_loads_this_session()
     {
         var path = TempPath();

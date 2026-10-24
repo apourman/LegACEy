@@ -177,6 +177,7 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(listed, detail.Item.Guid);
             Assert.IsTrue(detail.Lines.Contains("Workmanship: 7"), "the appraisal line is the portal's");
             Assert.AreEqual(DatMaterialName(MaterialType.Steel), detail.Item.Material, "the material is the DAT's name");
+            Assert.AreEqual($"{DatMaterialName(MaterialType.Steel)} {token} mine", detail.Item.Name, "the name carries the material, as the game names it");
             CollectionAssert.Contains(detail.Spells, DatSpellName(BrowseSpell), "the spell is the DAT's name");
         }
 

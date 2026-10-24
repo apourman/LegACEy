@@ -386,16 +386,15 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private static bool Bit(uint value, int bit) => ((value >> bit) & 1) != 0;
 
     /// <summary>
-    /// The chat-window source the send carries: the main chat's [ChatInterface+0x5FC] (ChatInterface is the gmMainChatUI element less 4).
-    /// Falls back to 1 when the main chat is not there or cannot be read.
+    /// The chat-window source the send carries: the main chat's [ChatInterface+0x5FC]. Falls back to 1 when the main chat is not there or
+    /// cannot be read.
     /// </summary>
-    private static uint SourceWindow()
+    private uint SourceWindow()
     {
         try
         {
-            var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
-            if (main == IntPtr.Zero) return DefaultSourceWindow;
-            var source = Marshal.ReadInt32(IntPtr.Add(main, -4), SourceWindowOffset);
+            if (RetailChat() is not { } chat) return DefaultSourceWindow;
+            var source = Marshal.ReadInt32(chat, SourceWindowOffset);
             return source == 0 ? DefaultSourceWindow : unchecked((uint)source);
         }
         catch (Exception)

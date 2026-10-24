@@ -303,7 +303,7 @@ namespace ACE.Server.Market
                 foreach (var item in page.Items)
                 {
                     w.WriteGuid(item.ItemGuid);
-                    ChannelWire.WriteString(w, item.Name);
+                    ChannelWire.WriteString(w, PortalAppraisalNames.Instance.NameWithMaterial(item.Name, item.MaterialType));
                     w.Write(unchecked((uint)item.ItemType));
                     w.Write(item.StackSize);
                     w.Write(item.Value);

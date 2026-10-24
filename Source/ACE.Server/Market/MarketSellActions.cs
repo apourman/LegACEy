@@ -138,9 +138,9 @@ namespace ACE.Server.Market
             var refusal = VaultChannel.CheckStart(player) ?? rules;
 
             if (refusal != null)
-                return (true, VaultMessages.For(refusal.Value, item?.Name));
+                return (true, VaultMessages.For(refusal.Value, item?.NameWithMaterial));
 
-            return (true, item.Bonded == BondedStatus.Bonded ? VaultMessages.For(VaultOutcome.Bonded, item.Name) : null);
+            return (true, item.Bonded == BondedStatus.Bonded ? VaultMessages.For(VaultOutcome.Bonded, item.NameWithMaterial) : null);
         }
 
         /// <summary>
@@ -148,9 +148,9 @@ namespace ACE.Server.Market
         /// </summary>
         private static string VaultReason(uint guid, VaultItem row) => row.State switch
         {
-            VaultItemState.Held => IsBondedInVault(guid) ? VaultMessages.For(VaultOutcome.Bonded, row.Name) : null,
+            VaultItemState.Held => IsBondedInVault(guid) ? VaultMessages.For(VaultOutcome.Bonded, FullName(row)) : null,
             VaultItemState.Listed => "Already listed.",
-            _ => VaultMessages.For(VaultOutcome.Withdrawing, row.Name),
+            _ => VaultMessages.For(VaultOutcome.Withdrawing, FullName(row)),
         };
 
         /// <summary>
@@ -200,7 +200,7 @@ namespace ACE.Server.Market
                     var row = VaultStore.Owned(accountId, new[] { itemGuid }).GetValueOrDefault(itemGuid);
 
                     // what is known before anything moves: the price, the listing limit and the ban
-                    var refusal = BeforeAnythingMoves(accountId, price, row?.Name);
+                    var refusal = BeforeAnythingMoves(accountId, price, FullName(row));
                     if (refusal != null)
                     {
                         ReplyOutcome(context, false, row != null, refusal);
@@ -209,7 +209,7 @@ namespace ACE.Server.Market
 
                     if (row != null)
                     {
-                        ListVaultItem(context, accountId, itemGuid, price, row.Name);
+                        ListVaultItem(context, accountId, itemGuid, price, FullName(row));
                         return;
                     }
 
@@ -253,17 +253,17 @@ namespace ACE.Server.Market
 
             if (refusal != null)
             {
-                ReplyOutcome(context, false, false, refusal == VaultOutcome.NotInPack ? NotInPackOrVault : VaultMessages.For(refusal.Value, item?.Name));
+                ReplyOutcome(context, false, false, refusal == VaultOutcome.NotInPack ? NotInPackOrVault : VaultMessages.For(refusal.Value, item?.NameWithMaterial));
                 return;
             }
 
             if (item.Bonded == BondedStatus.Bonded)
             {
-                ReplyOutcome(context, false, false, VaultMessages.For(VaultOutcome.Bonded, item.Name));
+                ReplyOutcome(context, false, false, VaultMessages.For(VaultOutcome.Bonded, item.NameWithMaterial));
                 return;
             }
 
-            var name = item.Name;
+            var name = item.NameWithMaterial;
 
             Vault.Deposit(player, itemGuid, deposited =>
             {
@@ -534,17 +534,20 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// An item's name: from its Vault row while it has one, else from the item's own record, which a sale and a withdrawal leave in place
+        /// An item's name with its material: from its Vault row while it has one, else from the item's own record, which a sale and a withdrawal leave in place
         /// </summary>
         private static string ItemNameOf(uint itemGuid, VaultItem row)
         {
             if (row?.Name is { Length: > 0 } name)
-                return name;
+                return PortalAppraisalNames.Instance.NameWithMaterial(name, row.MaterialType);
 
             var biota = DatabaseManager.Shard.BaseDatabase.GetBiota(itemGuid, doNotAddToCache: true);
             var named = biota?.BiotaPropertiesString.FirstOrDefault(property => property.Type == (ushort)PropertyString.Name)?.Value;
-            return VaultMessages.ItemName(named);
+            var material = biota?.BiotaPropertiesInt.FirstOrDefault(property => property.Type == (ushort)PropertyInt.MaterialType)?.Value;
+            return string.IsNullOrEmpty(named) ? VaultMessages.ItemName(named) : PortalAppraisalNames.Instance.NameWithMaterial(named, material);
         }
+
+        private static string FullName(VaultItem row) => PortalAppraisalNames.Instance.NameWithMaterial(row?.Name, row?.MaterialType);
 
         /// <summary>
         /// Expires every listing past its lifetime, as the portal does before it reads or changes listings. Database write, off the world thread.

@@ -113,13 +113,16 @@ over the same 30 s: `layoutPasses` (layout passes its window ran in the shared s
 
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
 toolbar or item). Its vertical layout follows retail's panel: retail's width, "Inventory of" the character's name, the paperdoll over the
-main pack's six columns, and the burden and packs in a column on the right, each pack's fill in an upright bar; only its height changes. The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
+main pack's six columns, and the burden and packs in a column on the right, each pack's fill in an upright bar; only its height changes. Ctrl and Shift clicks pick several items in the open pack;
+dragged onto a pack's tile or into its slots, the set moves there one item after another, as fast as the server answers each move
+(retail refuses a second move while one is pending). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
 paperdoll alone, which drags to turn. The client reads every object's look from the game's own messages, so Inspect and the inventory's
 doll work on any server; only objects outside the world (Vault items) ask a LegACEy server (`paperdoll.inspect`). The expand button in the
 inventory's doll area opens the same window on your own character, from its first view each time. The inventory's doll stands still,
 facing front without what it holds, and fills the panel above the Slots row. A click, drag, right-click or double-click on it acts on the
-worn item drawn under the pointer, as on that item's slot, and a drop on it wields the item. While an item is dragged, the body parts
+worn item drawn under the pointer, as on that item's slot, and a drop on it wields the item; a weapon or shield dropped there first
+puts the one it replaces back in the main pack. While an item is dragged, the body parts
 it covers are outlined: gold where it can be worn, red where it can't, teal for a worn item being lifted. Which worn item draws which
 part is worked out on the client from portal.dat's clothing tables, so this too works on any server. The appraisal window lists an item's lines in the order retail's examination
 text does (tinkering, set and ratings, combat, spells, properties, use, requirements, the rest, then spellcraft, mana and each
@@ -131,7 +134,7 @@ drag when retail's inventory lists show the item, so the world, NPCs and other r
 
 The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. It is laid out as retail's is:
 retail's own stance and backpack art at the ends, the window buttons over Use, the selection plaque and Examine, and the two shortcut rows
-below, inside the same frame and retail's width: nine touching 32 px slots. A long target name wraps to two lines. Press and drag the
+below, inside the same frame and retail's width: nine touching 32 px slots. A click on a shortcut selects and uses its item, and the slot stays lit while its item is selected. A long target name wraps to two lines. Press and drag the
 toolbar's frame or top edge (not a button or slot) to move it anywhere on screen, unless retail's UI is locked; the place is saved per
 character in `window-positions.txt`, and retail's own toolbar stays where retail left it. Settings → Windows shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
 second; deleting it takes the toolbar over again.
@@ -147,8 +150,8 @@ colour except in a spell's words, where they are green; Name colour can pick Gre
 Retail's chat keeps running out of sight, so Decal plugins see chat as before. Creating an empty file named `retail-chat-native` beside
 the main DLL gives retail's chat back within a second; deleting it takes the chat over again, with the lines that came meanwhile in its log. In the chat box, Up and Down bring back what you sent, Ctrl+V pastes, and Ctrl+C and Ctrl+X copy. A drag
 in the log selects across lines and copies as you let go; Ctrl+C copies it again without the game seeing the key, until you click
-outside the chat. The chat's text size is set by its Aa
-button (click larger, right-click smaller) or Ctrl and the wheel, per character.
+outside the chat. Ctrl and the wheel scale the chat window like
+any other; Settings → Windows → Chat → Text size sets the size of its text, per character.
 
 Retail's Lock UI locks every LegACEy window too: while it is on, none moves or resizes, and none shows resize grips or corners.
 

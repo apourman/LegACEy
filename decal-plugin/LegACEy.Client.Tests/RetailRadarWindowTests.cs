@@ -283,7 +283,7 @@ public sealed class RetailRadarWindowTests
     });
 
     [Fact]
-    public void A_name_too_long_for_the_plaque_gives_way_to_the_level_and_the_paste_keeps_it_whole() => RenderThread.Run(() =>
+    public void A_name_too_long_for_the_plaque_shrinks_to_fit_whole_and_the_paste_keeps_it_whole() => RenderThread.Run(() =>
     {
         const string name = "The Long Forgotten Halls of the Black Totem Temple";
         var port = PortWith();
@@ -300,8 +300,9 @@ public sealed class RetailRadarWindowTests
         var level = panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == " · Level 2 of 3");
         var place = panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == name);
         Assert.True(plaque.TranslatePoint(new Point(plaque.Bounds.Width, 0), panel.Content)!.Value.X <= RetailRadarWindow.DesignWidth);
-        Assert.True(level.Bounds.Width >= level.DesiredSize.Width - 0.5);
-        Assert.True(place.Bounds.Width < Measured(place));
+        Assert.True(plaque.TranslatePoint(new Point(0, 0), panel.Content)!.Value.X >= 0);
+        Assert.True(place.Bounds.Width >= Measured(place) - 0.5);
+        Assert.True(level.Bounds.Width >= Measured(level) - 0.5);
 
         Press(panel, plaque);
         Assert.Equal(name + " · Level 2 of 3", clicked);
