@@ -132,7 +132,7 @@ public static class WorldFiles
         return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
     }
 
-    public static string WorldJson(int version, string? address = null, string? name = null) =>
+    public static string WorldJson(int version, string? address, string? name) =>
         $"{{ \"version\": {version}" + (address != null ? $", \"address\": {Quote(address)}" : "") + (name != null ? $", \"name\": {Quote(name)}" : "") + " }";
 
     private static Regex Text(string key) => new($@"""{key}""\s*:\s*""((?:[^""\\]|\\.)*)""", RegexOptions.Compiled);

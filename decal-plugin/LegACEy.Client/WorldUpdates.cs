@@ -113,6 +113,15 @@ internal sealed class WorldUpdates
         return b.Length == 4 && (b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] < 32) || (b[0] == 192 && b[1] == 168));
     }
 
+    /// <summary>An address <see cref="Allowed"/> refuses ends the check in Unavailable.</summary>
+    private bool Refused(string address)
+    {
+        if (Allowed(address)) return false;
+        ClientUiRuntime.Log($"World update address {address} refused: only https, or http to this machine or a private network.");
+        Set(WorldState.Unavailable);
+        return true;
+    }
+
     private async Task Run(WorldNote note)
     {
         try
@@ -131,12 +140,7 @@ internal sealed class WorldUpdates
                 Set(WorldState.UpToDate);
                 return;
             }
-            if (!Allowed(note.UpdateList))
-            {
-                ClientUiRuntime.Log($"World update list {note.UpdateList} refused: only https, or http to this machine or a private network.");
-                Set(WorldState.Unavailable);
-                return;
-            }
+            if (Refused(note.UpdateList)) return;
             WorldManifest manifest;
             using (var deadline = new CancellationTokenSource(ManifestDeadline))
                 manifest = WorldManifest.Parse(await _getString(note.UpdateList, deadline.Token));
@@ -149,12 +153,7 @@ internal sealed class WorldUpdates
                 Set(WorldState.UpToDate);
                 return;
             }
-            if (!Allowed(manifest.Patch))
-            {
-                ClientUiRuntime.Log($"World patch {manifest.Patch} refused: only https, or http to this machine or a private network.");
-                Set(WorldState.Unavailable);
-                return;
-            }
+            if (Refused(manifest.Patch)) return;
             Target = manifest;
             var stage = WorldFiles.Stage(_game, manifest.Version);
             if (File.Exists(Path.Combine(stage, WorldFiles.FailedFile)))
