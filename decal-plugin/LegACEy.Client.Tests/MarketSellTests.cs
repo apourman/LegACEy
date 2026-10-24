@@ -268,49 +268,43 @@ public sealed class MarketSellTests
         Assert.Equal(0x5004u, market.Sell.Model.Selected?.Guid);
     });
 
-    [Fact]
-    public void A_medium_window_shows_the_items_above_the_price_panel_on_screen_and_the_price_panel_stays_in_view() => RenderThread.Run(() =>
+    [Theory]
+    [InlineData(980)]
+    [InlineData(1200)]
+    public void A_medium_or_wide_window_splits_the_items_and_price_from_the_listings_running_the_full_height(int width) => RenderThread.Run(() =>
     {
-        using var medium = new MarketFixture(980);
-        medium.Panel.Show(MarketScreen.Sell);
-        medium.Settle();
-        var itemsTop = TopOnScreen(medium, "Your items");
-        var priceTop = TopOnScreen(medium, "PRICE, WHOLE STACK");
-        var listingsTop = TopOnScreen(medium, "Your listings");
-        Assert.True(itemsTop < priceTop, "the items are above the price panel");
-        Assert.True(priceTop < listingsTop, "the listings are below the price panel");
-        Assert.True(priceTop + BottomOffset(medium, "PRICE, WHOLE STACK") <= medium.Window.Bounds.Height, "the price panel is in view, not pushed off the bottom");
+        using var market = new MarketFixture(width);
+        market.Panel.Show(MarketScreen.Sell);
+        market.Settle();
 
+        Assert.True(TopOnScreen(market, "Your items") < TopOnScreen(market, "PRICE, WHOLE STACK"), "the price panel is under the items");
+        Assert.True(LeftOnScreen(market, "Your listings") > LeftOnScreen(market, "PRICE, WHOLE STACK"), "the listings are beside them, on the right");
+        Assert.True(Math.Abs(TopOnScreen(market, "Your items") - TopOnScreen(market, "Your listings")) < 10, "both start at the top");
+    });
+
+    [Fact]
+    public void A_narrow_window_keeps_the_items_in_view_while_one_is_picked_and_the_listings_on_their_own_tab() => RenderThread.Run(() =>
+    {
         using var narrow = new MarketFixture(520);
         narrow.Panel.Show(MarketScreen.Sell);
         narrow.Settle();
         Assert.True(IsShown(narrow, "Your items"), "the narrow window opens on the items");
         Assert.False(IsShown(narrow, "PRICE, WHOLE STACK"), "the price panel waits for a pick");
+        Assert.False(IsShown(narrow, "Your listings"), "the listings wait on their tab");
 
         PutInPack(narrow, 0x5005, "Ring of Rejuvenation");
         narrow.Settle();
         narrow.Sell.Model.Pick(0x5005);
         narrow.Settle();
         Assert.True(IsShown(narrow, "PRICE, WHOLE STACK"), "a pick opens the price panel");
-        Assert.False(IsShown(narrow, "Your items"), "in place of the items");
+        Assert.True(IsShown(narrow, "Your items"), "and the items stay, so another can be picked");
+        Assert.True(TopOnScreen(narrow, "Your items") < TopOnScreen(narrow, "PRICE, WHOLE STACK"), "the price panel sits under the items");
 
-        Click(narrow, "‹ Back");
+        Click(narrow, "Listings");
         narrow.Settle();
-        Assert.True(IsShown(narrow, "Your items"), "Back returns to the items");
+        Assert.True(IsShown(narrow, "Your listings"), "the Listings tab shows the listings");
+        Assert.False(IsShown(narrow, "Your items"));
         Assert.False(IsShown(narrow, "PRICE, WHOLE STACK"));
-    });
-
-    [Fact]
-    public void A_wide_window_puts_the_items_and_the_price_side_by_side_with_the_listings_under_them() => RenderThread.Run(() =>
-    {
-        using var wide = new MarketFixture(1200);
-        wide.Panel.Show(MarketScreen.Sell);
-        wide.Settle();
-
-        var listingsTop = TopOnScreen(wide, "Your listings");
-        Assert.True(TopOnScreen(wide, "Your items") < listingsTop, "the items are above the listings");
-        Assert.True(TopOnScreen(wide, "PRICE, WHOLE STACK") < listingsTop, "the price panel is above the listings");
-        Assert.True(LeftOnScreen(wide, "PRICE, WHOLE STACK") > LeftOnScreen(wide, "Your items"), "the price panel is to the right of the items");
     });
 
     [Fact]

@@ -14,16 +14,19 @@ namespace LegACEy.Plugin.Market;
 
 /// <summary>
 /// The Sell screen: the pack or the Vault on tabs, the picked item's price panel, and the account's listings on Active, Sold and Expired.
-/// The layout follows the window's <see cref="MarketLayoutMode"/>: wide puts the items and the price side by side with the listings under them,
-/// medium stacks the items above the price panel, and narrow shows the items, then the price panel as a detail page with a Back. The screen
-/// never measures itself. Everything it shows comes from <see cref="SellViewModel"/>.
+/// The layout follows the window's <see cref="MarketLayoutMode"/>: the items take the height with the price panel under them, and the listings
+/// run the full height beside them, or in a narrow window on an Items | Listings tab of their own. The screen never measures itself. Everything it shows comes from <see cref="SellViewModel"/>.
 /// </summary>
 public sealed class SellScreen : UserControl, IDisposable
 {
     private readonly SellViewModel _model;
     private readonly MarketIcons _icons;
     private MarketLayoutMode _mode = MarketLayoutMode.Medium;
+    private bool _showListings;
     private bool _disposed;
+
+    // a narrow window's Items | Listings tabs
+    private readonly MarketTabs _narrowTabs = new("Items", "Listings") { IsVisible = false, HorizontalAlignment = HorizontalAlignment.Left };
 
     // the items panel: the pack and Vault tabs over the item grid
     private readonly Border _itemsPanel;
@@ -33,7 +36,6 @@ public sealed class SellScreen : UserControl, IDisposable
 
     // the price panel: the picked item, the price field, the lifetime line and "List for N"
     private readonly Border _pricePanel;
-    private readonly MarketButton _back = MarketParts.Button("‹ Back", MarketParts.Kind.Quiet, 28, DerethPalette.GoldBrush);
     private readonly Border _pickedIcon = new() { Width = 48, Height = 48 };
     private readonly TextBlock _pickedName = MarketParts.Text(string.Empty, DerethPalette.CreamBrush, 19, title: true);
     private readonly TextBlock _pickedDetail = MarketParts.Text(string.Empty, MarketInk.MutedBrush, 12);
@@ -85,7 +87,7 @@ public sealed class SellScreen : UserControl, IDisposable
     /// <summary>The layout the screen draws. Set by the window through the shell, from its width; the screen never measures.</summary>
     public MarketLayoutMode Mode => _mode;
 
-    /// <summary>Applies the window's layout mode: which panels sit where, and whether the narrow price panel is a detail page.</summary>
+    /// <summary>Applies the window's layout mode: which panels sit where, and whether the items and the listings share tabs.</summary>
     public void SetMode(MarketLayoutMode mode)
     {
         if (mode == _mode) return;
@@ -104,43 +106,22 @@ public sealed class SellScreen : UserControl, IDisposable
 
     private void ApplyLayout()
     {
-        switch (_mode)
-        {
-            case MarketLayoutMode.Wide:
-                // the items and the price side by side, the listings under both; the item grid takes the spare height and scrolls
-                _layout.ColumnDefinitions = new ColumnDefinitions("400,*");
-                _layout.RowDefinitions = new RowDefinitions("Auto,*");
-                Place(_itemsPanel, 0, 0, 1);
-                Place(_pricePanel, 0, 1, 1);
-                Place(_listingsPanel, 1, 0, 2);
-                _itemsScroll.MaxHeight = 140;
-                break;
-            case MarketLayoutMode.Medium:
-                // the items stack above the price panel, and the listings take the rest; the items grid scrolls, the price panel keeps its height
-                _layout.ColumnDefinitions = new ColumnDefinitions("*");
-                _layout.RowDefinitions = new RowDefinitions("Auto,Auto,*");
-                Place(_itemsPanel, 0, 0, 1);
-                Place(_pricePanel, 1, 0, 1);
-                Place(_listingsPanel, 2, 0, 1);
-                _itemsScroll.MaxHeight = 92;
-                break;
-            default:
-                // narrow: the items and the listings, or the price panel as a detail page in their place
-                _layout.ColumnDefinitions = new ColumnDefinitions("*");
-                _layout.RowDefinitions = new RowDefinitions("Auto,*");
-                Place(_itemsPanel, 0, 0, 1);
-                Place(_pricePanel, 0, 0, 1);
-                Place(_listingsPanel, 1, 0, 1);
-                _itemsScroll.MaxHeight = 140;
-                break;
-        }
+        // the item grid takes the height and scrolls, with the price panel under it; the listings run the full height beside them, or in a
+        // narrow window on their own tab in the same cell
+        var narrow = _mode == MarketLayoutMode.Narrow;
+        _layout.ColumnDefinitions = new ColumnDefinitions(narrow ? "*" : "*,*");
+        _layout.RowDefinitions = new RowDefinitions("*,Auto");
+        Place(_itemsPanel, 0, 0, 1);
+        Place(_pricePanel, 1, 0, 1);
+        Place(_listingsPanel, 0, narrow ? 0 : 1, 2);
+        _narrowTabs.IsVisible = narrow;
     }
 
-    private static void Place(Control control, int row, int column, int columnSpan)
+    private static void Place(Control control, int row, int column, int rowSpan)
     {
         Grid.SetRow(control, row);
         Grid.SetColumn(control, column);
-        Grid.SetColumnSpan(control, columnSpan);
+        Grid.SetRowSpan(control, rowSpan);
     }
 
     /// <summary>Redraws the panels from the model. Called on every model change, and on a layout change.</summary>
@@ -149,12 +130,11 @@ public sealed class SellScreen : UserControl, IDisposable
         if (_disposed) return;
 
         var narrow = _mode == MarketLayoutMode.Narrow;
-        var picked = _model.Selected != null;
-        // a narrow window shows the items or the listings, and the price panel only once an item is picked
-        _itemsPanel.IsVisible = !(narrow && picked);
-        _listingsPanel.IsVisible = !(narrow && picked);
-        _pricePanel.IsVisible = !narrow || picked;
-        _back.IsVisible = narrow;
+        // a narrow window shows the Items tab or the Listings tab, and the price panel under the items only once an item is picked
+        _itemsPanel.IsVisible = !(narrow && _showListings);
+        _listingsPanel.IsVisible = !narrow || _showListings;
+        _pricePanel.IsVisible = !narrow || (!_showListings && _model.Selected != null);
+        _narrowTabs.Selected = _showListings ? 1 : 0;
 
         _itemTabs.Selected = _model.Tab == SellTab.Pack ? 0 : 1;
         _listingTabs.Selected = (int)_model.ListingTab;
@@ -248,17 +228,17 @@ public sealed class SellScreen : UserControl, IDisposable
     private Control ListingRowView(ListingRow row)
     {
         var active = row.Status == "active";
-        var timeLeft = active ? _model.TimeLeft(row) : TimeText(row);
-        var name = new StackPanel
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            Children = { MarketParts.Text(row.Name, DerethPalette.CreamBrush, 13), MarketParts.Text(timeLeft, MarketInk.MutedBrush, 11.5) },
-        };
+        var timeLeft = MarketParts.Text(active ? _model.TimeLeft(row) : TimeText(row), MarketInk.MutedBrush, 11.5);
+        timeLeft.VerticalAlignment = VerticalAlignment.Center;
+        var name = MarketParts.Text(row.Name, DerethPalette.CreamBrush, 13);
+        name.VerticalAlignment = VerticalAlignment.Center;
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         var changePrice = new Border { Name = "ChangePriceSlot", Tag = row.Id, VerticalAlignment = VerticalAlignment.Center };
         if (active) changePrice.Child = ChangePrice(row);
         actions.Children.Add(changePrice);
-        if (active)
+        // while a price is being changed, its field, Set price and Cancel take the whole second line, in place of the time left and Delist
+        var repricing = active && _model.RepriceListingId == row.Id;
+        if (active && !repricing)
         {
             var delist = MarketParts.Button("Delist", MarketParts.Kind.Ghost, 26);
             delist.Tag = row.Id;
@@ -276,8 +256,10 @@ public sealed class SellScreen : UserControl, IDisposable
             _ => MarketParts.Tag(row.Status, MarketInk.MutedBrush, null, caps: true),
         };
 
-        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto"), ColumnSpacing = 12 };
+        // two lines, so a row fits half the window: the name, price and state, then the time left and the buttons
+        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto"), ColumnSpacing = 12, RowSpacing = 4 };
         var icon = MarketParts.IconTile(_icons.For(row.Visual, row.OverlaySecondary), 32);
+        Grid.SetRowSpan(icon, 2);
         line.Children.Add(icon);
         Grid.SetColumn(name, 1);
         line.Children.Add(name);
@@ -286,7 +268,13 @@ public sealed class SellScreen : UserControl, IDisposable
         line.Children.Add(price);
         Grid.SetColumn(state, 3);
         line.Children.Add(state);
-        Grid.SetColumn(actions, 4);
+        Grid.SetRow(timeLeft, 1);
+        Grid.SetColumn(timeLeft, 1);
+        line.Children.Add(timeLeft);
+        timeLeft.IsVisible = !repricing;
+        Grid.SetRow(actions, 1);
+        Grid.SetColumn(actions, repricing ? 1 : 2);
+        Grid.SetColumnSpan(actions, repricing ? 3 : 2);
         line.Children.Add(actions);
         return new Border { Padding = new Thickness(4, 6), Child = line, Tag = row.Id, BorderBrush = MarketInk.LineSoftBrush, BorderThickness = new Thickness(0, 0, 0, 1) };
     }
@@ -324,7 +312,11 @@ public sealed class SellScreen : UserControl, IDisposable
     private Control BuildContent()
     {
         _itemTabs.Chosen += index => _model.ShowTab(index == 0 ? SellTab.Pack : SellTab.Vault);
-        _back.Click += (_, _) => _model.Back();
+        _narrowTabs.Chosen += index =>
+        {
+            _showListings = index == 1;
+            Refresh();
+        };
         _price.TextChanged += (_, _) => _model.SetPrice(_price.Text ?? string.Empty);
         _price.GotFocus += (_, _) => _priceField.BorderBrush = MarketInk.LitBrush;
         _price.LostFocus += (_, _) => _priceField.BorderBrush = MarketInk.LineBrush;
@@ -339,7 +331,10 @@ public sealed class SellScreen : UserControl, IDisposable
         itemsHeader.Children.Add(_itemTabs);
         var marks = MarketParts.Text("Gold dot: already listed. Greyed out: can't be sold here (attuned or bonded).", MarketInk.MutedBrush, 12);
         marks.TextWrapping = TextWrapping.Wrap;
-        _itemsPanel.Child = new StackPanel { Spacing = 10, Children = { itemsHeader, _itemsScroll, marks } };
+        // a grid, not a stack, so the item grid's scroll viewer has a height to scroll in
+        Grid.SetRow(_itemsScroll, 1);
+        Grid.SetRow(marks, 2);
+        _itemsPanel.Child = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 10, Children = { itemsHeader, _itemsScroll, marks } };
 
         // price: the picked item's head, then the price field, the lifetime, why it can't be listed, and List for N
         var coinRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8 };
@@ -350,12 +345,10 @@ public sealed class SellScreen : UserControl, IDisposable
         Grid.SetColumn(unit, 2);
         coinRow.Children.Add(unit);
         _priceField.Child = coinRow;
-        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"), ColumnSpacing = 14 };
-        head.Children.Add(_back);
-        Grid.SetColumn(_pickedIcon, 1);
+        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 14 };
         head.Children.Add(_pickedIcon);
         var names = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { _pickedName, _pickedDetail } };
-        Grid.SetColumn(names, 2);
+        Grid.SetColumn(names, 1);
         head.Children.Add(names);
         var form = new StackPanel { Spacing = 8, MaxWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
         form.Children.Add(MarketParts.Caps("Price, whole stack", MarketInk.MutedBrush, 11));
@@ -366,11 +359,15 @@ public sealed class SellScreen : UserControl, IDisposable
         _pricePanel.Child = new StackPanel { Spacing = 12, Children = { head, form } };
 
         // listings: the head with the count, the Active | Sold | Expired tabs, then the rows
-        var listingsHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 10 };
+        // the tabs go under the head, so the header fits half the window
+        var listingsHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto"), ColumnSpacing = 10, RowSpacing = 10 };
         listingsHeader.Children.Add(MarketParts.Head("Your listings"));
         Grid.SetColumn(_activeCount, 1);
+        _activeCount.VerticalAlignment = VerticalAlignment.Center;
         listingsHeader.Children.Add(_activeCount);
-        Grid.SetColumn(_listingTabs, 3);
+        Grid.SetRow(_listingTabs, 1);
+        Grid.SetColumnSpan(_listingTabs, 2);
+        _listingTabs.HorizontalAlignment = HorizontalAlignment.Left;
         listingsHeader.Children.Add(_listingTabs);
         var listingsScroll = new ScrollViewer { Content = _listingRows, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
         Grid.SetRow(listingsScroll, 1);
@@ -381,9 +378,11 @@ public sealed class SellScreen : UserControl, IDisposable
         _layout.Children.Add(_pricePanel);
         _layout.Children.Add(_listingsPanel);
 
-        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 8, Margin = new Thickness(20, 16, 20, 16) };
+        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), RowSpacing = 8, Margin = new Thickness(20, 16, 20, 16) };
         root.Children.Add(_notice);
-        Grid.SetRow(_layout, 1);
+        Grid.SetRow(_narrowTabs, 1);
+        root.Children.Add(_narrowTabs);
+        Grid.SetRow(_layout, 2);
         root.Children.Add(_layout);
         return root;
     }
