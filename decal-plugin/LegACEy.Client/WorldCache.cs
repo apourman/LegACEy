@@ -105,6 +105,23 @@ internal sealed class WorldCache
         SaveServers(servers);
     }
 
+    /// <summary>
+    /// Marks a world switched on at startup as not yet confirmed by the server's note. A game kicked at connect for reporting a world the
+    /// server dropped never sees a note, so the next start finds the mark and starts retail.
+    /// </summary>
+    public void Unconfirmed(string server, bool on)
+    {
+        var mark = Path.Combine(_root, $"unconfirmed-{Key(server)}");
+        try
+        {
+            if (on) File.WriteAllText(mark, server);
+            else File.Delete(mark);
+        }
+        catch (Exception exception) { ClientUiRuntime.Log($"Could not {(on ? "mark" : "clear")} the startup world's check: {exception.Message}"); }
+    }
+
+    public bool IsUnconfirmed(string server) => File.Exists(Path.Combine(_root, $"unconfirmed-{Key(server)}"));
+
     /// <summary>The server no longer runs a world: the game starts retail for it.</summary>
     public void Forget(string server)
     {

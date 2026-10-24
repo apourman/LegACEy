@@ -64,7 +64,7 @@ internal sealed class DatOverlay : IDisposable
     // Since the last summary: calls while a patch is on, records served, look-ups answered, time inside the hook (Stopwatch ticks), and
     // failures. The hook never logs; the game thread reads these.
     private long _calls, _served, _answered, _ticks, _worst, _failures;
-    private string? _failure;
+    private volatile string? _failure;
 
     private DatOverlay(Action<string> log)
     {

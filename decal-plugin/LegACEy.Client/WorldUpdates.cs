@@ -98,7 +98,16 @@ internal sealed class WorldUpdates
     public WorldPatchIndex? AtStartup()
     {
         if (_server == null || _cache.ForServer(_server) is not { } world) return null;
+        if (_cache.IsUnconfirmed(_server))
+        {
+            // The last start with it on never heard the server's note: most likely kicked at connect for a world the server dropped.
+            ClientUiRuntime.Log($"World: {world.Name} isn't switched on at startup: the last game started with it never heard this server's note. "
+                + "A note at character select switches it on again.");
+            _cache.Unconfirmed(_server, false);
+            return null;
+        }
         if (_cache.Open(world, ClientUiRuntime.Log) is not { } patch) return null;
+        _cache.Unconfirmed(_server, true);
         (Active, ActivePatch) = (world, patch);
         ClientUiRuntime.Log($"World: {world.Name} (world {world.Edition}) is cached for this server; it is switched on at startup.");
         return patch;
@@ -110,6 +119,7 @@ internal sealed class WorldUpdates
         if (Interlocked.CompareExchange(ref _state, (int)WorldState.Checking, (int)WorldState.Waiting) != (int)WorldState.Waiting)
             return _running;
         Server = note;
+        if (_server != null) _cache.Unconfirmed(_server, false);
         ClientUiRuntime.Log($"World: the server runs {note.Name}, edition {note.Edition}, update list {note.UpdateList}.");
         return _running = Task.Run(() => Run(note));
     }
@@ -123,7 +133,11 @@ internal sealed class WorldUpdates
         if (Interlocked.CompareExchange(ref _state, (int)WorldState.Off, (int)WorldState.Waiting) != (int)WorldState.Waiting) return;
         ClientUiRuntime.Log(Active == null ? "World: Off. The server sent no world note; the game reads its retail dats."
             : $"World: Off. The server sent no world note, so {Active.Name} is switched off and not switched on for it again.");
-        if (Active != null && _server != null) _cache.Forget(_server);
+        if (Active != null && _server != null)
+        {
+            _cache.Forget(_server);
+            _cache.Unconfirmed(_server, false);
+        }
         (Active, ActivePatch) = (null, null);
     }
 

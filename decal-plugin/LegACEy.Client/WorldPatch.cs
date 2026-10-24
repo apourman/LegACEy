@@ -4,7 +4,6 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
-using Microsoft.Win32.SafeHandles;
 
 namespace LegACEy.Client.DecalPlugin;
 
@@ -59,13 +58,14 @@ public readonly record struct WorldPatchEntry(int Iteration, long Offset, int Le
 public sealed class WorldPatchIndex : IDisposable
 {
     private readonly Dictionary<string, Dictionary<uint, WorldPatchEntry>> _dats;
-    private readonly SafeFileHandle _file;
+    // Only its handle is used after indexing: positional reads, safe from several threads.
+    private readonly FileStream _file;
 
     public int Version { get; }
     public string Path { get; }
     public int Count { get; }
 
-    private WorldPatchIndex(string path, int version, Dictionary<string, Dictionary<uint, WorldPatchEntry>> dats, int count, SafeFileHandle file)
+    private WorldPatchIndex(string path, int version, Dictionary<string, Dictionary<uint, WorldPatchEntry>> dats, int count, FileStream file)
     {
         Path = path;
         Version = version;
@@ -78,12 +78,11 @@ public sealed class WorldPatchIndex : IDisposable
     /// but a game dat, or is cut short.</summary>
     public static WorldPatchIndex Open(string path)
     {
-        // Shared for delete, so a newer patch can replace the cache's files while this one is still served.
-        var file = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        // Shared for delete, so a newer patch can replace the cache's files while this one is still served. Kept open for the reads.
+        var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         try
         {
-            using var stream = new FileStream(new SafeFileHandle(file.DangerousGetHandle(), ownsHandle: false), FileAccess.Read);
-            using var reader = new BinaryReader(stream, Encoding.UTF8);
+            using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
             if (Encoding.ASCII.GetString(reader.ReadBytes(WorldPatch.Magic.Length)) != "LWP1") throw new InvalidDataException("Not a LegACEy world patch.");
             var version = reader.ReadInt32();
             var count = reader.ReadInt32();
@@ -103,16 +102,16 @@ public sealed class WorldPatchIndex : IDisposable
                 if (!dats.TryGetValue(dat, out var ids)) dats[dat] = ids = new Dictionary<uint, WorldPatchEntry>();
                 ids[id] = new WorldPatchEntry(iteration, offset, length);
             }
-            return new WorldPatchIndex(path, version, dats, count, file);
+            return new WorldPatchIndex(path, version, dats, count, stream);
         }
         catch (EndOfStreamException)
         {
-            file.Dispose();
+            stream.Dispose();
             throw new InvalidDataException("A world patch cut short.");
         }
         catch
         {
-            file.Dispose();
+            stream.Dispose();
             throw;
         }
     }
@@ -129,7 +128,7 @@ public sealed class WorldPatchIndex : IDisposable
         var done = 0;
         while (done < bytes.Length)
         {
-            var read = RandomAccess.Read(_file, bytes.AsSpan(done), entry.Offset + done);
+            var read = RandomAccess.Read(_file.SafeFileHandle, bytes.AsSpan(done), entry.Offset + done);
             if (read == 0) throw new InvalidDataException("A world patch cut short.");
             done += read;
         }

@@ -143,6 +143,19 @@ public sealed class WorldUpdatesTests : IDisposable
     }
 
     [Fact]
+    public async Task AStartupWorldTheServerNeverConfirmedIsOffNextStart()
+    {
+        await Visit(983);
+        Assert.NotNull(Unreachable(cache).AtStartup());
+
+        // Kicked at connect: no note, no end of the exchange.
+        Assert.Null(Unreachable(cache).AtStartup());
+        var confirmed = Unreachable(cache);
+        await confirmed.Heard(Note(983));
+        Assert.NotNull(Unreachable(cache).AtStartup());
+    }
+
+    [Fact]
     public async Task ACachedPatchThatFailsItsChecksumIsIgnoredAtStartup()
     {
         await Visit(983);
