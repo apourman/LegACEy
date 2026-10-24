@@ -28,9 +28,15 @@ internal sealed unsafe class WorldEffects : IDisposable
     private const uint LandscapeDrawAddress = 0x00506D90;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
-    // The portal views RenderDeviceD3D::DrawMesh draws a part through: the views of the room being drawn, left at the last room's after the
-    // world; null draws through the camera's view alone.
-    private static readonly int* PortalViews = (int*)0x00867330;
+    // The view retail draws through: the portal views RenderDeviceD3D::DrawMesh loops over (0x867330, per room), then the current view and
+    // the clip planes its polygons are cut to, as set by the view setter (0x54DCF0). After the world they are the last room's.
+    private const uint FullViewAddress = 0x0054FB60;
+    private static readonly int*[] ViewGlobals =
+    {
+        (int*)0x00867330, (int*)0x008672EC, (int*)0x00847054, (int*)0x00847060, (int*)0x008671C8,
+        (int*)0x00847050, (int*)0x00867304, (int*)0x008470D0, (int*)0x008470CC, (int*)0x00867300
+    };
+    private readonly int[] _savedView = new int[ViewGlobals.Length];
     // The player's CPhysicsObj, kept by CPhysicsObj::SetPlayer.
     private static readonly int* PlayerObject = (int*)0x00844D68;
     private const uint Gold = 0xFFFFC040;
@@ -65,8 +71,13 @@ internal sealed unsafe class WorldEffects : IDisposable
         // Past the prologue, in case a hook patches it.
         new NativeUiEntry("CPhysicsPart::Draw reads its force flag", PartDrawAddress + 0x13, NativeUiCatalogue.Bytes("55 8B 6C 24 0C 85 ED 57 75 12"),
             Source, "ThisCall (int force): unforced, it skips a part already drawn this frame; forced, RenderDeviceD3D::DrawMesh (0x5A1970) queues it through the paperdoll's BSP path, which never reaches the device draws hooked here"),
-        new NativeUiEntry("RenderDeviceD3D::DrawMesh reads the portal views", 0x005A1973, NativeUiCatalogue.Bytes("A1 30 73 86 00 53 55 56 33 ED 57 3B C5"),
-            Source, "the global written here: null, DrawMesh tests and draws a part once, not per portal view"),
+        new NativeUiEntry("Render: draw through the whole screen", FullViewAddress, NativeUiCatalogue.Bytes("8A 0D 38 03 87 00 56 B8 01 00 00 00 33 F6 84 C8"),
+            Source, "Cdecl (): the portal views become one full-screen view (0x8702F0), set as the current view; as before the landscape"),
+        new NativeUiEntry("Render: set the current view", 0x0054DCF0, NativeUiCatalogue.Bytes(
+            "8B 54 24 04 8B 44 24 08 A3 EC 72 86 00 89 15 54 70 84 00 8B 4A 04 8D 04 40 8D 04 C1 8B 08 89 0D 60 70 84 00 41 56 BE 01 00 00 00 " +
+            "D3 E6 4E 89 35 C8 71 86 00 8B 48 04 8B 52 14 8D 0C 49 8D 0C CA 89 0D 50 70 84 00 8B 50 08 89 15 04 73 86 00 8B 48 0C 89 0D D0 70 84 00 " +
+            "8B 50 10 89 15 CC 70 84 00 8B 40 14 A3 00 73 86 00 5E C3"),
+            Source, "the globals it writes, saved and put back around the full-screen view"),
         new NativeUiEntry("The view-cone sphere test", SphereTestAddress, NativeUiCatalogue.Bytes("83 EC 1C D9 05 84 FC 81 00 8B 15 34 73 86 00"),
             Source, "Cdecl (CSphere*): 0 when a part's bounding sphere is outside the view cone; RenderDeviceD3D::DrawMesh skips the part then. Hooked only while the culled selection is drawn"),
         new NativeUiEntry("CPhysicsObj::SetLuminosity reads the part array", 0x00512374, NativeUiCatalogue.Bytes("8B 4E 10 85 C9 74 76"),
@@ -113,8 +124,12 @@ internal sealed unsafe class WorldEffects : IDisposable
     [Function(CallingConventions.Cdecl)]
     private delegate int SphereTestFn(IntPtr sphere);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void FullViewFn();
+
     private readonly GetObjectFn _getObject = Marshal.GetDelegateForFunctionPointer<GetObjectFn>(new IntPtr(GetObjectAddress));
     private readonly DrawPartFn _drawPart = Marshal.GetDelegateForFunctionPointer<DrawPartFn>(new IntPtr(PartDrawAddress));
+    private readonly FullViewFn _useFullView = Marshal.GetDelegateForFunctionPointer<FullViewFn>(new IntPtr(FullViewAddress));
     // While retail draws its world: parts drawn outside it (retail's 3D paperdoll in the inventory, with its own camera) are not measured or
     // outlined. While the selection, culled this frame, is drawn into the mask only.
     private bool _inWorld, _forcing;
@@ -536,8 +551,8 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>
     /// Has retail draw the selected object's parts again, into the mask only: indoors, retail culls what is in rooms out of view. Unforced,
     /// with the view-cone test passing every part: retail skips a part whose sphere is outside every portal's cone, so a target a room or
-    /// two away was not outlined, and forced, the parts went through the paperdoll's path and never reached the device (backlog 051). With
-    /// no portal views: after the world those left are the last room drawn's, not the selection's.
+    /// two away was not outlined, and forced, the parts went through the paperdoll's path and never reached the device (backlog 051).
+    /// Through the whole screen: after the world the view left is the last room drawn's, whose doorway cut a farther target away.
     /// ponytail: a culled object's draw position is where retail last placed it; a moving one may lag until it is in view again.
     /// </summary>
     private void DrawCulledSelection()
@@ -551,9 +566,9 @@ internal sealed unsafe class WorldEffects : IDisposable
         var list = Marshal.ReadIntPtr(parts, 0x5C);
         _culledFrames++;
         var masked = _culledMasked;
-        // The last room's views are not the selection's: through none of them, each part is drawn once.
-        var views = *PortalViews;
-        *PortalViews = 0;
+        // The last room's view is not the selection's: its polygons were cut to that room's doorway. Through the whole screen instead.
+        for (var i = 0; i < ViewGlobals.Length; i++) _savedView[i] = *ViewGlobals[i];
+        _useFullView();
         _forcing = true;
         _sphereHook.Enable();
         try
@@ -570,7 +585,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         {
             _sphereHook.Disable();
             _forcing = false;
-            *PortalViews = views;
+            for (var i = 0; i < ViewGlobals.Length; i++) *ViewGlobals[i] = _savedView[i];
             if (_culledMasked == masked) _culledEmpty++;
         }
     }
