@@ -24,7 +24,7 @@ internal sealed unsafe class WorldEffects : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xAD0 near 0x50E000, +0xA0 near 0x455000) for names; our objdump read of installed acclient.exe";
     private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartDrawAddress = 0x0050E270;
-    private const uint SphereTestAddress = 0x0054CE60;
+    private const uint SphereTestAddress = 0x0054CE60, UpdatePartsAddress = 0x00510140;
     private const uint LandscapeDrawAddress = 0x00506D90;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
@@ -71,6 +71,9 @@ internal sealed unsafe class WorldEffects : IDisposable
         // Past the prologue, in case a hook patches it.
         new NativeUiEntry("CPhysicsPart::Draw reads its force flag", PartDrawAddress + 0x13, NativeUiCatalogue.Bytes("55 8B 6C 24 0C 85 ED 57 75 12"),
             Source, "ThisCall (int force): unforced, it skips a part already drawn this frame; forced, RenderDeviceD3D::DrawMesh (0x5A1970) queues it through the paperdoll's BSP path, which never reaches the device draws hooked here"),
+        new NativeUiEntry("CPhysicsObj::UpdatePartsInternal", UpdatePartsAddress,
+            NativeUiCatalogue.Bytes("8B 81 A8 00 00 00 F6 C4 10 75 12 8B 41 10 85 C0 74 0B 83 C1 50 51 8B C8 E8"),
+            Source, "ThisCall (): CPartArray::SetFrame (0x519E40) with the object's frame (+0x50) places its parts where it is now"),
         new NativeUiEntry("Render: draw through the whole screen", FullViewAddress, NativeUiCatalogue.Bytes("8A 0D 38 03 87 00 56 B8 01 00 00 00 33 F6 84 C8"),
             Source, "Cdecl (): the portal views become one full-screen view (0x8702F0), set as the current view; as before the landscape"),
         new NativeUiEntry("Render: set the current view", 0x0054DCF0, NativeUiCatalogue.Bytes(
@@ -127,8 +130,12 @@ internal sealed unsafe class WorldEffects : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void FullViewFn();
 
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void UpdatePartsFn(IntPtr physicsObject);
+
     private readonly GetObjectFn _getObject = Marshal.GetDelegateForFunctionPointer<GetObjectFn>(new IntPtr(GetObjectAddress));
     private readonly DrawPartFn _drawPart = Marshal.GetDelegateForFunctionPointer<DrawPartFn>(new IntPtr(PartDrawAddress));
+    private readonly UpdatePartsFn _updateParts = Marshal.GetDelegateForFunctionPointer<UpdatePartsFn>(new IntPtr(UpdatePartsAddress));
     private readonly FullViewFn _useFullView = Marshal.GetDelegateForFunctionPointer<FullViewFn>(new IntPtr(FullViewAddress));
     // While retail draws its world: parts drawn outside it (retail's 3D paperdoll in the inventory, with its own camera) are not measured or
     // outlined. While the selection, culled this frame, is drawn into the mask only.
@@ -558,7 +565,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// with the view-cone test passing every part: retail skips a part whose sphere is outside every portal's cone, so a target a room or
     /// two away was not outlined, and forced, the parts went through the paperdoll's path and never reached the device (backlog 051).
     /// Through the whole screen: after the world the view left is the last room drawn's, whose doorway cut a farther target away.
-    /// ponytail: a culled object's draw position is where retail last placed it; a moving one may lag until it is in view again.
+    /// ponytail: the parts keep the pose they were last animated in; only their place follows the object.
     /// </summary>
     private void DrawCulledSelection()
     {
@@ -567,6 +574,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (physicsObject == IntPtr.Zero || Marshal.ReadIntPtr(physicsObject, 0x90) == IntPtr.Zero) return;
         var parts = Marshal.ReadIntPtr(physicsObject, 0x10);
         if (parts == IntPtr.Zero) return;
+        // Retail places the parts only when it draws the object: never drawn, they sit at zero; out of view, where it was last seen.
+        _updateParts(physicsObject);
         int count = Marshal.ReadInt32(parts, 0x58);
         var list = Marshal.ReadIntPtr(parts, 0x5C);
         _culledFrames++;
