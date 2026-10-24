@@ -78,6 +78,8 @@ internal sealed unsafe class WorldEffects : IDisposable
             Source, "ThisCall (): picks the part's detail by the viewer's distance, then calc_draw_frame (0x50EA70) copies its place (+0x34, +0x38) to the place it is drawn at (+0x78)"),
         new NativeUiEntry("Render: draw through the whole screen", FullViewAddress, NativeUiCatalogue.Bytes("8A 0D 38 03 87 00 56 B8 01 00 00 00 33 F6 84 C8"),
             Source, "Cdecl (): the portal views become one full-screen view (0x8702F0), set as the current view; as before the landscape"),
+        new NativeUiEntry("Render: draw through the whole screen sets the portal views", 0x0054FBFB, NativeUiCatalogue.Bytes("C7 05 30 73 86 00 F0 02 87 00"),
+            Source, "the global saved and put back here: 0x867330, the portal views RenderDeviceD3D::DrawMesh loops over"),
         new NativeUiEntry("Render: set the current view", 0x0054DCF0, NativeUiCatalogue.Bytes(
             "8B 54 24 04 8B 44 24 08 A3 EC 72 86 00 89 15 54 70 84 00 8B 4A 04 8D 04 40 8D 04 C1 8B 08 89 0D 60 70 84 00 41 56 BE 01 00 00 00 " +
             "D3 E6 4E 89 35 C8 71 86 00 8B 48 04 8B 52 14 8D 0C 49 8D 0C CA 89 0D 50 70 84 00 8B 50 08 89 15 04 73 86 00 8B 48 0C 89 0D D0 70 84 00 " +
@@ -146,7 +148,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly FullViewFn _useFullView = Marshal.GetDelegateForFunctionPointer<FullViewFn>(new IntPtr(FullViewAddress));
     // While retail draws its world: parts drawn outside it (retail's 3D paperdoll in the inventory, with its own camera) are not measured or
     // outlined. While the selection, culled this frame, is drawn into the mask only.
-    private bool _inWorld, _forcing;
+    private bool _inWorld, _drawingCulledSelection;
 
     private readonly IntPtr _device;
     private readonly Action<string> _log;
@@ -278,7 +280,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     {
         _drawCalls++;
         var original = _drawHook.OriginalFunction;
-        if (_forcing)
+        if (_drawingCulledSelection)
         {
             // Not on screen: the selection is drawn here only so the outline shows through what culled it.
             try { if (DrawsSelected()) MaskIndexed(original, device, type, baseVertex, minIndex, vertices, startIndex, primitives, SelectionChannels); }
@@ -395,7 +397,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// </summary>
     private int OnDraw(IntPtr device, int type, uint startVertex, uint primitives)
     {
-        if (_forcing)
+        if (_drawingCulledSelection)
         {
             // As in OnDrawIndexed: the forced selection goes into the mask only.
             try { if (DrawsSelected()) DrawIntoMask(() => _drawPrimitiveHook.OriginalFunction(device, type, startVertex, primitives), SelectionChannels); }
@@ -577,11 +579,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         var list = Marshal.ReadIntPtr(parts, 0x5C);
         // The last room's view is not the selection's: its polygons were cut to that room's doorway. Through the whole screen instead.
         for (var i = 0; i < ViewGlobals.Length; i++) _savedView[i] = *ViewGlobals[i];
-        _useFullView();
-        _forcing = true;
-        _sphereHook.Enable();
+        _drawingCulledSelection = true;
         try
         {
+            _useFullView();
+            _sphereHook.Enable();
             for (var i = 0; i < count; i++)
             {
                 var part = Marshal.ReadIntPtr(list, i * 4);
@@ -593,17 +595,13 @@ internal sealed unsafe class WorldEffects : IDisposable
         finally
         {
             _sphereHook.Disable();
-            _forcing = false;
+            _drawingCulledSelection = false;
             for (var i = 0; i < ViewGlobals.Length; i++) *ViewGlobals[i] = _savedView[i];
         }
     }
 
-    // Retail's test still runs for what it records; outside the cone (0) becomes 1, partly in view.
-    private int OnSphereTest(IntPtr sphere)
-    {
-        var inView = _sphereHook.OriginalFunction(sphere);
-        return _forcing && inView == 0 ? 1 : inView;
-    }
+    // Enabled only for the culled selection. Retail's test still runs for what it records; outside the cone (0) becomes 1, partly in view.
+    private int OnSphereTest(IntPtr sphere) => Math.Max(_sphereHook.OriginalFunction(sphere), 1);
 
     /// <summary>Spreads the mask into the glow texture, then adds the glow to the screen in gold outside the mask.</summary>
     private void Composite()
