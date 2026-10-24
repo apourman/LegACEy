@@ -23,6 +23,7 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Plugin.Market` | The in-game Market window, opened from the market station, built into `Plugins/Market/` |
 | `LegACEy.Plugin.Inventory` | The inventory window, built into `Plugins/Inventory/` |
 | `LegACEy.Updater` | The net48 `LegACEy.Updater.exe` beside the stub, which applies a staged release after the game exits |
+| `LegACEy.WorldPatchBuilder` | Developer tool: builds a world patch and its manifest from edited dats; not shipped |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |
 | `LegACEy.Client.HookSmoke` | Windows native hook regression check |
 
@@ -73,6 +74,18 @@ updater, stays for the client to remove. A failure puts the install back and
 keeps the stage for the next try. Exit codes: 0
 applied, 1 failed and rolled back, 2 bad arguments or no ready stage, 3 another
 updater is already running.
+
+Run as `LegACEy.Updater.exe world <install> <game> <game>\world-update\<version>`,
+it applies a world patch instead, once no `acclient.exe` is left: when the
+stage's `ready` file exists and `world.patch` still matches the SHA-256 in it,
+it writes the patch's records into copies of the affected dats, swaps them in
+only once every record is written, then writes `legacey-world.json` (`{
+"version": N }`) beside the dats. A failure puts the dats and the version file
+back and leaves a `failed` file in the stage, which the plugin then throws
+away, leaving Enter open (the next launch downloads the patch again). It logs to `<install>\updater.log` and holds its own
+mutex, so a plugin update and a world update waiting together both apply. The
+exe carries its dat library (`Chorizite.DatReaderWriter`) and that library's
+dependencies inside it, because it is copied into a stage on its own.
 
 An install made by setup.exe can update itself; a build from a checkout never
 does, because only setup.exe puts `install.json` beside the main DLL. Nothing
@@ -196,6 +209,42 @@ clears.
 The LegACEy menu's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the
 default) and retail's (Native). It creates or deletes that window's switch file above, so the choice holds for every character on the
 install. `/legacey` in chat opens or closes the menu, so it can be reached with retail's toolbar too.
+
+## World updates
+
+LegACEy can ship changed dats (new land, towns, dungeons) as a world patch:
+every dat record that differs from retail, plus the world version it brings a
+game folder to. A folder without `legacey-world.json` is world 1, retail. The
+server keeps retail's dat iteration record, so ACE's connect-time dat check
+never sees a newer edition.
+
+World updates are off unless a file named `world-manifest-url` beside the main
+DLL holds a manifest address on its first line. With it, the client reads the
+manifest (`{ "version": N, "patch": "<url>", "size": <bytes>, "sha256": "<hex>" }`)
+when the plugin starts at character select. It holds the Enter button (a hook
+on retail's `gmCharacterManagementUI::EnterGame`) while it checks; when the game
+folder is behind it keeps holding it, downloads the patch into `<game>\world-update\<version>\` with a toast showing
+progress, checks its size and SHA-256 (a bad download is retried once), starts
+the updater in world mode, and closes the game a few seconds later; the toast
+tells the player to click Launch in ThwargLauncher again. If the game hasn't
+closed 30 seconds later, Enter opens and the update installs whenever the game
+does close. An unreachable manifest or patch shows a toast and leaves Enter
+working. Each step is logged
+to `legacey-avalonia.log`.
+
+Build a patch and its manifest from WSL or Windows:
+
+```bash
+dotnet run --project decal-plugin/LegACEy.WorldPatchBuilder -- build <retail dats> <edited dats> <out> <world version> <url folder>
+dotnet run --project decal-plugin/LegACEy.WorldPatchBuilder -- check <retail dats> <edited dats> <out>/world-<version>.patch
+```
+
+`build` writes `world-<version>.patch` and `world-manifest.json` (whose patch
+address is `<url folder>/world-<version>.patch`); `check` applies the patch to
+a temporary copy of the retail dats with the updater's own code and confirms
+every patched record matches the edited dats. For a local test, serve `<out>`
+with `python3 -m http.server` and put the manifest's address in
+`world-manifest-url`.
 
 ## Tests
 
