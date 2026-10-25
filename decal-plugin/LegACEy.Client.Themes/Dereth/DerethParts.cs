@@ -441,8 +441,8 @@ public sealed class DerethHeaderButton : Button
 }
 
 /// <summary>
-/// A window with the Dereth frame, a header of icon, title, actions and close box (or the title on a row of its own under the header),
-/// the title rule and content.
+/// A window with the Dereth frame, a header of icon, title, actions and close box (or the title centred across the header), the title
+/// rule and content.
 /// </summary>
 public sealed class DerethWindow : UserControl
 {
@@ -497,13 +497,12 @@ public sealed class DerethWindow : UserControl
             FullText = title, Foreground = DerethPalette.CreamBrush, FontFamily = DerethPalette.Title, VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = centreTitle ? TextAlignment.Center : TextAlignment.Left
         };
-        Grid.SetColumn(_name, 1);
         if (centreTitle)
         {
-            Grid.SetColumn(_name, 0);
             Grid.SetColumnSpan(_name, 3);
             _name.Margin = new Thickness(HeaderButtonSize + ActionGap, 0);
         }
+        else Grid.SetColumn(_name, 1);
         header.Children.Add(_name);
         // The X is smaller than the other glyphs: at their size its two strokes read heavier than their outlines.
         var close = new DerethHeaderButton(new DerethPathGlyph("M0,0 L8,8 M8,0 L0,8", 8) { Stroke = DerethPalette.CreamBrush, StrokeThickness = 1.5 });
@@ -586,11 +585,11 @@ internal sealed class DerethTitleText : TextBlock
         // The size and text are picked from measured text, not by setting them and measuring: a change here invalidates the measure, so
         // each is set once.
         var typeface = new Typeface(FontFamily, FontStyle, FontWeight);
-        double Width(string text, double size) => new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, size, null)
+        double TextWidth(string text, double size) => new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, size, null)
             .WidthIncludingTrailingWhitespace;
-        var text = _shortText != null && Width(_fullText, Smallest) > availableSize.Width ? _shortText : _fullText;
+        var text = _shortText != null && TextWidth(_fullText, Smallest) > availableSize.Width ? _shortText : _fullText;
         var size = Largest;
-        while (size > Smallest && Width(text, size) > availableSize.Width)
+        while (size > Smallest && TextWidth(text, size) > availableSize.Width)
             size -= 0.5;
         Text = text;
         FontSize = size;
