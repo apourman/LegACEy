@@ -809,6 +809,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         ShowSelection();
         RenderBurden(snapshot);
         _frame.Title = snapshot.CharacterName.Length == 0 ? Title : Title + " of " + snapshot.CharacterName;
+        _frame.ShortTitle = snapshot.CharacterName.Length == 0 ? null : snapshot.CharacterName;
         Fade(_dragged, lifted: true);
         if (_indicatorAt is { } at && (_dragged != 0 || _retailItem != 0))
         {

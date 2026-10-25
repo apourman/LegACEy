@@ -325,7 +325,7 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
-    public void A_long_character_name_shrinks_the_title_to_fit_down_to_eleven() => RenderThread.Run(() =>
+    public void A_long_character_name_drops_the_inventory_prefix_to_fit_the_header() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         client.Port.Push(InventorySample.Snapshot(characterName: "Sir Reginald Ashbourne the Unyielding"));
@@ -334,8 +334,10 @@ public sealed class InventoryPluginTests
         var panel = client.Panel(Full);
         InventoryDriver.Tick(panel);
 
-        var title = Assert.Single(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of Sir Reginald Ashbourne the Unyielding");
-        Assert.InRange(title.FontSize, 11, 12.5);
+        // The title shares the header with the close box: one row, so a long name never makes the header taller.
+        var title = Assert.Single(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Sir Reginald Ashbourne the Unyielding");
+        Assert.InRange(title.FontSize, 11, 13);
+        Assert.True(OnPanel(title, panel).Bottom <= DerethWindow.TitleBarHeight, "The title sits below the header.");
     });
 
     private static void AssertFitsWithOneGridRow(AvaloniaPanel panel)

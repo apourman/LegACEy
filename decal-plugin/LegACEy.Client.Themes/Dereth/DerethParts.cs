@@ -441,8 +441,8 @@ public sealed class DerethHeaderButton : Button
 }
 
 /// <summary>
-/// A window with the Dereth frame, a header of icon, title, actions and close box (or the title on a row of its own under the header),
-/// the title rule and content.
+/// A window with the Dereth frame, a header of icon, title, actions and close box (or the title centred across the header), the title
+/// rule and content.
 /// </summary>
 public sealed class DerethWindow : UserControl
 {
@@ -461,16 +461,7 @@ public sealed class DerethWindow : UserControl
     /// <summary>The title-bar height of a window with an icon in its header.</summary>
     public const int IconTitleBarHeight = 8 + IconHeaderHeight;
 
-    /// <summary>The title's own row under the header, in a window that centres its title.</summary>
-    public const int TitleRowHeight = 24;
-
-    /// <summary>The header of a window that centres its title: it holds only the header buttons, so it is just taller than they are.</summary>
-    public const int CentredHeaderHeight = 24;
-
-    /// <summary>The title-bar height of a window that centres its title: the frame edge, the header, the 5 px rule under it and the title row.</summary>
-    public const int CentredTitleBarHeight = 8 + CentredHeaderHeight + 5 + TitleRowHeight;
-
-    /// <summary>The gap between header buttons in a window that centres its title: its actions use it too, so every button is evenly spaced.</summary>
+    /// <summary>The gap between header buttons, and between the close box and a centred title.</summary>
     public const int ActionGap = 4;
 
     /// <summary>The side of every header button, the close box included: small, so the header's controls take little of the window.</summary>
@@ -482,8 +473,8 @@ public sealed class DerethWindow : UserControl
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
     /// <param name="stretchActions">The header actions take the header's free width, and the title only its own.</param>
     /// <param name="centreTitle">
-    /// The title takes a row of its own under the header, centred across the window as retail centres its panel titles, so a long title
-    /// has the full width; the header keeps the icon, the actions and the close box.
+    /// The title is centred across the header, as retail centres its panel titles, with the close box's width kept clear on both sides.
+    /// For a window without an icon or header actions.
     /// </param>
     /// <param name="iconHeader">
     /// The header is <see cref="IconHeaderHeight"/> tall, for a window that shows an icon, or may show one later; otherwise
@@ -494,7 +485,7 @@ public sealed class DerethWindow : UserControl
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
         var columns = headerActions == null ? "Auto,*,Auto" : stretchActions ? "Auto,Auto,*,Auto" : "Auto,*,Auto,Auto";
-        var height = centreTitle ? CentredHeaderHeight : iconHeader ? IconHeaderHeight : HeaderHeight;
+        var height = iconHeader ? IconHeaderHeight : HeaderHeight;
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = height };
         // The icon is bare, at its own size: a layout never squeezes an icon, and a frame round it would make the header taller.
         // It is always there, and takes no space while it has no icon, so a window that changes its icon keeps the same header.
@@ -503,11 +494,16 @@ public sealed class DerethWindow : UserControl
         SetIcon(icon);
         _name = new DerethTitleText
         {
-            Text = title, Foreground = DerethPalette.CreamBrush, FontFamily = DerethPalette.Title, VerticalAlignment = VerticalAlignment.Center,
+            FullText = title, Foreground = DerethPalette.CreamBrush, FontFamily = DerethPalette.Title, VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = centreTitle ? TextAlignment.Center : TextAlignment.Left
         };
-        Grid.SetColumn(_name, 1);
-        if (!centreTitle) header.Children.Add(_name);
+        if (centreTitle)
+        {
+            Grid.SetColumnSpan(_name, 3);
+            _name.Margin = new Thickness(HeaderButtonSize + ActionGap, 0);
+        }
+        else Grid.SetColumn(_name, 1);
+        header.Children.Add(_name);
         // The X is smaller than the other glyphs: at their size its two strokes read heavier than their outlines.
         var close = new DerethHeaderButton(new DerethPathGlyph("M0,0 L8,8 M8,0 L0,8", 8) { Stroke = DerethPalette.CreamBrush, StrokeThickness = 1.5 });
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
@@ -519,37 +515,32 @@ public sealed class DerethWindow : UserControl
         Grid.SetColumn(close, headerActions == null ? 2 : 3);
         header.Children.Add(close);
 
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
         body.Children.Add(header);
-        if (centreTitle)
-        {
-            // A rule under the header sets it apart as the window's control strip, and the title is a row of its own.
-            var strip = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
-            Grid.SetRow(strip, 1);
-            body.Children.Add(strip);
-            // Centred by its capitals: Palatino's tall ascent would leave them low in the row. A title is mostly lower case, whose ink sits
-            // below the capitals' middle, so capitals centred between the rules look high: the row's 2 DIP top padding moves it down 1.
-            var titleRow = new Border { Height = TitleRowHeight, Padding = new Thickness(0, 2, 0, 0), Child = DerethPalette.CentreInk(_name) };
-            Grid.SetRow(titleRow, 2);
-            body.Children.Add(titleRow);
-        }
         // The rule runs nearly frame to frame, as in the concept.
         var rule = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
-        Grid.SetRow(rule, 3);
+        Grid.SetRow(rule, 1);
         body.Children.Add(rule);
-        Grid.SetRow(content, 4);
+        Grid.SetRow(content, 2);
         body.Children.Add(content);
         Content = new DerethFrame(DerethFrameArt.Window) { Child = body };
     }
 
     private readonly Decorator _emblem;
-    private readonly TextBlock _name;
+    private readonly DerethTitleText _name;
 
     /// <summary>The title in the header.</summary>
     public string Title
     {
-        get => _name.Text ?? string.Empty;
-        set => _name.Text = value;
+        get => _name.FullText;
+        set => _name.FullText = value;
+    }
+
+    /// <summary>A shorter title shown when <see cref="Title"/> does not fit even at its smallest size. Null trims the title instead.</summary>
+    public string? ShortTitle
+    {
+        get => _name.ShortText;
+        set => _name.ShortText = value;
     }
 
     /// <summary>Replaces the header's icon. Null shows no icon, and the title moves to the edge.</summary>
@@ -563,7 +554,8 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A window title: 13 DIPs, stepping down to 11 until it fits its width, as a long character name needs; past that it ends in an ellipsis.
+/// A window title: 13 DIPs, stepping down to 11 until it fits its width, as a long character name needs; past that it shows its short
+/// text, sized the same way, if it has one, and ends in an ellipsis.
 /// </summary>
 internal sealed class DerethTitleText : TextBlock
 {
@@ -571,14 +563,35 @@ internal sealed class DerethTitleText : TextBlock
 
     protected override Type StyleKeyOverride => typeof(TextBlock);
 
+    private string _fullText = string.Empty;
+    private string? _shortText;
+
+    /// <summary>The whole title.</summary>
+    public string FullText
+    {
+        get => _fullText;
+        set { _fullText = value ?? string.Empty; Text = _fullText; InvalidateMeasure(); }
+    }
+
+    /// <summary>The title shown when <see cref="FullText"/> does not fit at 11 DIPs, or null.</summary>
+    public string? ShortText
+    {
+        get => _shortText;
+        set { _shortText = value; InvalidateMeasure(); }
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
-        // The size is picked from measured text, not by setting FontSize and measuring: a change here invalidates the measure, so it is set once.
+        // The size and text are picked from measured text, not by setting them and measuring: a change here invalidates the measure, so
+        // each is set once.
         var typeface = new Typeface(FontFamily, FontStyle, FontWeight);
+        double TextWidth(string text, double size) => new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, size, null)
+            .WidthIncludingTrailingWhitespace;
+        var text = _shortText != null && TextWidth(_fullText, Smallest) > availableSize.Width ? _shortText : _fullText;
         var size = Largest;
-        while (size > Smallest && new FormattedText(Text ?? string.Empty, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, size, null)
-                   .WidthIncludingTrailingWhitespace > availableSize.Width)
+        while (size > Smallest && TextWidth(text, size) > availableSize.Width)
             size -= 0.5;
+        Text = text;
         FontSize = size;
         return base.MeasureOverride(availableSize);
     }
