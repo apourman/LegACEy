@@ -83,9 +83,9 @@ public sealed class AppraisalWindow
         var foot = new ContentControl { Content = layout.Foot };
         var glyph = new Avalonia.Controls.Shapes.Path
         {
-            Data = Geometry.Parse(FigureGlyph), Width = 14, Height = 14, StrokeThickness = 1.2, UseLayoutRounding = false, Stroke = DerethPalette.MutedBrush,
+            Data = Geometry.Parse(FigureGlyph), Width = DerethWindow.HeaderGlyphSize, Height = DerethWindow.HeaderGlyphSize, Stretch = Stretch.Uniform, StrokeThickness = 1, UseLayoutRounding = false, Stroke = DerethPalette.MutedBrush,
         };
-        var button = new DerethButton { Name = "InspectButton", Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
+        var button = new DerethButton { Name = "InspectButton", Width = DerethWindow.HeaderButtonSize, Height = DerethWindow.HeaderButtonSize, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
         ToolTip.SetTip(button, "Inspect");
         var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot), button);
         // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels.

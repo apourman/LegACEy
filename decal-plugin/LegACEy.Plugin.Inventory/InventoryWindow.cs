@@ -1104,11 +1104,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         var icon = new Path
         {
-            Data = Geometry.Parse(FigureGlyph), Width = 14, Height = 14, StrokeThickness = 1.2, UseLayoutRounding = false,
+            Data = Geometry.Parse(FigureGlyph), Width = DerethWindow.HeaderGlyphSize, Height = DerethWindow.HeaderGlyphSize, Stretch = Stretch.Uniform, StrokeThickness = 1, UseLayoutRounding = false,
             Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
             Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
         };
-        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon };
+        var button = new DerethButton { Width = DerethWindow.HeaderButtonSize, Height = DerethWindow.HeaderButtonSize, Name = "EquipmentToggle", Content = icon };
         ToolTip.SetTip(button, _collapsed ? "Show equipment" : "Hide equipment");
         button.Click += (_, _) => SettingsChanged?.Invoke(new InventorySettings(_layout, _showSlots, !_collapsed));
         return button;
@@ -1122,11 +1122,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         {
             // Unrounded, so the glyph sits at the button's exact centre: at a scale the button can round to an odd number of
             // pixels and the glyph to an even one, and snapping both would push the glyph a pixel off.
-            Data = Geometry.Parse(glyph), Width = 14, Height = 14, StrokeThickness = 1.2, UseLayoutRounding = false,
+            Data = Geometry.Parse(glyph), Width = DerethWindow.HeaderGlyphSize, Height = DerethWindow.HeaderGlyphSize, Stretch = Stretch.Uniform, StrokeThickness = 1, UseLayoutRounding = false,
             Stroke = active ? DerethPalette.TealBrush : MutedBrush,
             Fill = active ? DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)) : null,
         };
-        var button = new DerethButton { Width = 24, Height = 24, Tag = layout, Content = icon };
+        var button = new DerethButton { Width = DerethWindow.HeaderButtonSize, Height = DerethWindow.HeaderButtonSize, Tag = layout, Content = icon };
         button.Click += (_, _) => RequestLayout(layout);
         return button;
     }

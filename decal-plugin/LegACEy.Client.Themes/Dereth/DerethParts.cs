@@ -387,6 +387,12 @@ public sealed class DerethWindow : UserControl
     /// <summary>The gap between header buttons in a window that centres its title: its actions use it too, so every button is evenly spaced.</summary>
     public const int ActionGap = 4;
 
+    /// <summary>The side of every header button, the close box included: small, so the header's controls take little of the window.</summary>
+    public const int HeaderButtonSize = 18;
+
+    /// <summary>The side of a header button's glyph, inside the button frame's 4 DIP edges.</summary>
+    public const int HeaderGlyphSize = 10;
+
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
     /// <param name="stretchActions">The header actions take the header's free width, and the title only its own.</param>
     /// <param name="centreTitle">
@@ -411,8 +417,8 @@ public sealed class DerethWindow : UserControl
         };
         Grid.SetColumn(_name, 1);
         if (!centreTitle) header.Children.Add(_name);
-        var glyph = new DerethSprite(DerethSpriteArt.Close) { Width = 12, Height = 12 };
-        var close = new DerethButton { Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
+        var glyph = new DerethSprite(DerethSpriteArt.Close) { Width = HeaderGlyphSize, Height = HeaderGlyphSize };
+        var close = new DerethButton { Width = HeaderButtonSize, Height = HeaderButtonSize, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
         glyph.Follow(close);
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         if (headerActions != null)
