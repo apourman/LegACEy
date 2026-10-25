@@ -93,8 +93,9 @@ internal sealed class RetailGameMessages : IDisposable
             if (chatType == SpewType && Taking)
             {
                 var literal = Marshal.ReadIntPtr(text, StringLiteral);
-                // Retail's text escapes ("You're too busy\!") are drawn, as chat's are, without the backslash.
-                var line = literal == IntPtr.Zero ? null : Marshal.PtrToStringUni(literal) is { } raw ? NativeRetailChatPort.RetailChatTypes.Unescape(raw).Trim() : null;
+                // Retail's text escapes ("You're too busy\!") are drawn, as chat's are, without the backslash; a line break joins the band's one line.
+                var line = literal == IntPtr.Zero ? null
+                    : Marshal.PtrToStringUni(literal) is { } raw ? NativeRetailChatPort.RetailChatTypes.Unescape(raw).Replace('\n', ' ').Trim() : null;
                 if (!string.IsNullOrEmpty(line))
                 {
                     _pending.Enqueue(line);

@@ -57,7 +57,7 @@ public sealed class DerethMessageBands : StackPanel
         set
         {
             _textScale = value;
-            foreach (var child in Children) ((Band)child).Size(value);
+            foreach (var child in Children) ((Band)child).Scale(value);
         }
     }
 
@@ -83,7 +83,7 @@ public sealed class DerethMessageBands : StackPanel
             if (child is Band { Text: var shown } same && shown == text) band = same;
         if (band != null) Children.Remove(band);
         else band = new Band(text, _textScale);
-        band.Left = Lifetime;
+        band.Remaining = Lifetime;
         var top = Moving ? 1 : 0;
         Children.Insert(top, band);
         while (Children.Count - top > MaxShown) Children.RemoveAt(Children.Count - 1);
@@ -100,15 +100,15 @@ public sealed class DerethMessageBands : StackPanel
         {
             var band = (Band)Children[i];
             if (band.IsSample) continue;
-            band.Left -= elapsed;
-            if (band.Left <= TimeSpan.Zero) Children.RemoveAt(i);
+            band.Remaining -= elapsed;
+            if (band.Remaining <= TimeSpan.Zero) Children.RemoveAt(i);
         }
         var newest = Moving ? 1 : 0;
         for (var i = 0; i < Children.Count; i++)
         {
             var band = (Band)Children[i];
             if (band.IsSample) continue;
-            var fade = band.Left < Fade ? band.Left.TotalSeconds / Fade.TotalSeconds : 1;
+            var fade = band.Remaining < Fade ? band.Remaining.TotalSeconds / Fade.TotalSeconds : 1;
             band.Opacity = fade * (i == newest ? 1 : OlderOpacity);
         }
         IsVisible = Children.Count > 0;
@@ -130,14 +130,14 @@ public sealed class DerethMessageBands : StackPanel
                 BorderThickness = new Thickness(1);
             }
             Child = _text = new TextBlock { Text = text, FontFamily = DerethPalette.Title, Foreground = DerethPalette.CreamBrush };
-            Size(scale);
+            Scale(scale);
         }
 
         public string Text { get; }
         public bool IsSample { get; }
-        public TimeSpan Left { get; set; }
+        public TimeSpan Remaining { get; set; }
 
-        public void Size(double scale)
+        public void Scale(double scale)
         {
             _text.FontSize = 17 * scale;
             Padding = new Thickness(70 * scale, 6 * scale);

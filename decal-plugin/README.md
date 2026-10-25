@@ -186,6 +186,13 @@ builds it. With the UI unlocked, hovering the bar shows gold corners: drag a sid
 give it more height (up to 960 by 150 DIPs); the text keeps its size, and Ctrl+wheel scales the whole bar. In peace and magic the bar closes and retail's panels are left as retail draws them. Creating an empty file named
 `retail-attack-native` beside the main DLL (or the Settings window's Attack bar row) gives retail's panel back within a second.
 
+Retail's yellow game messages at the top of the screen ("You can't move that!", "In Portal Space - Please Wait...") show as Dereth bands
+instead, from character select on: one line on a dark band, up to three at once with the newest on top, each for 4 seconds; a repeat moves
+back to the top. Chat is untouched. Settings → Windows → Game messages turns them off entirely, sets their text size (60 to 200 percent,
+with a preview), and moves them: Move shows a sample band to drag anywhere, Reset puts them back at the top centre. These are kept for
+every character in `plugin-settings.txt`, since the messages show before a character is chosen. Creating an empty file named
+`retail-game-messages-native` beside the main DLL (or the card's Retail switch) gives retail's yellow text back.
+
 The Settings window's Windows tab has a Dereth / Retail switch on each window's card, and an All windows switch above them that
 writes or deletes every `retail-*-native` file at once. It lights neither choice while the windows differ.
 

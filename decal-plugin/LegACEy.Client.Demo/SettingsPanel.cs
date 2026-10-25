@@ -452,11 +452,11 @@ public sealed class SettingsPanel : UserControl
                 GradientStops = { new GradientStop(Color.Parse("#9AA3A8"), 0), new GradientStop(Color.Parse("#C9C2AE"), 0.55), new GradientStop(Color.Parse("#5E6B3E"), 1) }
             }
         };
-        void Preview(int percent) => preview.Child = new Viewbox
+        void Preview(int percent)
         {
-            Stretch = Stretch.None, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            Child = DerethMessageBands.Sample("The chest is locked!", percent)
-        };
+            preview.Child = DerethMessageBands.Sample("The chest is locked!", percent);
+            preview.Child.VerticalAlignment = VerticalAlignment.Center;
+        }
         var slider = SliderRow("Text size", DerethMessageBands.SmallestTextSize, DerethMessageBands.LargestTextSize, DerethMessageBands.TextSizeStep,
             () => _settings.GameMessageTextSize?.Value, percent => _settings.GameMessageTextSize?.Set(percent), dragged: Preview);
         return new StackPanel { Spacing = 6, Children = { slider, preview } };

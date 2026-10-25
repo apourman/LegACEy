@@ -1059,9 +1059,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
             TestWeather = _worldEffects != null ? new OptionChoice<WeatherKind>(_worldEffects.TestWeather, SetTestWeather) : null,
             TestFog = _worldEffects != null ? new OptionChoice<bool>(_worldEffects.TestFog, SetTestFog) : null,
-            GameMessagesShown = new OptionChoice<bool>(!_gameMessagesHidden, SetGameMessagesShown),
-            GameMessageTextSize = new OptionChoice<int>(_gameMessageTextSize, SetGameMessageTextSize),
-            GameMessagePlace = GameMessagePlaceOption(),
+            // Without the hook (a client that doesn't match, or bands that failed) the card has only its switch.
+            GameMessagesShown = _gameMessages != null ? new OptionChoice<bool>(!_gameMessagesHidden, SetGameMessagesShown) : null,
+            GameMessageTextSize = _gameMessages != null ? new OptionChoice<int>(_gameMessageTextSize, SetGameMessageTextSize) : null,
+            GameMessagePlace = _gameMessages != null ? GameMessagePlaceOption() : null,
             ResetPositions = () => _positionsResetRequested = true,
         };
         _settings = settings;
@@ -2575,7 +2576,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _gameMessageDragOffset = null;
         try
         {
-            if (moving && _device == IntPtr.Zero) return;
+            if (moving && (_device == IntPtr.Zero || _gameMessages == null)) return;
             _gameMessagesMoving = moving;
             if (moving) EnsureGameMessageBands().Moving = true;
             else if (_gameMessageBands != null) _gameMessageBands.Moving = false;
@@ -2625,6 +2626,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         DropGameMessageToast();
         _gameMessages?.Dispose();
         _gameMessages = null;
+        if (_settings != null)
+        {
+            _settings.GameMessagesShown = null;
+            _settings.GameMessageTextSize = null;
+            _settings.GameMessagePlace = null;
+        }
     }
 
     private void DropGameMessageToast()
