@@ -124,5 +124,5 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     /// the paperdoll and one row of the grid visible. Scaling, by the UI size or Ctrl and the wheel, changes the whole window.
     /// </summary>
     private const int DefaultHeight = 766;
-    private static readonly WindowResizing Sizing = new(new Size(Width, 403), new Size(Width, 10_000));
+    private static readonly WindowResizing Sizing = new(new Size(Width, 410), new Size(Width, 10_000));
 }
