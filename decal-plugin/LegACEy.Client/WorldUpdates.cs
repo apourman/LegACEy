@@ -97,7 +97,12 @@ internal sealed class WorldUpdates
     /// dats; null when there is none or it doesn't check out.</summary>
     public WorldPatchIndex? AtStartup()
     {
-        if (_server == null || _cache.ForServer(_server) is not { } world) return null;
+        if (_server == null)
+        {
+            ClientUiRuntime.Log("World: the launch line names no server (-h), so no world is switched on at startup.");
+            return null;
+        }
+        if (_cache.ForServer(_server) is not { } world) return null;
         if (_cache.IsUnconfirmed(_server))
         {
             // The last start with it on never heard the server's note: most likely kicked at connect for a world the server dropped.

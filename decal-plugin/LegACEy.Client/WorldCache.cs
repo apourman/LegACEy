@@ -160,8 +160,8 @@ internal sealed class WorldCache
     }
 
     /// <summary>
-    /// The server the game was launched for, <c>host:port</c> from <c>-h</c> and <c>-p</c>; null when either is missing. Nothing else is
-    /// read: the line also carries the account and password.
+    /// The server the game was launched for, <c>host:port</c> from <c>-h host -p port</c>, or <c>-h host:port</c> as ThwargLauncher
+    /// passes it; null when there's none. Nothing else is read: the line also carries the account and password.
     /// </summary>
     internal static string? Server(IReadOnlyList<string> arguments)
     {
@@ -171,6 +171,8 @@ internal sealed class WorldCache
             if (arguments[i].Equals("-h", StringComparison.OrdinalIgnoreCase)) host = arguments[i + 1];
             else if (arguments[i].Equals("-p", StringComparison.OrdinalIgnoreCase)) port = arguments[i + 1];
         }
+        if (port == null && host != null && host.LastIndexOf(':') is var colon and > 0)
+            (host, port) = (host[..colon], host[(colon + 1)..]);
         return host is { Length: > 0 } && ushort.TryParse(port, out var number) ? $"{host}:{number}" : null;
     }
 

@@ -198,6 +198,7 @@ public sealed class WorldUpdatesTests : IDisposable
     public void OnlyTheServerIsReadFromTheCommandLine()
     {
         Assert.Equal("10.0.0.5:9000", WorldCache.Server(new[] { "acclient.exe", "-a", "bob", "-v", "hunter2", "-h", "10.0.0.5", "-p", "9000", "-rodat", "on" }));
+        Assert.Equal("10.0.0.5:9000", WorldCache.Server(new[] { "acclient.exe", "-a", "bob", "-v", "hunter2", "-h", "10.0.0.5:9000", "-rodat", "off" }));
         Assert.Null(WorldCache.Server(new[] { "acclient.exe", "-h", "10.0.0.5", "-a", "bob" }));
     }
 
