@@ -668,8 +668,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void LoginComplete()
     {
         _loggedIn = true;
-        // A toast from character select (the world's) has said its piece; it doesn't follow the character into the world.
-        if (_updateToast != null) Guard(() => _updateToast.IsVisible = false);
+        HideCharacterSelectToast();
         // A Log out and update whose logout never came through is forgotten, so this session's own logout doesn't close the game.
         _quitPending = false;
         _updates.Check();
@@ -2274,7 +2273,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 _worldRaised = true;
                 _worldShown = null;
-            }, Log);
+            }, HideCharacterSelectToast, Log);
         }
         catch (Exception exception) { Log($"Worlds are off: {exception.Message}"); }
     }
@@ -2379,6 +2378,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// retail's. True when the message was the toast's.
     /// </summary>
     private bool _toastHovered;
+
+    /// <summary>A toast from character select (the world's) has said its piece: it doesn't follow the character into portal space.</summary>
+    private void HideCharacterSelectToast()
+    {
+        if (_updateToast != null) Guard(() => _updateToast.IsVisible = false);
+    }
 
     private bool CharacterSelectToastInput(int message, int lParam)
     {
