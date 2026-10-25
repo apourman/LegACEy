@@ -97,6 +97,29 @@ internal static class DatModels
         return setup;
     }
 
+    /// <summary>An animation's frame: each part's place in that pose, as a setup's placement gives it; null when unreadable.</summary>
+    public static Frame[]? ReadPose(PortalDat dat, uint id, int frame)
+    {
+        var reader = Open(dat, id);
+        if (reader == null) return null;
+        reader.ReadUInt32();
+        var flags = reader.ReadUInt32();
+        var parts = reader.ReadInt32();
+        var frames = reader.ReadInt32();
+        if (frame >= frames) return null;
+        // the whole object's moves, one per frame, come first when the animation has them
+        if ((flags & 0x1) != 0) reader.BaseStream.Seek(frames * 28L, SeekOrigin.Current);
+        // each frame is its parts' places, then its hooks; a hook's size depends on its kind, so a frame after one is not reached
+        for (var i = 0; i < frame; i++)
+        {
+            reader.BaseStream.Seek(parts * 28L, SeekOrigin.Current);
+            if (reader.ReadInt32() != 0) return null;
+        }
+        var pose = new Frame[parts];
+        for (var i = 0; i < parts; i++) pose[i] = ReadFrame(reader);
+        return pose;
+    }
+
     public static DatGfxObj? ReadGfxObj(PortalDat dat, uint id)
     {
         var reader = Open(dat, id);

@@ -151,10 +151,10 @@ public sealed class InventoryPluginTests
         var model = Assert.Single(ModelViews(panel));
         Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
 
-        // The model stays clear of the aetheria row and the Slots toggle above it, which the host draws over the model.
+        // The model takes the height beside the aetheria row and stays above the Slots toggle, which the host draws it over.
         InventoryDriver.Tick(panel);
         var bounds = OnPanel(model, panel);
-        Assert.False(bounds.Intersects(OnPanel(InventoryDriver.SlotOrNull(panel, PaperdollSlot.AetheriaOne)!, panel)));
+        Assert.True(bounds.Top < OnPanel(InventoryDriver.SlotOrNull(panel, PaperdollSlot.AetheriaOne)!, panel).Bottom);
         Assert.False(bounds.Intersects(OnPanel(InventoryDriver.SlotsToggle(panel), panel)));
 
         // The server says the look changed, as it does when the player equips something: the doll asks again.

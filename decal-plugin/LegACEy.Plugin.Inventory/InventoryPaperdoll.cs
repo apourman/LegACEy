@@ -120,10 +120,9 @@ internal sealed class InventoryPaperdoll : Canvas
         // cell, and the cell sits in the window's own space beside the doll.
         var rowBottom = Scale(AetheriaY) + Cells.Cell + AetheriaGap;
         var notchLeft = 3 * Cells.Pitch + 2 * SideGap + _spare + 1 - AetheriaGap - GetLeft(DollArea);
-        // The doll takes the full height above the corner row, its head beside the aetheria row: it stays left of the notch and
-        // as far in from the left, so it stays centred. The figure is far narrower than tall, so only the height limits its size.
-        var side = DollArea.Width - notchLeft;
-        DollArea.Padding = new Thickness(side, CornerInset, side, CornerRowHeight + 2 * CornerInset);
+        // The doll stands above the corner row with its head beside the aetheria row; the host draws only the figure, not its view.
+        // Starting a third of the way down that row puts the stance's shoulders below the first aetheria and its gap.
+        DollArea.Padding = new Thickness(0, rowBottom / 3, 0, CornerRowHeight + 2 * CornerInset);
         DollArea.Clip = new CombinedGeometry(GeometryCombineMode.Exclude,
             new RectangleGeometry(new Rect(0, 0, DollArea.Width, height)), new RectangleGeometry(new Rect(notchLeft, 0, DollArea.Width - notchLeft, rowBottom)));
         SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
