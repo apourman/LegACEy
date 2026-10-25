@@ -19,7 +19,7 @@ public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 
 /// <summary>
 /// One shortcut row inside the toolbar: nine item slots at the icon size, touching, as retail's are. A slot
-/// shows its item's icon and stack count, with its key number in the corner, or only its key number when empty. A click selects and uses
+/// shows its item's icon and stack count, with its key number in a dark tab at the top-left, or only its key number when empty. A click selects and uses
 /// the slot's item, and a slot whose item is selected is lit, so the slot last clicked stays marked. A press on a slot never moves the
 /// toolbar. A drag from a slot moves the shortcut to the slot it is released on, or takes it off the bars when no LegACEy window takes it.
 /// A drop of an item from outside binds it to the slot it is released on.
@@ -33,6 +33,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private bool _refreshPending;
 
     private static readonly IBrush EmptyKey = DerethPalette.Brush(Color.Parse("#3E3626"));
+    private static readonly IBrush KeyTab = DerethPalette.Brush(Color.Parse("#D8100C08"));
 
     private readonly IRetailToolbarPort _port;
     private readonly Func<uint, ShortcutItem?> _itemOf;
@@ -292,10 +293,13 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         }
         layers.Children.Add(Icon(item.Visual, position));
         if (item.StackCount > 1) layers.Children.Add(DerethItemCells.StackCount(item.StackCount));
-        layers.Children.Add(new TextBlock
+        // A filled slot keeps its key number in a dark tab over the icon's top-left corner, as retail does.
+        var number = DerethItemCells.Label(key.ToString(), DerethPalette.TextBrush, 10);
+        number.FontWeight = FontWeight.SemiBold;
+        layers.Children.Add(new Border
         {
-            Text = key.ToString(), FontFamily = DerethPalette.Body, FontSize = 8, Foreground = DerethPalette.MutedBrush,
-            Margin = new Thickness(3, 1, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top
+            Child = number, Background = KeyTab, CornerRadius = new CornerRadius(0, 0, 3, 0), Padding = new Thickness(3, 0, 3, 1),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top
         });
         return layers;
     }
