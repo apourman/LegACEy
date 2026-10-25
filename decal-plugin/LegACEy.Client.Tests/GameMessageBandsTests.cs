@@ -40,6 +40,27 @@ public sealed class GameMessageBandsTests
         Assert.False(bands.IsVisible);
     });
 
+    [Fact]
+    public void While_placed_a_sample_band_stays_on_top_at_the_text_size_and_messages_show_under_it() => RenderThread.Run(() =>
+    {
+        var now = new DateTime(2026, 10, 25, 12, 0, 0, DateTimeKind.Utc);
+        var bands = new DerethMessageBands(() => now) { TextScale = 1.5 };
+        bands.Moving = true;
+        Assert.True(bands.IsVisible);
+        foreach (var text in new[] { "One", "Two", "Three", "Four" }) bands.Show(text);
+        Assert.Equal(new[] { DerethMessageBands.SampleText, "Four", "Three", "Two" }, Lines(bands));
+        Assert.Equal(17 * 1.5, ((TextBlock)((Border)bands.Children[0]).Child!).FontSize);
+
+        // The messages run out; the sample stays until placing ends.
+        now += TimeSpan.FromSeconds(5);
+        bands.Tick();
+        Assert.Equal(new[] { DerethMessageBands.SampleText }, Lines(bands));
+        bands.TextScale = 1;
+        Assert.Equal(17, ((TextBlock)((Border)bands.Children[0]).Child!).FontSize);
+        bands.Moving = false;
+        Assert.False(bands.IsVisible);
+    });
+
     private static string[] Lines(DerethMessageBands bands) => bands.Children
         .Select(band => ((TextBlock)((Border)band).Child!).Text!)
         .ToArray();
