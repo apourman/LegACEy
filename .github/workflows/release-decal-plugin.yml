@@ -45,51 +45,11 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Check release asset publishing
-        run: python -m unittest discover -s decal-plugin/build -p 'test_*.py'
-
-      - name: Run plugin tests
-        run: dotnet test decal-plugin/LegACEy.Client.Tests/LegACEy.Client.Tests.csproj --configuration Release
-
-      - name: Extract pinned Windows build references
-        run: ./decal-plugin/build/Get-BuildReferences.ps1 -Destination "$env:RUNNER_TEMP/plugin-build-references"
-
-      - name: Build the x86 stub and publish the trimmed .NET 10 client into runtime
+      # The same script runs on every pull request, so a release only builds what already passed there.
+      - name: Test, build, package and build the installer
         env:
           PLUGIN_VERSION: ${{ inputs.release_version }}
-        run: |
-          $references = "$env:RUNNER_TEMP/plugin-build-references/references"
-          dotnet build decal-plugin/LegACEy.Client.DecalPlugin/LegACEy.Client.DecalPlugin.csproj `
-            --configuration Release --output "$env:RUNNER_TEMP/plugin-output" `
-            "-p:Version=$env:PLUGIN_VERSION" "-p:DecalInstallDir=$references" `
-            "-p:DecalInteropDir=$references"
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          dotnet publish decal-plugin/LegACEy.Client/LegACEy.Client.csproj `
-            --configuration Release --runtime win-x86 --self-contained `
-            --output "$env:RUNNER_TEMP/plugin-output/runtime" "-p:Version=$env:PLUGIN_VERSION"
-
-      - name: Exercise the Windows native hook
-        run: dotnet run --project decal-plugin/LegACEy.Client.HookSmoke --configuration Release
-
-      - name: Package the stub, plugins and runtime
-        env:
-          PLUGIN_TAG: ${{ inputs.release_tag }}
-        run: ./decal-plugin/build/New-ReleasePackage.ps1 -BuildOutput "$env:RUNNER_TEMP/plugin-output" -Destination "$env:RUNNER_TEMP/plugin-package" -Tag $env:PLUGIN_TAG
-
-      # The runner image's Inno Setup 6 builds setup.exe from the package's files.
-      - name: Build the installer
-        env:
-          PLUGIN_TAG: ${{ inputs.release_tag }}
-          PLUGIN_VERSION: ${{ inputs.release_version }}
-        run: |
-          $destination = "$env:RUNNER_TEMP\plugin-package"
-          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source ?? "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (!(Test-Path $iscc)) { throw 'Inno Setup 6 is missing: no iscc on PATH or in Program Files (x86)' }
-          & $iscc "/DPackageDir=$destination\package" "/DAppVersion=$env:PLUGIN_VERSION" "/O$destination" decal-plugin\build\LegACEy-decal-plugin.iss
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $setup = "LegACEy-$env:PLUGIN_TAG-setup.exe"
-          $line = "{0}  {1}`n" -f (Get-FileHash (Join-Path $destination $setup) -Algorithm SHA256).Hash.ToLowerInvariant(), $setup
-          [IO.File]::AppendAllText((Join-Path $destination 'SHA256SUMS.txt'), $line)
+        run: ./decal-plugin/build/Build-Release.ps1 -Version $env:PLUGIN_VERSION -WorkDirectory "$env:RUNNER_TEMP/plugin-release"
 
       - name: Record package provenance
         env:
@@ -98,18 +58,18 @@ jobs:
           RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           $source = @{ tag = $env:RELEASE_TAG; sha = $env:RELEASE_SHA; version = $env:RELEASE_VERSION }
-          $source | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/plugin-package/source.json" -Encoding utf8
+          $source | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/plugin-release/plugin-package/source.json" -Encoding utf8
 
       - name: Save the verified release package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: decal-plugin-release-package
           path: |
-            ${{ runner.temp }}/plugin-package/*.dll
-            ${{ runner.temp }}/plugin-package/*.zip
-            ${{ runner.temp }}/plugin-package/*.exe
-            ${{ runner.temp }}/plugin-package/SHA256SUMS.txt
-            ${{ runner.temp }}/plugin-package/source.json
+            ${{ runner.temp }}/plugin-release/plugin-package/*.dll
+            ${{ runner.temp }}/plugin-release/plugin-package/*.zip
+            ${{ runner.temp }}/plugin-release/plugin-package/*.exe
+            ${{ runner.temp }}/plugin-release/plugin-package/SHA256SUMS.txt
+            ${{ runner.temp }}/plugin-release/plugin-package/source.json
           if-no-files-found: error
           retention-days: 7
 
