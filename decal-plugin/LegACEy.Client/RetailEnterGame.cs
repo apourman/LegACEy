@@ -15,7 +15,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// <item><c>CPlayerSystem::LogOnCharacter</c>, which every way into the world ends in: EnterGame, finishing character creation, and the
 /// exported login that Decal and auto-login filters call. Held there, it says it did not log on.</item>
 /// </list>
-/// While <c>hold</c> says so the call is swallowed and <c>held</c> runs instead; otherwise it passes through untouched. Called on the game thread.
+/// While <c>hold</c> says so the call is swallowed and <c>held</c> runs instead; otherwise it passes through untouched, and a character
+/// logged on runs <c>entering</c> first. Called on the game thread.
 /// </summary>
 internal sealed class RetailEnterGame : IDisposable
 {
@@ -47,6 +48,7 @@ internal sealed class RetailEnterGame : IDisposable
 
     private readonly Func<bool> _hold;
     private readonly Action _held;
+    private readonly Action _entering;
     private readonly Action<string> _log;
     private IHook<EnterGameFn>? _enterGame;
     private IHook<LogOnCharacterFn>? _logOn;
@@ -54,10 +56,11 @@ internal sealed class RetailEnterGame : IDisposable
     // Set by Dispose: a hook that could not be removed lets everything through.
     private volatile bool _off;
 
-    private RetailEnterGame(Func<bool> hold, Action held, Action<string> log)
+    private RetailEnterGame(Func<bool> hold, Action held, Action entering, Action<string> log)
     {
         _hold = hold;
         _held = held;
+        _entering = entering;
         _log = log;
         _root = GCHandle.Alloc(this);
     }
@@ -66,9 +69,9 @@ internal sealed class RetailEnterGame : IDisposable
     /// The holds whose entries match the running client and whose hooks could be placed, each logged when it can't; null when neither could,
     /// and entering the world then always works.
     /// </summary>
-    public static RetailEnterGame? Create(Func<uint, int, byte[]> readMemory, Func<bool> hold, Action held, Action<string> log)
+    public static RetailEnterGame? Create(Func<uint, int, byte[]> readMemory, Func<bool> hold, Action held, Action entering, Action<string> log)
     {
-        var holds = new RetailEnterGame(hold, held, log);
+        var holds = new RetailEnterGame(hold, held, entering, log);
         if (NativeUiCatalogue.Validate(readMemory, log, EnterGameEntries,
                 "Character select's Enter isn't held for a world update: the running client does not match its entry."))
             holds._enterGame = holds.Place<EnterGameFn>(holds.OnEnterGame, EnterGameAddress, "Character select's Enter");
@@ -101,8 +104,13 @@ internal sealed class RetailEnterGame : IDisposable
         _enterGame!.OriginalFunction(ui);
     }
 
-    private byte OnLogOnCharacter(IntPtr playerSystem, uint character) =>
-        Hold($"Logging character 0x{character:X8} on held") ? (byte)0 : _logOn!.OriginalFunction(playerSystem, character);
+    private byte OnLogOnCharacter(IntPtr playerSystem, uint character)
+    {
+        if (Hold($"Logging character 0x{character:X8} on held")) return 0;
+        try { _entering(); }
+        catch (Exception exception) { Report($"Could not prepare for entering the world: {exception.Message}"); }
+        return _logOn!.OriginalFunction(playerSystem, character);
+    }
 
     /// <summary>Whether to swallow the call; when it does, says why and runs <c>held</c>.</summary>
     private bool Hold(string what)

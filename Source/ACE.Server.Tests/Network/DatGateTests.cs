@@ -27,5 +27,14 @@ namespace ACE.Server.Tests.Network
             Assert.AreEqual(DatVerdict.Patch, DatGate.Decide(true, false, datPatching: true, refuseOlder: true));
             Assert.AreEqual(DatVerdict.LetIn, DatGate.Decide(false, false, datPatching: false, refuseOlder: true));
         }
+
+        [TestMethod]
+        public void AReportSentAgainWithTheServersEditionLetsARefusedClientIn()
+        {
+            var fresh = DatGate.Decide(false, false, datPatching: false, refuseOlder: true);
+            Assert.AreEqual(DatVerdict.LetIn, DatGate.Recheck(fresh, DatVerdict.RefuseAtEnter));
+            // DDD is never started by a repeat report.
+            Assert.AreEqual(DatVerdict.RefuseAtEnter, DatGate.Recheck(DatVerdict.Patch, DatVerdict.RefuseAtEnter));
+        }
     }
 }

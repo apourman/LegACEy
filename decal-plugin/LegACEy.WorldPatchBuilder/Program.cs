@@ -1,21 +1,21 @@
 using DatReaderWriter;
 using DatReaderWriter.Lib.IO.DatBTree;
 using DatReaderWriter.Options;
-using LegACEy.Updater;
+using LegACEy.Client.DecalPlugin;
 
 // build <retail> <edited> <out> <url folder>: writes <out>/world-<edition>.patch, every record of <edited>'s dats that differs from
 //   <retail>'s (their edition records too), and <out>/world-manifest.json pointing at <url folder>/world-<edition>.patch. The world
 //   version is the edited cell dat's edition, which the server announces; it must be above retail's.
-// check <retail> <edited> <patch>: applies the patch to a copy of <retail> with the updater's own apply, then compares every patched
-//   record with <edited>. A developer check; it copies the patched dats to a temporary folder.
+// check <edited> <patch>: reads every record back through the index the client's dat overlay serves it with and compares it with
+//   <edited>'s, and checks the patch carries the cell dat's edition record at the world version. A developer check.
 switch (args)
 {
     case ["build", var retail, var edited, var output, var url]:
         return Build(retail, edited, output, url);
-    case ["check", var retail, var edited, var patch]:
-        return Check(retail, edited, patch);
+    case ["check", var edited, var patch]:
+        return Check(edited, patch);
     default:
-        Console.Error.WriteLine("usage: build <retail> <edited> <out> <url folder> | check <retail> <edited> <patch>");
+        Console.Error.WriteLine("usage: build <retail> <edited> <out> <url folder> | check <edited> <patch>");
         return 2;
 }
 
@@ -51,7 +51,7 @@ static int Build(string retail, string edited, string output, string url)
             if (old != null && old.AsSpan().SequenceEqual(bytes)) continue;
             if (old == null) added++;
             else changed++;
-            records.Add(new WorldPatchRecord(name, file.Id, file.Iteration, file.Flags.HasFlag(DatBTreeFileFlags.IsCompressed), bytes));
+            records.Add(new WorldPatchRecord(name, file.Id, file.Iteration, (ushort)file.Version, file.Flags.HasFlag(DatBTreeFileFlags.IsCompressed), bytes));
         }
         var removed = before.Tree.Count(file => !kept.Contains(file.Id));
         Console.WriteLine($"{name}: {changed} changed, {added} new" + (removed > 0 ? $", {removed} removed in the edit and kept by the patch" : ""));
@@ -62,56 +62,38 @@ static int Build(string retail, string edited, string output, string url)
     var patchPath = Path.Combine(output, patchName);
     using (var stream = File.Create(patchPath)) new WorldPatch(version, records).Write(stream);
     var size = new FileInfo(patchPath).Length;
-    var sha = WorldFiles.Sha256(patchPath);
+    var sha = WorldPatch.Sha256(patchPath);
     File.WriteAllText(Path.Combine(output, "world-manifest.json"),
         $$"""{ "version": {{version}}, "patch": "{{url.TrimEnd('/')}}/{{patchName}}", "size": {{size}}, "sha256": "{{sha}}" }""" + "\n");
     Console.WriteLine($"{patchPath}: {records.Count} records, {size} bytes, sha256 {sha}");
     return 0;
 }
 
-static int Check(string retail, string edited, string patchPath)
+static int Check(string edited, string patchPath)
 {
-    WorldPatch patch;
-    using (var stream = File.OpenRead(patchPath)) patch = WorldPatch.Read(stream);
-    var game = Path.Combine(Path.GetTempPath(), "legacey-world-check-" + Guid.NewGuid().ToString("N"));
-    try
+    const string Cell = "client_cell_1.dat";
+    const uint Edition = 0xFFFF0001;
+    using var patch = WorldPatchIndex.Open(patchPath);
+    var different = 0;
+    foreach (var dat in patch.Dats)
     {
-        Directory.CreateDirectory(game);
-        foreach (var dat in patch.Records.Select(record => record.Dat).Distinct()) File.Copy(Path.Combine(retail, dat), Path.Combine(game, dat));
-        var stage = WorldFiles.Stage(game, patch.Version);
-        Directory.CreateDirectory(stage);
-        File.Copy(patchPath, Path.Combine(stage, WorldFiles.PatchFile));
-        File.WriteAllText(Path.Combine(stage, WorldFiles.ReadyFile), WorldFiles.Sha256(patchPath));
-        var result = WorldApply.Apply(game, game, stage);
-        if (result != ApplyResult.Applied || WorldFiles.ReadVersion(game) != patch.Version)
+        using var expected = Open(Path.Combine(edited, dat));
+        foreach (var (id, entry) in patch.Records(dat)!)
         {
-            Console.Error.WriteLine($"apply: {result}, world version {WorldFiles.ReadVersion(game)}; log:\n{File.ReadAllText(Path.Combine(game, "updater.log"))}");
-            return 1;
-        }
-        var different = 0;
-        foreach (var dat in patch.Records.GroupBy(record => record.Dat))
-        {
-            using var patched = Open(Path.Combine(game, dat.Key));
-            using var expected = Open(Path.Combine(edited, dat.Key));
-            foreach (var record in dat)
-            {
-                if (patched.TryGetFileBytes(record.Id, out var got) && expected.TryGetFileBytes(record.Id, out var want) && got.AsSpan().SequenceEqual(want))
-                    continue;
-                different++;
-                Console.Error.WriteLine($"{dat.Key} {record.Id:X8} differs after the patch");
-            }
-        }
-        int edition;
-        using (var cell = Open(Path.Combine(game, "client_cell_1.dat"))) edition = cell.Iteration.CurrentIteration;
-        if (edition != patch.Version)
-        {
+            if (expected.TryGetFileBytes(id, out var want) && patch.Read(entry).AsSpan().SequenceEqual(want)) continue;
             different++;
-            Console.Error.WriteLine($"The patched cell dat is at edition {edition}, not the world version {patch.Version}");
+            Console.Error.WriteLine($"{dat} {id:X8} differs from the edited dat");
         }
-        Console.WriteLine(different == 0 ? $"All {patch.Records.Count} patched records match the edited dats; the cell dat is at edition {edition}." : $"{different} records differ.");
-        return different == 0 ? 0 : 1;
     }
-    finally { Directory.Delete(game, true); }
+    int edition;
+    using (var cell = Open(Path.Combine(edited, Cell))) edition = cell.Iteration.CurrentIteration;
+    if (patch.Records(Cell)?.ContainsKey(Edition) != true || edition != patch.Version)
+    {
+        different++;
+        Console.Error.WriteLine($"The patch doesn't carry {Cell}'s edition record {Edition:X8} at world {patch.Version} (the edited cell dat is at {edition}).");
+    }
+    Console.WriteLine(different == 0 ? $"All {patch.Count} records read back as the edited dats have them; the cell dat's edition is {edition}." : $"{different} records differ.");
+    return different == 0 ? 0 : 1;
 }
 
 static DatDatabase Open(string path) => new(options =>

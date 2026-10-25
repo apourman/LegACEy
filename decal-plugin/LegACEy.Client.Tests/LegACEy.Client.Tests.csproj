@@ -15,7 +15,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
-    <PackageReference Include="Chorizite.DatReaderWriter" Version="2.1.7" />
   </ItemGroup>
 
   <ItemGroup>
@@ -34,9 +33,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The updater is net48, so its apply steps are compiled in here to be tested. WorldFiles.cs comes with the client. -->
+    <!-- The updater is net48, so its apply step is compiled in here to be tested. -->
     <Compile Include="..\LegACEy.Updater\StageApply.cs" LinkBase="Updater" />
-    <Compile Include="..\LegACEy.Updater\WorldApply.cs" LinkBase="Updater" />
   </ItemGroup>
 
 </Project>

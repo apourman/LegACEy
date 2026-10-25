@@ -65,6 +65,9 @@ namespace ACE.Server.Network
         /// <summary>Set by DDD_InterrogationResponse: whether this client's older dats refuse or warn it at Enter.</summary>
         public DatVerdict DatVerdict;
 
+        /// <summary>Whether the client has sent its DDD_InterrogationResponse; a later one only re-decides <see cref="DatVerdict"/>.</summary>
+        public bool DatReported;
+
         /// <summary>
         /// This boolean is set to true if GameMessageDDDBeginDDD is sent to the client. Used to determine when response is needed for DDD_EndDDD
         /// </summary>
