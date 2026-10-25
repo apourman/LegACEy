@@ -220,7 +220,7 @@ public sealed class DerethVitalsWindowTests
     [Theory]
     [InlineData(VitalsLayout.Stacked)]
     [InlineData(VitalsLayout.SideBySide)]
-    public void Retail_style_bars_have_no_glyphs_and_their_numbers_sit_in_the_middle_of_each_bar(VitalsLayout layout) => RenderThread.Run(() =>
+    public void Retail_style_bars_are_retails_window_with_numbers_in_the_middle_of_each_bar(VitalsLayout layout) => RenderThread.Run(() =>
     {
         var side = layout == VitalsLayout.SideBySide;
         var view = new DerethVitalsWindow(Game(), () => false, () => { }, layout, retailBars: true);
@@ -229,23 +229,23 @@ public sealed class DerethVitalsWindowTests
         panel.Tick();
 
         Assert.Empty(panel.Content.GetVisualDescendants().OfType<DerethVitalGlyph>());
-        Assert.Empty(panel.Content.GetVisualDescendants().OfType<DerethValuePlaque>());
+        Assert.Empty(panel.Content.GetVisualDescendants().OfType<DerethGildedPlate>());
+        Assert.Single(panel.Content.GetVisualDescendants().OfType<RetailVitalsFrame>());
         var bar = Bars(view)[0];
-        var label = view.GetLogicalDescendants().OfType<TextBlock>().First(text => text.Inlines?.Text?.Contains('/') == true);
-        // The label shares the bar's cell; its laid-out box, before the shift that centres Palatino's digits, is centred on the bar.
-        Assert.Same(bar.Parent, label.Parent);
-        Assert.InRange(label.Bounds.Center.X - bar.Bounds.Center.X, -1, 1);
-        Assert.InRange(label.Bounds.Center.Y - bar.Bounds.Center.Y, -1, 1);
+        var number = view.GetLogicalDescendants().OfType<OutlinedText>().First();
+        Assert.Equal("86/100", number.Text);
+        Assert.Equal(bar.Bounds, number.Bounds);
     });
 
     [Fact]
     public void Retail_style_bars_are_kept_per_character() => RenderThread.Run(() =>
     {
         var kept = new VitalsLayoutChoice(new MemoryWindowPositionStore());
-        kept.SaveRetailBars(Server, "Alice", true);
+        kept.SaveRetailBars(Server, "Alice", false);
 
-        Assert.True(kept.RetailBars(Server, "Alice"));
-        Assert.False(kept.RetailBars(Server, "Bob"));
+        Assert.False(kept.RetailBars(Server, "Alice"));
+        // On until a character turns it off.
+        Assert.True(kept.RetailBars(Server, "Bob"));
         // The layout is kept apart from it.
         Assert.Equal(VitalsLayout.Stacked, kept.Load(Server, "Alice"));
     });
@@ -447,7 +447,8 @@ public sealed class DerethVitalsWindowTests
 
     /// <summary>The value labels, in retail's order.</summary>
     private static List<string> Labels(DerethVitalsWindow view) =>
-        view.GetLogicalDescendants().OfType<Avalonia.Controls.TextBlock>().Select(text => text.Inlines?.Text).OfType<string>().Where(text => text.Contains('/')).ToList();
+        view.GetLogicalDescendants().OfType<Avalonia.Controls.TextBlock>().Select(text => text.Inlines?.Text)
+            .Concat(view.GetLogicalDescendants().OfType<OutlinedText>().Select(text => text.Text)).OfType<string>().Where(text => text.Contains('/')).ToList();
 
     /// <summary>A press and release on a control, as a player's click.</summary>
     private static void Press(AvaloniaPanel panel, Control control)
