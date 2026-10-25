@@ -118,20 +118,26 @@ internal sealed class WorldUpdates
         return patch;
     }
 
-    /// <summary>The server's note: starts the check once; later calls return the same task. The task never fails.</summary>
+    /// <summary>
+    /// The server's note: starts the check once; later calls return the same task. The task never fails. A note that comes after the end of
+    /// the DDD exchange (it travels on another queue, so it can) still counts: it overrides the Off that end left.
+    /// </summary>
     public Task Heard(WorldNote note)
     {
-        if (Interlocked.CompareExchange(ref _state, (int)WorldState.Checking, (int)WorldState.Waiting) != (int)WorldState.Waiting)
+        var state = State;
+        if (Server != null || state is not (WorldState.Waiting or WorldState.Off)
+            || Interlocked.CompareExchange(ref _state, (int)WorldState.Checking, (int)state) != (int)state)
             return _running;
         Server = note;
+        if (state == WorldState.Off) ClientUiRuntime.Log("World: the server's note came after the end of the DDD exchange; it counts.");
         if (_server != null) _cache.Unconfirmed(_server, false);
         ClientUiRuntime.Log($"World: the server runs {note.Name}, edition {note.Edition}, update list {note.UpdateList}.");
         return _running = Task.Run(() => Run(note));
     }
 
     /// <summary>
-    /// The DDD exchange ended without a note: a plain server, so the overlay goes off (<see cref="Active"/> null) and the server is forgotten.
-    /// Only the first end of a connection counts: after a note, or after this, it's ignored.
+    /// The DDD exchange ended without a note: a plain server, so the overlay goes off (<see cref="Active"/> null) and the server is forgotten,
+    /// unless a late note still comes (<see cref="Heard"/>). Only the first end of a connection counts: after a note, or after this, it's ignored.
     /// </summary>
     public void NoNote()
     {

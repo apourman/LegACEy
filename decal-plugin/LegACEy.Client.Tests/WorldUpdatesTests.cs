@@ -143,6 +143,21 @@ public sealed class WorldUpdatesTests : IDisposable
     }
 
     [Fact]
+    public async Task ANoteAfterTheEndOfTheExchangeStillSwitchesTheWorldOn()
+    {
+        await Visit(983);
+        var updates = Unreachable(cache);
+        updates.AtStartup();
+
+        updates.NoNote();
+        await updates.Heard(Note(983));
+
+        Assert.Equal(WorldState.Switching, updates.State);
+        Assert.True(updates.HoldsEnter);
+        Assert.NotNull(Unreachable(cache).AtStartup());
+    }
+
+    [Fact]
     public async Task AStartupWorldTheServerNeverConfirmedIsOffNextStart()
     {
         await Visit(983);
