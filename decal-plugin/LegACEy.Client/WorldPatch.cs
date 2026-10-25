@@ -9,9 +9,9 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// One changed or new dat record: which dat, its file id, its iteration, the format version its bytes are in (the high word of the dat
-/// entry's flags, which the client unpacks by), whether the dat stores it compressed, and its bytes (always decompressed).
+/// entry's flags, which the client unpacks by), and its bytes, always decompressed: the overlay serves them as uncompressed records.
 /// </summary>
-public sealed record WorldPatchRecord(string Dat, uint Id, int Iteration, ushort Version, bool Compressed, byte[] Data);
+public sealed record WorldPatchRecord(string Dat, uint Id, int Iteration, ushort Version, byte[] Data);
 
 /// <summary>
 /// A world patch: every dat record that differs from retail, and the world version (the cell dat edition) it brings a game to. The client
@@ -22,7 +22,7 @@ public sealed class WorldPatch(int version, IReadOnlyList<WorldPatchRecord> reco
     public int Version { get; } = version;
     public IReadOnlyList<WorldPatchRecord> Records { get; } = records;
 
-    internal static readonly byte[] Magic = Encoding.ASCII.GetBytes("LWP2");
+    internal static readonly byte[] Magic = Encoding.ASCII.GetBytes("LWP3");
     // Only the game's own dat files, by bare name: a patch never names a path.
     internal static readonly Regex DatName = new(@"^client_[A-Za-z0-9_]+\.dat$", RegexOptions.Compiled);
 
@@ -38,7 +38,6 @@ public sealed class WorldPatch(int version, IReadOnlyList<WorldPatchRecord> reco
             writer.Write(record.Id);
             writer.Write(record.Iteration);
             writer.Write(record.Version);
-            writer.Write(record.Compressed);
             writer.Write(record.Data.Length);
             writer.Write(record.Data);
         }
@@ -87,7 +86,7 @@ public sealed class WorldPatchIndex : IDisposable
         try
         {
             using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
-            if (Encoding.ASCII.GetString(reader.ReadBytes(WorldPatch.Magic.Length)) != "LWP2") throw new InvalidDataException("Not a LegACEy world patch (LWP2).");
+            if (Encoding.ASCII.GetString(reader.ReadBytes(WorldPatch.Magic.Length)) != "LWP3") throw new InvalidDataException("Not a LegACEy world patch (LWP3).");
             var version = reader.ReadInt32();
             var count = reader.ReadInt32();
             if (version < 1 || count < 0) throw new InvalidDataException("A world patch with a bad header.");
@@ -99,7 +98,6 @@ public sealed class WorldPatchIndex : IDisposable
                 var id = reader.ReadUInt32();
                 var iteration = reader.ReadInt32();
                 var format = reader.ReadUInt16();
-                reader.ReadBoolean();
                 var length = reader.ReadInt32();
                 var offset = stream.Position;
                 if (length < 0 || offset + length > stream.Length) throw new InvalidDataException("A world patch cut short.");

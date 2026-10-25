@@ -122,13 +122,6 @@ internal sealed class WorldCache
 
     public bool IsUnconfirmed(string server) => File.Exists(Path.Combine(_root, $"unconfirmed-{Key(server)}"));
 
-    /// <summary>The server no longer runs a world: the game starts retail for it.</summary>
-    public void Forget(string server)
-    {
-        var servers = Servers();
-        if (servers.Remove(server)) SaveServers(servers);
-    }
-
     private Dictionary<string, string> Servers()
     {
         try

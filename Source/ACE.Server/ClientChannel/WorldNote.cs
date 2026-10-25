@@ -7,8 +7,8 @@ namespace ACE.Server.ClientChannel
 {
     /// <summary>
     /// The note a LegACEy server with a world of its own sends at character select, before any player exists: the world's name, the cell
-    /// dat edition the server runs and the world's update-list address. The LegACEy plugin updates the game folder from it; a server that
-    /// sends none is plain, and the plugin leaves the folder alone. Retail ignores the event.
+    /// dat edition the server runs and the world's update-list address. The LegACEy plugin lays that world over the retail dats; a server
+    /// that sends none is plain, and the plugin reads the retail dats. Retail ignores the event.
     /// </summary>
     public static class WorldNote
     {
