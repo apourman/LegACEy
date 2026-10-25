@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.14.0](https://github.com/apourman/LegACEy/compare/v0.13.1...v0.14.0) (2026-10-25)
+
+
+### Features
+
+* server-announced worlds ([#153](https://github.com/apourman/LegACEy/issues/153)) ([b4a1cef](https://github.com/apourman/LegACEy/commit/b4a1cef73af27b17f03dd300b6714204e17550dc))
+* worlds served from memory ([#156](https://github.com/apourman/LegACEy/issues/156)) ([d471f04](https://github.com/apourman/LegACEy/commit/d471f04adcaa80bc4c1c3608ccc143d9c07637bf))
+
+
+### Bug Fixes
+
+* refused Vault deposit with a full pack stays with its owner ([#149](https://github.com/apourman/LegACEy/issues/149)) ([91ad579](https://github.com/apourman/LegACEy/commit/91ad579b9705bf15fb41c933009d9217a1231c6f))
+* rolled-back worlds and late world notes ([#157](https://github.com/apourman/LegACEy/issues/157)) ([dff8dce](https://github.com/apourman/LegACEy/commit/dff8dcea3b0c0d88cbdfb696e8a07555325c7eea))
+* Vault dupe from splitting or giving part of a stack ([#155](https://github.com/apourman/LegACEy/issues/155)) ([77e4b51](https://github.com/apourman/LegACEy/commit/77e4b51830fd3ac42a53f7cd39aa8a8c19f264d5))
+
 ## [0.13.1](https://github.com/apourman/LegACEy/compare/v0.13.0...v0.13.1) (2026-10-24)
 
 
