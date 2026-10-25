@@ -381,8 +381,11 @@ public sealed class DerethWindow : UserControl
     /// <summary>The title's own row under the header, in a window that centres its title.</summary>
     public const int TitleRowHeight = 36;
 
-    /// <summary>The title-bar height of a window that centres its title: the header, the 5 px rule under it and the title row.</summary>
-    public const int CentredTitleBarHeight = TitleBarHeight + 5 + TitleRowHeight;
+    /// <summary>The header of a window that centres its title: it holds only the header buttons, so it is just taller than they are.</summary>
+    public const int CentredHeaderHeight = 24;
+
+    /// <summary>The title-bar height of a window that centres its title: the frame edge, the header, the 5 px rule under it and the title row.</summary>
+    public const int CentredTitleBarHeight = 8 + CentredHeaderHeight + 5 + TitleRowHeight;
 
     /// <summary>The gap between header buttons in a window that centres its title: its actions use it too, so every button is evenly spaced.</summary>
     public const int ActionGap = 4;
@@ -404,7 +407,7 @@ public sealed class DerethWindow : UserControl
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
         var columns = headerActions == null ? "Auto,*,Auto" : stretchActions ? "Auto,Auto,*,Auto" : "Auto,*,Auto,Auto";
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = 40 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = centreTitle ? CentredHeaderHeight : 40 };
         // The emblem's frame fits round its icon at the icon size: a layout never squeezes an icon. It is always there, and
         // takes no space while it has no icon, so a window that changes its icon keeps the same header.
         _emblem = new DerethFrame(DerethFrameArt.Button) { VerticalAlignment = VerticalAlignment.Center };
