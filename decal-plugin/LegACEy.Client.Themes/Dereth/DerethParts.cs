@@ -409,11 +409,6 @@ public sealed class DerethHeaderButton : Button
     private static readonly IBrush[] Rims = { DerethPalette.GoldDarkBrush, DerethPalette.GoldBrush, DerethPalette.GoldDarkBrush };
     private Border? _face;
 
-    static DerethHeaderButton()
-    {
-        IsEnabledProperty.Changed.AddClassHandler<DerethHeaderButton>((button, _) => button.Opacity = button.IsEnabled ? 1 : 0.4);
-    }
-
     public DerethHeaderButton(Control glyph)
     {
         Width = Height = DerethWindow.HeaderButtonSize;
@@ -445,7 +440,10 @@ public sealed class DerethHeaderButton : Button
     }
 }
 
-/// <summary>A window with the Dereth frame, a header of icon, title and close box, the title rule and content.</summary>
+/// <summary>
+/// A window with the Dereth frame, a header of icon, title, actions and close box (or the title on a row of its own under the header),
+/// the title rule and content.
+/// </summary>
 public sealed class DerethWindow : UserControl
 {
     /// <summary>The header of a window without an icon: the title and the header buttons.</summary>
@@ -478,7 +476,7 @@ public sealed class DerethWindow : UserControl
     /// <summary>The side of every header button, the close box included: small, so the header's controls take little of the window.</summary>
     public const int HeaderButtonSize = 18;
 
-    /// <summary>The side of a header button's glyph, inside the button frame's 4 DIP edges.</summary>
+    /// <summary>The side of a header button's glyph, inside the button's 1 DIP rim.</summary>
     public const int HeaderGlyphSize = 10;
 
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
@@ -496,7 +494,8 @@ public sealed class DerethWindow : UserControl
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
         var columns = headerActions == null ? "Auto,*,Auto" : stretchActions ? "Auto,Auto,*,Auto" : "Auto,*,Auto,Auto";
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = centreTitle ? CentredHeaderHeight : iconHeader ? IconHeaderHeight : HeaderHeight };
+        var height = centreTitle ? CentredHeaderHeight : iconHeader ? IconHeaderHeight : HeaderHeight;
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = height };
         // The icon is bare, at its own size: a layout never squeezes an icon, and a frame round it would make the header taller.
         // It is always there, and takes no space while it has no icon, so a window that changes its icon keeps the same header.
         _emblem = new Decorator { VerticalAlignment = VerticalAlignment.Center };
@@ -509,6 +508,7 @@ public sealed class DerethWindow : UserControl
         };
         Grid.SetColumn(_name, 1);
         if (!centreTitle) header.Children.Add(_name);
+        // The X is smaller than the other glyphs: at their size its two strokes read heavier than their outlines.
         var close = new DerethHeaderButton(new DerethPathGlyph("M0,0 L8,8 M8,0 L0,8", 8) { Stroke = DerethPalette.CreamBrush, StrokeThickness = 1.5 });
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         if (headerActions != null)
