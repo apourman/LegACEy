@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -9,6 +10,7 @@ using ACE.Database.Models.Shard.Market;
 using ACE.Database.Tests.Market;
 using ACE.Entity.Enum;
 using ACE.Entity.Enum.Properties;
+using ACE.Server.Entity.Actions;
 using ACE.Server.Market;
 using ACE.Server.WorldObjects;
 
@@ -23,6 +25,8 @@ namespace ACE.Server.Tests.Market
     public partial class VaultTests
     {
         private const string Db = VaultTestWorld.Db;
+        private const uint KeyWcid = 9181; // keysonicscrewdriver, opens any lock
+        private const uint ChestWcid = 143; // chest
 
         [ClassInitialize]
         public static void TestSetup(TestContext context) => VaultTestWorld.Start();
@@ -443,6 +447,54 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"));
             Assert.AreEqual(1, VaultStore.List(account).Count(r => r.ItemGuid == guid));
+        }
+
+        [TestMethod]
+        public void UseOnTargetAfterAWalk_KeyDepositedDuringTheWalkOrBeforeTheUnlock_IsNotUsed()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var key = VaultTestWorld.NewItem(KeyWcid);
+            key.Bonded = BondedStatus.Normal; // the any-lock key is bonded and attuned in the world data, which the Vault refuses
+            key.Attuned = AttunedStatus.Normal;
+            key.Structure = 3;
+            key.MaxStructure = 3;
+            VaultTestWorld.Give(player, key);
+
+            // the use-with-target callback runs once the turn or walk to the chest ends; it queues the unlock on the player for the next tick
+            var afterMove = typeof(Player).GetMethod("UseOnTargetAfterMove", BindingFlags.NonPublic | BindingFlags.Instance);
+            var nextTick = (ActionQueue)typeof(Player).GetField("actionQueue", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(player);
+            void Arrive(WorldObject chest) => VaultTestWorld.OnWorldThread(() => afterMove.Invoke(player, new object[] { key, chest, true /* reached it */ }));
+            void Tick() => VaultTestWorld.OnWorldThread(() => nextTick.RunActions());
+            bool NothingQueued() => ((System.Collections.Concurrent.ConcurrentQueue<IAction>)typeof(ActionQueue).GetProperty("Queue", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(nextTick)).IsEmpty;
+
+            var held = LockedChest();
+            Arrive(held);
+            Tick();
+            Assert.IsFalse(held.IsLocked, "a key still in the pack unlocks the chest");
+            Assert.AreEqual((ushort)2, key.Structure);
+
+            // deposited after the walk, before the queued unlock
+            var beforeUnlock = LockedChest();
+            Arrive(beforeUnlock);
+            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, key.Guid.ClientGUID).Outcome);
+            Tick();
+            Assert.IsTrue(beforeUnlock.IsLocked, "a key the Vault took before the unlock doesn't unlock it");
+
+            // deposited during the walk: the use ends on arrival, before anything is queued (a healing kit has no later check)
+            var duringWalk = LockedChest();
+            Arrive(duringWalk);
+            Assert.IsTrue(NothingQueued(), "no unlock is queued for a key the Vault took during the walk");
+            Tick();
+            Assert.IsTrue(duringWalk.IsLocked, "a key the Vault took during the walk doesn't unlock it");
+            Assert.AreEqual((ushort)2, key.Structure, "and keeps the uses the Vault saved");
+        }
+
+        private static Chest LockedChest()
+        {
+            var chest = (Chest)VaultTestWorld.NewItem(ChestWcid);
+            chest.IsLocked = true;
+            chest.LockCode = "vaulttest";
+            return chest;
         }
 
         // ---- one operation at a time, trade window
