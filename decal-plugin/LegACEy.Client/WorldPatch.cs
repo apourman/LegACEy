@@ -7,8 +7,11 @@ using System.Text.RegularExpressions;
 
 namespace LegACEy.Client.DecalPlugin;
 
-/// <summary>One changed or new dat record: which dat, its file id, its iteration, whether the dat stores it compressed, and its bytes (always decompressed).</summary>
-public sealed record WorldPatchRecord(string Dat, uint Id, int Iteration, bool Compressed, byte[] Data);
+/// <summary>
+/// One changed or new dat record: which dat, its file id, its iteration, the format version its bytes are in (the high word of the dat
+/// entry's flags, which the client unpacks by), whether the dat stores it compressed, and its bytes (always decompressed).
+/// </summary>
+public sealed record WorldPatchRecord(string Dat, uint Id, int Iteration, ushort Version, bool Compressed, byte[] Data);
 
 /// <summary>
 /// A world patch: every dat record that differs from retail, and the world version (the cell dat edition) it brings a game to. The client
@@ -19,7 +22,7 @@ public sealed class WorldPatch(int version, IReadOnlyList<WorldPatchRecord> reco
     public int Version { get; } = version;
     public IReadOnlyList<WorldPatchRecord> Records { get; } = records;
 
-    internal static readonly byte[] Magic = Encoding.ASCII.GetBytes("LWP1");
+    internal static readonly byte[] Magic = Encoding.ASCII.GetBytes("LWP2");
     // Only the game's own dat files, by bare name: a patch never names a path.
     internal static readonly Regex DatName = new(@"^client_[A-Za-z0-9_]+\.dat$", RegexOptions.Compiled);
 
@@ -34,6 +37,7 @@ public sealed class WorldPatch(int version, IReadOnlyList<WorldPatchRecord> reco
             writer.Write(record.Dat);
             writer.Write(record.Id);
             writer.Write(record.Iteration);
+            writer.Write(record.Version);
             writer.Write(record.Compressed);
             writer.Write(record.Data.Length);
             writer.Write(record.Data);
@@ -48,8 +52,8 @@ public sealed class WorldPatch(int version, IReadOnlyList<WorldPatchRecord> reco
     }
 }
 
-/// <summary>Where one record's bytes sit in a patch file, and its iteration.</summary>
-public readonly record struct WorldPatchEntry(int Iteration, long Offset, int Length);
+/// <summary>Where one record's bytes sit in a patch file, its iteration and its format version.</summary>
+public readonly record struct WorldPatchEntry(int Iteration, ushort Version, long Offset, int Length);
 
 /// <summary>
 /// A patch file's index: every record's dat, id, iteration, offset and length, read once, with the file kept open so a record's bytes are
@@ -83,7 +87,7 @@ public sealed class WorldPatchIndex : IDisposable
         try
         {
             using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
-            if (Encoding.ASCII.GetString(reader.ReadBytes(WorldPatch.Magic.Length)) != "LWP1") throw new InvalidDataException("Not a LegACEy world patch.");
+            if (Encoding.ASCII.GetString(reader.ReadBytes(WorldPatch.Magic.Length)) != "LWP2") throw new InvalidDataException("Not a LegACEy world patch (LWP2).");
             var version = reader.ReadInt32();
             var count = reader.ReadInt32();
             if (version < 1 || count < 0) throw new InvalidDataException("A world patch with a bad header.");
@@ -94,13 +98,14 @@ public sealed class WorldPatchIndex : IDisposable
                 if (!WorldPatch.DatName.IsMatch(dat)) throw new InvalidDataException($"A world patch naming {dat}, not a game dat.");
                 var id = reader.ReadUInt32();
                 var iteration = reader.ReadInt32();
+                var format = reader.ReadUInt16();
                 reader.ReadBoolean();
                 var length = reader.ReadInt32();
                 var offset = stream.Position;
                 if (length < 0 || offset + length > stream.Length) throw new InvalidDataException("A world patch cut short.");
                 stream.Seek(length, SeekOrigin.Current);
                 if (!dats.TryGetValue(dat, out var ids)) dats[dat] = ids = new Dictionary<uint, WorldPatchEntry>();
-                ids[id] = new WorldPatchEntry(iteration, offset, length);
+                ids[id] = new WorldPatchEntry(iteration, format, offset, length);
             }
             return new WorldPatchIndex(path, version, dats, count, stream);
         }

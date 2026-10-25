@@ -25,7 +25,7 @@ public sealed class WorldUpdatesTests : IDisposable
 
     private static byte[] Patch(int version, params WorldPatchRecord[] records)
     {
-        var all = records.Prepend(new WorldPatchRecord("client_cell_1.dat", 0xFFFF0001, version, false, BitConverter.GetBytes(version))).ToList();
+        var all = records.Prepend(new WorldPatchRecord("client_cell_1.dat", 0xFFFF0001, version, 1, false, BitConverter.GetBytes(version))).ToList();
         using var stream = new MemoryStream();
         new WorldPatch(version, all).Write(stream);
         return stream.ToArray();
@@ -115,7 +115,7 @@ public sealed class WorldUpdatesTests : IDisposable
     public async Task ANewReleaseDownloadsAndSaysWhenItsPortalRecordsNeedARelaunch()
     {
         await Visit(983);
-        var patch = Patch(984, new WorldPatchRecord("client_portal.dat", 0x01000001, 2, false, new byte[] { 1, 2 }));
+        var patch = Patch(984, new WorldPatchRecord("client_portal.dat", 0x01000001, 2, 3, false, new byte[] { 1, 2 }));
         var updates = Updates(() => Manifest(984, patch), patch);
         updates.AtStartup();
 
@@ -217,9 +217,9 @@ public sealed class WorldUpdatesTests : IDisposable
     {
         var records = new[]
         {
-            new WorldPatchRecord("client_cell_1.dat", 0xA9B4FFFF, 3, true, Encoding.ASCII.GetBytes("a landblock")),
-            new WorldPatchRecord("client_cell_1.dat", 0xA9B40100, 1, false, Array.Empty<byte>()),
-            new WorldPatchRecord("client_portal.dat", 0x01000001, 2, false, Encoding.ASCII.GetBytes("a model")),
+            new WorldPatchRecord("client_cell_1.dat", 0xA9B4FFFF, 3, 2, true, Encoding.ASCII.GetBytes("a landblock")),
+            new WorldPatchRecord("client_cell_1.dat", 0xA9B40100, 1, 3, false, Array.Empty<byte>()),
+            new WorldPatchRecord("client_portal.dat", 0x01000001, 2, 3, false, Encoding.ASCII.GetBytes("a model")),
         };
         var path = Path.Combine(game, "test.patch");
         File.WriteAllBytes(path, Patch(983, records));
@@ -230,7 +230,7 @@ public sealed class WorldUpdatesTests : IDisposable
             foreach (var record in records)
             {
                 var entry = index.Records(record.Dat)![record.Id];
-                Assert.Equal(record.Iteration, entry.Iteration);
+                Assert.Equal((record.Iteration, record.Version), (entry.Iteration, entry.Version));
                 Assert.Equal(record.Data, index.Read(entry));
             }
             Assert.Null(index.Records("client_highres.dat"));

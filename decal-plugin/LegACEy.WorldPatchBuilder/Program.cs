@@ -51,7 +51,7 @@ static int Build(string retail, string edited, string output, string url)
             if (old != null && old.AsSpan().SequenceEqual(bytes)) continue;
             if (old == null) added++;
             else changed++;
-            records.Add(new WorldPatchRecord(name, file.Id, file.Iteration, file.Flags.HasFlag(DatBTreeFileFlags.IsCompressed), bytes));
+            records.Add(new WorldPatchRecord(name, file.Id, file.Iteration, (ushort)file.Version, file.Flags.HasFlag(DatBTreeFileFlags.IsCompressed), bytes));
         }
         var removed = before.Tree.Count(file => !kept.Contains(file.Id));
         Console.WriteLine($"{name}: {changed} changed, {added} new" + (removed > 0 ? $", {removed} removed in the edit and kept by the patch" : ""));

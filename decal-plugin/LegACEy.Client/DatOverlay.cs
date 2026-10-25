@@ -152,11 +152,12 @@ internal sealed class DatOverlay : IDisposable
         var lookUp = (flags & LookUpOnly) != 0;
         // Read first: a failed read leaves the entry and pack untouched for the retail read.
         var data = lookUp ? null : patch.Read(record);
-        // Retail's entry when the dat has the id keeps its version word and date; a new id starts from zeros.
+        // Retail's entry when the dat has the id keeps its date; a new id starts from zeros. The version word is the patch's: the client
+        // unpacks the record by it, and a new id with version 0 never unpacks (the client retries for good, in portal space).
         if (_hook!.OriginalFunction(controller, id, pack, entry, LookUpOnly) == 0)
             for (var i = 0; i < EntryLength; i += 4) Marshal.WriteInt32(entry, i, 0);
-        var head = Marshal.ReadInt32(entry);
-        Marshal.WriteInt32(entry, head & ~1);
+        var head = (Marshal.ReadInt32(entry) & 0xFFFE) | (record.Version << 16);
+        Marshal.WriteInt32(entry, head);
         Marshal.WriteInt32(entry, EntryId, unchecked((int)id));
         Marshal.WriteInt32(entry, EntrySize, record.Length);
         Marshal.WriteInt32(entry, EntryIteration, record.Iteration);
