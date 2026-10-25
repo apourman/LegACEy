@@ -106,6 +106,10 @@ internal sealed class DatOverlay : IDisposable
         _log(patch == null ? "Dat overlay off: the client reads the retail dats." : $"Dat overlay on: world {patch.Version}, {patch.Count} records from {patch.Path}.");
     }
 
+    /// <summary>The patch's bytes for a dat's record, for the plugin's own dat reads; null when the patch doesn't have it or none is on.</summary>
+    public byte[]? Read(string dat, uint id) =>
+        _patch is { } patch && patch.Records(dat) is { } records && records.TryGetValue(id, out var record) ? patch.Read(record) : null;
+
     /// <summary>What the hook did since the last summary, then starts counting again; null when it saw nothing.</summary>
     public string? TakeSummary()
     {

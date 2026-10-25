@@ -460,6 +460,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _enterGame?.Dispose();
             _enterGame = null;
             LogOverlaySummary();
+            PortalDat.Overlay = null;
             _datOverlay?.Dispose();
             _datOverlay = null;
             _postUiDrawHook?.Dispose();
@@ -667,6 +668,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void LoginComplete()
     {
         _loggedIn = true;
+        // A toast from character select (the world's) has said its piece; it doesn't follow the character into the world.
+        if (_updateToast != null) Guard(() => _updateToast.IsVisible = false);
         // A Log out and update whose logout never came through is forgotten, so this session's own logout doesn't close the game.
         _quitPending = false;
         _updates.Check();
@@ -2260,6 +2263,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             _datOverlay = DatOverlay.Create(NativeUi.ReadMemory, Log);
             if (_datOverlay == null) return;
+            PortalDat.Overlay = _datOverlay.Read;
             using var process = Process.GetCurrentProcess();
             var game = IOPath.GetDirectoryName(process.MainModule!.FileName)!;
             var world = new WorldUpdates(new WorldCache(game), WorldCache.Server(WorldCache.CommandLine()));
@@ -2368,6 +2372,41 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         _worldToastHostTried = true;
         return EnsurePostUiDrawHook();
+    }
+
+    /// <summary>
+    /// At character select the toast is the only LegACEy surface, and it takes the pointer only over itself (its ×); everything else stays
+    /// retail's. True when the message was the toast's.
+    /// </summary>
+    private bool _toastHovered;
+
+    private bool CharacterSelectToastInput(int message, int lParam)
+    {
+        if (_updateToastSurface is not { Visible: true } toast) return false;
+        int x = (short)(lParam & 0xffff) - toast.Location.X, y = (short)((lParam >> 16) & 0xffff) - toast.Location.Y;
+        var over = x >= 0 && y >= 0 && x < toast.Bounds.Width && y < toast.Bounds.Height;
+        try
+        {
+            switch (message)
+            {
+                case InputRouterService.WmMouseMove when over:
+                    _toastHovered = true;
+                    toast.Panel.PointerMove(x, y);
+                    break;
+                case InputRouterService.WmMouseMove when _toastHovered:
+                    _toastHovered = false;
+                    toast.Panel.PointerLeave();
+                    break;
+                case InputRouterService.WmLButtonDown when over:
+                    toast.Panel.PointerDown(x, y);
+                    return true;
+                case InputRouterService.WmLButtonUp when over:
+                    toast.Panel.PointerUp(x, y);
+                    return true;
+            }
+        }
+        catch (Exception exception) { UpdateToastFailed(exception); }
+        return false;
     }
 
     /// <summary>Runs the toast's time, and sizes and places it at the bottom centre at the UI size while it shows.</summary>
@@ -3714,6 +3753,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         // Known from character select on, which a world update closes.
         _gameWindow = new IntPtr(hwnd);
+        if (!_failed && !_loggedIn)
+            return CharacterSelectToastInput(message, lParam);
         if (_failed || !_inGame || _portal == null)
             return false;
         // Enter in the game, with retail's chat held and no field of ours taking keys, opens the Dereth chat window's box and eats the key.
