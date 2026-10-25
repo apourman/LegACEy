@@ -115,9 +115,15 @@ internal sealed class InventoryPaperdoll : Canvas
         var height = Scale(RetailHeight);
         DollArea.Width = (ArmourRight - ArmourLeft) * Cells.Pitch + Cells.Cell + 2 * DollClearance + _spare;
         DollArea.Height = height;
-        // The doll stands below the aetheria row, which is drawn over its corner, and above the corner row.
-        DollArea.Padding = new Thickness(0, Scale(AetheriaY) + Cells.Cell + 2, 0, CornerRowHeight + 2 * CornerInset);
+        // The doll stands below the aetheria row and above the corner row.
+        var rowBottom = Scale(AetheriaY) + Cells.Cell + DollClearance;
+        DollArea.Padding = new Thickness(0, rowBottom, 0, CornerRowHeight + 2 * CornerInset);
         SetLeft(DollArea, ArmourLeft * Cells.Pitch + SideGap + 1 - DollClearance);
+        // The first aetheria reaches over the doll area's top-right corner, so that corner is cut away round it, the doll clearance
+        // from its cell, and the cell sits in the window's own space beside the doll.
+        var notchLeft = 3 * Cells.Pitch + 2 * SideGap + _spare + 1 - DollClearance - GetLeft(DollArea);
+        DollArea.Clip = new CombinedGeometry(GeometryCombineMode.Exclude,
+            new RectangleGeometry(new Rect(0, 0, DollArea.Width, height)), new RectangleGeometry(new Rect(notchLeft, 0, DollArea.Width - notchLeft, rowBottom)));
         SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
         SetTop(SlotsToggle, height - CornerRowHeight - CornerInset);
         SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - CornerInset);
