@@ -515,7 +515,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
             return new RetailChatLine(kind, plain, time, sender, channel, senderId, type, links.Count == 0 ? null : links);
         }
 
-        private static string Unescape(string text) =>
+        internal static string Unescape(string text) =>
             Escape.Replace(text, match => match.Groups[1].Value switch { "n" => "\n", "q" => "\"", var other => other });
     }
 }
