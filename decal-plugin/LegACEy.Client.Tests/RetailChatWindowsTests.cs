@@ -244,12 +244,15 @@ public sealed class RetailChatWindowsTests
         port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
         first.Tick();
         // The frame, tabs and input fade with the backdrop, in the main window and a torn-off one alike.
-        foreach (var window in first.Chat.Windows)
-            foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) }) Assert.Equal(0.8, Seen(part), 6);
+        void Shows(double opacity)
+        {
+            foreach (var window in first.Chat.Windows)
+                foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) }) Assert.Equal(opacity, Seen(part), 6);
+        }
+        Shows(0.8);
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds));
         first.Tick();
-        foreach (var window in first.Chat.Windows)
-            foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) }) Assert.Equal(0.3, Seen(part), 6);
+        Shows(0.3);
         // With a backdrop left, the line outlasts its stay instead of fading.
         Assert.Equal(1.0, Seen(first.Main.GetVisualDescendants().OfType<Control>().First(part => part.Tag is DateTime)));
         first.Dispose();
@@ -356,8 +359,9 @@ public sealed class RetailChatWindowsTests
             clock.Advance(TimeSpan.FromSeconds(1));
             desk.Tick();
         }
-        Assert.Equal(Awake, Seen(StripPanel(torn)));
-        Assert.Equal(Awake, Seen(Frame(torn)));
+        // Held, it shows whole, so it can be found at any active opacity.
+        Assert.Equal(1.0, Seen(StripPanel(torn)));
+        Assert.Equal(1.0, Seen(Frame(torn)));
         desk.Release();
 
         // Let go and left alone, it fades as any window does.
@@ -481,10 +485,9 @@ public sealed class RetailChatWindowsTests
     private static TextBlock ChipText(RetailChatWindow window, string label) =>
         window.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == label);
 
-    /// <summary>The window's visual opacity: its own and its ancestors', as the player sees it.</summary>
-    /// <summary>How much of an awake window shows at the default active opacity.</summary>
-    private const double Awake = RetailChatWindows.DefaultActiveOpacity / 100.0;
+    private const double Awake = RetailChatTests.Awake;
 
+    /// <summary>The window's visual opacity: its own and its ancestors', as the player sees it.</summary>
     private static double Seen(Visual part) => part.GetSelfAndVisualAncestors().OfType<Visual>().Aggregate(1.0, (seen, visual) => seen * visual.Opacity);
 
     private sealed class DeskClock

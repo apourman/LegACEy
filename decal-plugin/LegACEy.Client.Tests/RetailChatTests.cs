@@ -901,8 +901,9 @@ public sealed class RetailChatTests
         using var panel = Open(new FakeChatPort(), out var window, clock: () => clock.Now);
         panel.Tick();
         clock.Advance(5);
+        // Held by the host, the window shows whole, whatever its active opacity.
         window.Refresh(keepAwake: true);
-        Assert.Equal(Awake, Seen(TabView(window, "All")));
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
 
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
@@ -977,7 +978,7 @@ public sealed class RetailChatTests
     // ---- helpers ----
 
     /// <summary>How much of an awake window's frame, tabs and input shows at the default active opacity.</summary>
-    private const double Awake = RetailChatWindows.DefaultActiveOpacity / 100.0;
+    internal const double Awake = RetailChatWindows.DefaultActiveOpacity / 100.0;
 
     private const string Server = "server";
 

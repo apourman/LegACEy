@@ -226,7 +226,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The frame is a sibling of the content, not its parent, so it fades without the lines fading with it. The root is hit-testable
         // all over, so the pointer counts as over the window wherever it is in the frame.
         // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
-        _chrome.AddRange(new Control[] { _frame, tabBar, _grooveEdge, inputRow });
+        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, _grooveEdge, inputRow });
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, _scaled } };
         // A tab press that moves out of the strip is a drag; a press released on the tab is a click. Both are read from the window's own
         // events, so a press that moves outside the tab (where the tab itself gets no moves) still reaches the window.
@@ -415,10 +415,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             _linesSettled = false;
         }
         // The whole window, frame and backdrop alike, goes from the active opacity to the inactive one as it fades, as retail's does; only
-        // the lines keep their own.
-        var opacity = (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
+        // the lines keep their own. Held by the host (moved or resized) it shows whole, so even at 0% it can be found.
+        var opacity = keepAwake ? 1 : (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
         foreach (var part in _chrome) SetOpacity(part, opacity);
-        SetOpacity(_groove, opacity);
         _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
         if (_scrollBar != null) SetOpacity(_scrollBar, opacity);
         if (!_linesSettled) _linesSettled = ApplyLines(now);
