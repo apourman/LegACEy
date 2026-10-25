@@ -68,6 +68,30 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
+    public void A_windows_size_row_steps_it_smaller_and_bigger_and_greys_out_while_the_UI_is_locked() => RenderThread.Run(() =>
+    {
+        var percent = 100;
+        var size = new WindowSizeChoice(() => percent, steps => percent += steps * 5);
+        var settings = new ClientSettings(null, null, new[] { new UiWindowChoice("Chat", () => true, _ => { }, size) });
+        using var panel = Tab(settings);
+
+        PressCentre(panel, TextOf(panel, "+"));
+        panel.Tick();
+        Assert.Equal(105, percent);
+        Assert.NotNull(TextOf(panel, "105%"));
+        PressCentre(panel, TextOf(panel, "\u2212"));
+        PressCentre(panel, TextOf(panel, "\u2212"));
+        panel.Tick();
+        Assert.Equal(95, percent);
+
+        settings.LockUi = new LockUiChoice(true, true, _ => { });
+        panel.Tick();
+        PressCentre(panel, TextOf(panel, "+"));
+        panel.Tick();
+        Assert.Equal(95, percent);
+    });
+
+    [Fact]
     public void All_windows_switches_every_window_and_shows_neither_when_they_differ() => RenderThread.Run(() =>
     {
         bool inventory = true, chat = true;
