@@ -130,6 +130,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailChatSwitchFile = "retail-chat-native";
     // Beside the DLL: while this file exists, retail's vitals windows stay retail's. Without it the Dereth vitals window replaces them.
     private const string RetailVitalsSwitchFile = "retail-vitals-native";
+    private const string DatCacheProbeFile = "legacey-cache-probe";
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
     // Beside the DLL: while this file exists, retail's attack panel stays retail's. Without it the Dereth attack bar replaces it in melee and missile.
@@ -2267,6 +2268,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var game = IOPath.GetDirectoryName(process.MainModule!.FileName)!;
             var world = new WorldUpdates(new WorldCache(game), WorldCache.Server(WorldCache.CommandLine()));
             _datOverlay.Use(world.AtStartup());
+            ProbeDatCache("plugin start");
             _world = world;
             _datReport = RetailDatReport.Create(NativeUi.ReadMemory, Log);
             _enterGame = RetailEnterGame.Create(NativeUi.ReadMemory, () => world.HoldsEnter, () =>
@@ -2303,6 +2305,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (world.State == WorldState.Switching && world.Pending is { } pending)
         {
             overlay.Use(pending);
+            ProbeDatCache("character select");
             world.SwitchedOn(_datReport?.Resend() == true);
         }
         if (overlay.Patch != world.ActivePatch && world.State != WorldState.Switching) overlay.Use(world.ActivePatch);
@@ -2314,6 +2317,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         if (!_loggedIn) PlaceUpdateToast();
         if (DateTime.UtcNow - _lastOverlaySummary >= OverlaySummaryEvery) LogOverlaySummary();
+    }
+
+    /// <summary>Logs what the client's object caches hold as the overlay switches on, while the <c>legacey-cache-probe</c> file is beside the DLL.</summary>
+    private void ProbeDatCache(string moment)
+    {
+        if (File.Exists(IOPath.Combine(PluginDirectory, DatCacheProbeFile))) DatCacheProbe.Log(moment, NativeUi.ReadMemory, Log);
     }
 
     private void LogOverlaySummary()
