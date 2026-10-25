@@ -264,7 +264,7 @@ internal sealed unsafe class StormFog : IDisposable
     internal static Vector3 Render(Vector3 game) => new(game.X, game.Z, game.Y);
 
     /// <summary>A cell's position in one space for the whole world: landblock x and y (the id's top two bytes) times 192 m, plus the origin.</summary>
-    private static Vector3 Global(uint cell, Vector3 origin) => new((cell >> 24) * Block + origin.X, ((cell >> 16) & 0xFF) * Block + origin.Y, origin.Z);
+    internal static Vector3 Global(uint cell, Vector3 origin) => new((cell >> 24) * Block + origin.X, ((cell >> 16) & 0xFF) * Block + origin.Y, origin.Z);
 
     /// <summary>Tileable white value noise in the alpha channel: wisps for the fog to drift through.</summary>
     private IntPtr MakeNoise()

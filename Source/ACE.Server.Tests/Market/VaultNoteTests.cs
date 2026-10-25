@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -115,6 +116,78 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(5, NotesInPacks(player), "the notes stay in the pack");
             Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_ledger_entry WHERE account_Id = {account};"));
+        }
+
+        [TestMethod]
+        public void DepositNotes_ThenADelayedSplitOrGive_TakesNothingFromTheBankedStack()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
+            var notes = GiveNotes(player, 10);
+
+            // a split or a partial give captures the stack, waits for an animation or a walk, then shrinks it
+            Assert.AreEqual(VaultOutcome.NotesDeposited, VaultTestWorld.DepositNotes(player).Outcome);
+
+            var toGround = true;
+            var toContainer = true;
+            var splitPart = VaultTestWorld.NewItem(TradeNoteWcid);
+            splitPart.SetStackSize(4);
+
+            VaultTestWorld.OnWorldThread(() =>
+            {
+                // the split to the ground and the partial give shrink the stack, then make the part
+                toGround = (bool)typeof(Player).GetMethod("AdjustStack", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(player, new object[] { notes, -4, player, player });
+
+                toContainer = (bool)typeof(Player).GetMethod("DoHandleActionStackableSplitToContainer", BindingFlags.NonPublic | BindingFlags.Instance)
+                    .Invoke(player, new object[] { notes, player, player, pack, player, splitPart, 0, 4 });
+            });
+
+            Assert.IsFalse(toGround, "the stack is in the Vault now, not the pack");
+            Assert.IsFalse(toContainer, "the split into a container is refused");
+            Assert.AreEqual(10, notes.StackSize, "nothing split off the banked stack");
+            Assert.AreEqual(0, NotesInPacks(player), "no split part reached a pack");
+        }
+
+        [TestMethod]
+        public void SplitIntoASidePack_StillSplitsAStackThePackHolds()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
+            var notes = GiveNotes(player, 10);
+            var splitPart = VaultTestWorld.NewItem(TradeNoteWcid);
+            splitPart.SetStackSize(4);
+
+            var split = false;
+            VaultTestWorld.OnWorldThread(() => split = (bool)typeof(Player).GetMethod("DoHandleActionStackableSplitToContainer", BindingFlags.NonPublic | BindingFlags.Instance)
+                .Invoke(player, new object[] { notes, player, player, pack, player, splitPart, 0, 4 }));
+
+            Assert.IsTrue(split);
+            Assert.AreEqual(6, notes.StackSize);
+            Assert.AreSame(splitPart, pack.Inventory[splitPart.Guid]);
+            Assert.AreEqual(10, NotesInPacks(player));
+        }
+
+        [TestMethod]
+        public void DepositNotes_WhileTrading_IsRefused()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
+            GiveNotes(player, 5, pack); // a trade window offers the side pack, not the notes in it
+
+            SetTrading(player, true);
+            try
+            {
+                Assert.AreEqual(VaultOutcome.Trading, VaultTestWorld.DepositNotes(player).Outcome);
+            }
+            finally
+            {
+                SetTrading(player, false);
+            }
+
+            Assert.AreEqual(5, NotesInPacks(player), "the notes stay in the pack");
         }
 
         // ---- withdraw

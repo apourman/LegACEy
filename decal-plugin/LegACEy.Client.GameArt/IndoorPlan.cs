@@ -150,6 +150,12 @@ public sealed class IndoorPlan
             .Select(p => (Centre: Centre(world[p.Polygon]), Beyond: p.OtherCell))
             .ToList();
 
+        // Doorways' bottom edges and tops: the wall over a doorway (its lintel) is not a wall across it.
+        var openings = world.Where(p => portals.Contains(p.Key) && p.Value.Length >= 3 && Math.Abs(NormalZ(p.Value)) < WallNormalZ)
+            .Select(p => (Edge: WallEdge(p.Value), Top: p.Value.Max(v => v.Z)))
+            .Where(o => o.Edge != null)
+            .Select(o => (Edge: o.Edge!.Value, o.Top))
+            .ToList();
         var floors = new List<IReadOnlyList<GroundPoint>>();
         var walls = new List<(GroundPoint A, GroundPoint B)>();
         var floorHeights = new List<double>();
@@ -163,7 +169,7 @@ public sealed class IndoorPlan
                 floors.Add(points.Select(Flat).ToArray());
                 floorHeights.Add(points.Average(p => p.Z));
             }
-            else if (Math.Abs(normalZ) < WallNormalZ && WallEdge(points) is { } edge)
+            else if (Math.Abs(normalZ) < WallNormalZ && WallEdge(points) is { } edge && !OverDoorway(points, edge, openings))
             {
                 walls.Add(edge);
             }
@@ -184,6 +190,18 @@ public sealed class IndoorPlan
         var dy = a.Y - b.Y;
         if ((dx * dx) + (dy * dy) < MinWall * MinWall) return null;
         return (Flat(a), Flat(b));
+    }
+
+    /// <summary>Whether a wall stands on top of a doorway: its bottom at or above the doorway's top, along the doorway's bottom edge.</summary>
+    private static bool OverDoorway(Vec3[] points, (GroundPoint A, GroundPoint B) edge, List<((GroundPoint A, GroundPoint B) Edge, float Top)> openings) =>
+        openings.Any(o => points.Min(p => p.Z) >= o.Top - WallBottom && Along(edge.A, o.Edge) && Along(edge.B, o.Edge));
+
+    private static bool Along(GroundPoint point, (GroundPoint A, GroundPoint B) line)
+    {
+        float dx = line.B.X - line.A.X, dy = line.B.Y - line.A.Y;
+        var t = Math.Max(0, Math.Min(1, ((point.X - line.A.X) * dx + (point.Y - line.A.Y) * dy) / (dx * dx + dy * dy)));
+        float ex = line.A.X + t * dx - point.X, ey = line.A.Y + t * dy - point.Y;
+        return ex * ex + ey * ey < MinWall * MinWall;
     }
 
     /// <summary>

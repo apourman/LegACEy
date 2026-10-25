@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Developer tool: builds a world patch and its manifest from an edited dat folder and a retail one. Not shipped. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Chorizite.DatReaderWriter" Version="2.1.7" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The patch format, and the index the client's overlay reads it through. -->
+    <Compile Include="..\LegACEy.Client\WorldPatch.cs" LinkBase="Client" />
+  </ItemGroup>
+</Project>

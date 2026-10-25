@@ -355,6 +355,25 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _inGame;
     // Kept apart from the UI, which may have failed: the plugin's own updates still check, and tell the player in chat.
     private readonly PluginUpdates _updates = new(PluginDirectory);
+    // The server's world, laid over the retail dats: switched on at startup for a cached world, and at character select, where Enter is held
+    // from the plugin's start until the server's note, or the end of the DDD exchange without one, says what this server needs. Null when
+    // the plugin couldn't start them (then the client is pure retail and the server decides at Enter).
+    private WorldUpdates? _world;
+    private DatOverlay? _datOverlay;
+    private RetailDatReport? _datReport;
+    // ponytail: portal-overlay spike diagnostic (DatCacheProbe); remove with it. Beside acclient.exe: while this file exists at startup,
+    // the client's object caches are logged as the overlay switches on.
+    private const string DatCacheProbeFile = "legacey-cache-probe";
+    private bool _probeDatCache;
+    private RetailEnterGame? _enterGame;
+    private DateTime _lastOverlaySummary = DateTime.UtcNow;
+    private static readonly TimeSpan OverlaySummaryEvery = TimeSpan.FromMinutes(5);
+    // The world toast last shown, so another shows only when the state or percent changes; cleared by an Enter press, which raises
+    // the toast again (and shows Checking, which otherwise stays quiet).
+    private (WorldState State, int Percent)? _worldShown;
+    private bool _worldRaised;
+    // Whether the toast's own surface was tried at character select, before any LegACEy window exists.
+    private bool _worldToastHostTried;
     private bool _loggedIn;
     private bool _noticeFailLogged;
     private bool _failed;
@@ -384,6 +403,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             NativeUi.Initialize(Log);
+            StartWorldUpdates();
             // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
             if (NativeUi.Ready && RetailPanelCatalogueValid())
             {
@@ -400,6 +420,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _serverChannel.Subscribe(WeatherProtocol.Changed, ShowWeather);
                 _serverChannel.Subscribe(CombatTextProtocol.Hit, ShowHit);
                 _serverChannel.Subscribe(PingProtocol.Placed, ShowPing);
+                _serverChannel.Subscribe(WorldNoteProtocol.Topic, HeardWorld);
             }
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
@@ -440,6 +461,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             _updates.Dispose();
+            _enterGame?.Dispose();
+            _enterGame = null;
+            LogOverlaySummary();
+            PortalDat.Overlay = null;
+            _datOverlay?.Dispose();
+            _datOverlay = null;
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
@@ -603,6 +630,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarPort?.ObjectChanged(id);
     }
 
+    // DDD_EndDDD, which ends the DDD exchange at connect (ACE's GameMessageOpcode).
+    internal const int DddEndMessage = 0xF7EA;
+
     // InventoryPutObjInContainer, WieldObject and InventoryPutObjectIn3D (ACE's GameEventType).
     private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };
 
@@ -623,6 +653,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var moved in InventoryMoveEvents)
             if (GameChannelTransport.GameEventPayload(type, raw, moved) != null)
                 _inventory.MarkStale();
+        // The server's DDD exchange ended: a LegACEy server with a world sent its note before this.
+        if (type == DddEndMessage) _world?.NoNote();
         if (_serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
@@ -640,6 +672,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void LoginComplete()
     {
         _loggedIn = true;
+        HideCharacterSelectToast();
         // A Log out and update whose logout never came through is forgotten, so this session's own logout doesn't close the game.
         _quitPending = false;
         _updates.Check();
@@ -760,7 +793,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_plugins?.SupportsAction(PingProtocol.Place) != true || _serverChannel == null)
         {
-            _radar?.ShowPing(SessionCharacter(), at);
+            ShowPing(SessionCharacter(), at);
             return;
         }
         _serverChannel.Request(PingProtocol.Place, PingProtocol.WritePlace(at), reply =>
@@ -774,9 +807,24 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             var (sender, at) = PingProtocol.ReadPlaced(body);
-            _radar?.ShowPing(sender, at);
+            ShowPing(sender, at);
         }
         catch (Exception exception) { Log($"Could not read a ping: {exception.Message}"); }
+    }
+
+    /// <summary>A ping on the radar and, as a beam, in the world.</summary>
+    private void ShowPing(string sender, RadarPosition at)
+    {
+        _radar?.ShowPing(sender, at);
+        if (_worldEffects is not { } effects) return;
+        effects.Pings.Show(sender, at, RetailRadarWindow.PingColour(sender).ToUInt32());
+        // Indoors, the walls around the spot are scanned once the landblock's plan is read.
+        if (at.Outdoors || RadarPlans() is not { } plans) return;
+        plans.PlanAsync((int)(at.Cell >> 24), (int)((at.Cell >> 16) & 0xFF)).ContinueWith(read =>
+        {
+            try { if (read.IsCompletedSuccessfully) effects.Pings.Scan(sender, at, read.Result); }
+            catch (Exception exception) { Log($"Could not scan around a ping: {exception.Message}"); }
+        }, TaskScheduler.Default);
     }
 
     private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
@@ -799,9 +847,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (!_quitPending) return;
         _quitPending = false;
+        CloseGame("to update");
+    }
+
+    /// <summary>Closes the game as its window's × does, never by ending the process from under it. False when it couldn't be asked to.</summary>
+    private bool CloseGame(string why)
+    {
         const int WmClose = 0x0010;
-        if (_gameWindow == IntPtr.Zero || !PostMessage(_gameWindow, WmClose, IntPtr.Zero, IntPtr.Zero))
-            Log($"Could not close the game to update: window {_gameWindow}");
+        var window = _gameWindow;
+        if (window == IntPtr.Zero)
+        {
+            using var process = Process.GetCurrentProcess();
+            window = process.MainWindowHandle;
+        }
+        if (window == IntPtr.Zero || !PostMessage(window, WmClose, IntPtr.Zero, IntPtr.Zero))
+        {
+            Log($"Could not close the game {why}: window {window}");
+            return false;
+        }
+        Log($"Closing the game {why}.");
+        return true;
     }
 
     public void Logoff()
@@ -810,6 +875,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
         _loggedIn = false;
+        LogOverlaySummary();
         _carriedChatHistory = null;
         _chatListenFailed = false;
         // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
@@ -824,6 +890,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _worldEffects.Selected = 0;
             // The storm and weather stay for the next login, as at start (LastStormFile).
             _worldEffects.Combat.Clear();
+            _worldEffects.Pings.Clear();
         }
         Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }
@@ -1126,6 +1193,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // What this thread allocated since the last frame ended: hooks, the post-UI draw, Decal's events.
         if (_lastFrameEndBytes != 0) _betweenFrameBytes += GC.GetAllocatedBytesForCurrentThread() - _lastFrameEndBytes;
         var start = Stopwatch.GetTimestamp();
+        if (_world != null) Guard(TickWorldUpdates);
         if (_loggedIn)
         {
             // A failed line is tried again next frame, logged once per streak.
@@ -1281,7 +1349,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Out of game or with the windows off, the LegACEy windows are neither captured nor uploaded: they keep their last frame.
         var held = !_inGame || !_windowsEnabled;
         foreach (var surface in _featureSurfaces.Values) surface.Held = held;
-        if (_updateToastSurface != null) _updateToastSurface.Held = held;
+        // At character select the toast shows the server's world, before any window can.
+        if (_updateToastSurface != null) _updateToastSurface.Held = held && _loggedIn;
         if (_dragIconSurface != null) _dragIconSurface.Held = held;
 
         var start = PhaseTimes.Start();
@@ -1438,7 +1507,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
         if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
-        if (windows)
+        if (windows || !_loggedIn)
         {
             try { _updateToastSurface?.DrawNow(); }
             catch (Exception exception) { UpdateToastFailed(exception); }
@@ -2171,18 +2240,192 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // its chat line is not written again.
         try
         {
-            if (_updateToastSurface == null)
-            {
-                var toast = new DerethNoticeToast();
-                var panel = ObservePanel(AvaloniaPanel.Create(() => toast, 1, 1, WindowScale), UpdateToastFailed);
-                panel.ApplyTheme(new DerethClientTheme());
-                _updateToastSurface = new ScreenSurface(_device, panel);
-                _updateToast = toast;
-            }
-            _updateToast!.Show(UpdateToast(notice, OpenPage, () => _updates.CheckNow(), shown => _updateToast?.Show(shown), InPeace,
+            EnsureUpdateToast().Show(UpdateToast(notice, OpenPage, () => _updates.CheckNow(), shown => _updateToast?.Show(shown), InPeace,
                 version => _updates.Install(version), LogOutToUpdate));
         }
         catch (Exception exception) { UpdateToastFailed(exception); }
+    }
+
+    private DerethNoticeToast EnsureUpdateToast()
+    {
+        if (_updateToast is { } shown) return shown;
+        var toast = new DerethNoticeToast();
+        var panel = ObservePanel(AvaloniaPanel.Create(() => toast, 1, 1, WindowScale), UpdateToastFailed);
+        panel.ApplyTheme(new DerethClientTheme());
+        _updateToastSurface = new ScreenSurface(_device, panel);
+        return _updateToast = toast;
+    }
+
+    /// <summary>
+    /// Places the dat overlay and switches on the world cached for the server the game was launched for, before the client opens its dats;
+    /// then starts world updates and the Enter hold at character select, which waits for the server's world note.
+    /// </summary>
+    private void StartWorldUpdates()
+    {
+        try
+        {
+            _datOverlay = DatOverlay.Create(NativeUi.ReadMemory, Log);
+            if (_datOverlay == null) return;
+            PortalDat.Overlay = _datOverlay.Read;
+            using var process = Process.GetCurrentProcess();
+            var game = IOPath.GetDirectoryName(process.MainModule!.FileName)!;
+            var world = new WorldUpdates(new WorldCache(game), WorldCache.Server(WorldCache.CommandLine()));
+            _datOverlay.Use(world.AtStartup());
+            _probeDatCache = File.Exists(IOPath.Combine(game, DatCacheProbeFile));
+            ProbeDatCache("plugin start");
+            _world = world;
+            _datReport = RetailDatReport.Create(NativeUi.ReadMemory, Log);
+            _enterGame = RetailEnterGame.Create(NativeUi.ReadMemory, () => world.HoldsEnter, () =>
+            {
+                _worldRaised = true;
+                _worldShown = null;
+            }, HideCharacterSelectToast, Log);
+        }
+        catch (Exception exception) { Log($"Worlds are off: {exception.Message}"); }
+    }
+
+    /// <summary>The server's world note, pushed at character select.</summary>
+    private void HeardWorld(byte[] body)
+    {
+        WorldNote note;
+        try { note = WorldNoteProtocol.Read(body); }
+        catch (Exception exception)
+        {
+            Log($"Could not read the server's world note: {exception.Message}");
+            return;
+        }
+        _world?.Heard(note);
+    }
+
+    /// <summary>
+    /// Each frame: switches a pending world on and sends the dat report again, so the server lets the character in; keeps the overlay on
+    /// the world <see cref="WorldUpdates.Active"/> names; shows the world's toast as it changes, and places it while at character select;
+    /// logs the overlay's summary every few minutes.
+    /// </summary>
+    private void TickWorldUpdates()
+    {
+        var world = _world!;
+        var overlay = _datOverlay!;
+        if (world.State == WorldState.Switching && world.Pending is { } pending)
+        {
+            overlay.Use(pending);
+            ProbeDatCache("character select");
+            world.SwitchedOn(_datReport?.Resend() == true);
+        }
+        if (overlay.Patch != world.ActivePatch && world.State != WorldState.Switching) overlay.Use(world.ActivePatch);
+        var shown = (world.State, world.Percent);
+        if (_worldShown != shown)
+        {
+            if (WorldToast(world, shown.State, shown.Percent, _worldRaised) is not { } toast) _worldShown = shown;
+            else if (ShowWorldToast(toast)) _worldShown = shown;
+        }
+        if (!_loggedIn) PlaceUpdateToast();
+        if (DateTime.UtcNow - _lastOverlaySummary >= OverlaySummaryEvery) LogOverlaySummary();
+    }
+
+    /// <summary>Logs what the client's object caches hold as the overlay switches on, when the game started with a <c>legacey-cache-probe</c> file beside <c>acclient.exe</c>.</summary>
+    // ponytail: portal-overlay spike diagnostic; remove with DatCacheProbe, its two calls and DatCacheProbeFile.
+    private void ProbeDatCache(string moment)
+    {
+        if (_probeDatCache) DatCacheProbe.Log(moment, NativeUi.ReadMemory, Log);
+    }
+
+    private void LogOverlaySummary()
+    {
+        _lastOverlaySummary = DateTime.UtcNow;
+        if (_datOverlay?.TakeSummary() is { } summary) Log(summary);
+    }
+
+    /// <summary>The world's toast, or null for none. Checking shows only once Enter was pressed.</summary>
+    private static ToastNotice? WorldToast(WorldUpdates world, WorldState state, int percent, bool raised) => state switch
+    {
+        WorldState.Waiting or WorldState.Checking when raised => new ToastNotice(ToastIcon.Search, "Checking this server's world…", "Enter opens once the check is done.", Busy: true),
+        WorldState.Downloading => new ToastNotice(ToastIcon.New, $"Downloading {world.Server?.Name ?? "this server's world"}: {percent}%", "Enter opens once it's ready.", Busy: true),
+        WorldState.On => new ToastNotice(ToastIcon.New, $"{world.Active?.Name ?? "This server's world"} is ready",
+            world.PortalNeedsRelaunch ? "Press Enter to play. Some of its new art shows after you relaunch the game." : "Press Enter to play.",
+            Lifetime: TimeSpan.FromSeconds(8)),
+        WorldState.Relaunch => new ToastNotice(ToastIcon.New, $"{world.Active?.Name ?? "This server's world"} is downloaded",
+            "Relaunch the game to enter it."),
+        WorldState.Unavailable => new ToastNotice(ToastIcon.Failed, "Couldn't download this server's world",
+            "This server may refuse Enter without it; the next launch tries again.", Lifetime: TimeSpan.FromSeconds(12)),
+        _ => null,
+    };
+
+    /// <summary>
+    /// Shows a world toast: in the world once windows can open, at character select on the toast's own surface. False to try again
+    /// next frame.
+    /// </summary>
+    private bool ShowWorldToast(ToastNotice toast)
+    {
+        if (_failed) return true;
+        if (_loggedIn)
+        {
+            if (!(_inGame && CanOpenWindows)) return false;
+        }
+        // Tried and failed: no toast at character select, but the update goes on.
+        else if (!CharacterSelectToastHost()) return _worldToastHostTried;
+        try { EnsureUpdateToast().Show(toast); }
+        catch (Exception exception) { UpdateToastFailed(exception); }
+        return true;
+    }
+
+    /// <summary>
+    /// The device and the post-UI draw the toast needs at character select, before the UI starts at world entry. Tried once the device
+    /// exists; a draw hook that can't be placed is not tried again (each try reads the game's exe).
+    /// </summary>
+    private bool CharacterSelectToastHost()
+    {
+        if (_postUiDrawHook?.IsInstalled == true && _device != IntPtr.Zero) return true;
+        if (_worldToastHostTried) return false;
+        if (_device == IntPtr.Zero)
+        {
+            try { _device = GameDevice.Open(); }
+            catch (InvalidOperationException) { return false; }
+        }
+        _worldToastHostTried = true;
+        return EnsurePostUiDrawHook();
+    }
+
+    // Whether the pointer is over the toast at character select, so leaving it is sent once.
+    private bool _toastHovered;
+
+    /// <summary>A toast from character select (the world's) has said its piece: it doesn't follow the character into portal space.</summary>
+    private void HideCharacterSelectToast()
+    {
+        if (_updateToast != null) Guard(() => _updateToast.IsVisible = false);
+    }
+
+    /// <summary>
+    /// At character select the toast is the only LegACEy surface, and it takes the pointer only over itself (its ×); everything else stays
+    /// retail's. True when the message was the toast's.
+    /// </summary>
+    private bool CharacterSelectToastInput(int message, int lParam)
+    {
+        if (_updateToastSurface is not { Visible: true } toast) return false;
+        int x = (short)(lParam & 0xffff) - toast.Location.X, y = (short)((lParam >> 16) & 0xffff) - toast.Location.Y;
+        var over = x >= 0 && y >= 0 && x < toast.Bounds.Width && y < toast.Bounds.Height;
+        try
+        {
+            switch (message)
+            {
+                case InputRouterService.WmMouseMove when over:
+                    _toastHovered = true;
+                    toast.Panel.PointerMove(x, y);
+                    break;
+                case InputRouterService.WmMouseMove when _toastHovered:
+                    _toastHovered = false;
+                    toast.Panel.PointerLeave();
+                    break;
+                case InputRouterService.WmLButtonDown when over:
+                    toast.Panel.PointerDown(x, y);
+                    return true;
+                case InputRouterService.WmLButtonUp when over:
+                    toast.Panel.PointerUp(x, y);
+                    return true;
+            }
+        }
+        catch (Exception exception) { UpdateToastFailed(exception); }
+        return false;
     }
 
     /// <summary>Runs the toast's time, and sizes and places it at the bottom centre at the UI size while it shows.</summary>
@@ -3527,6 +3770,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>
     public bool WindowMessage(int hwnd, int message, int wParam, int lParam)
     {
+        // Known from character select on.
+        _gameWindow = new IntPtr(hwnd);
+        if (!_failed && !_loggedIn)
+            return CharacterSelectToastInput(message, lParam);
         if (_failed || !_inGame || _portal == null)
             return false;
         // Enter in the game, with retail's chat held and no field of ours taking keys, opens the Dereth chat window's box and eats the key.
@@ -3548,7 +3795,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 });
             return eat;
         }
-        _gameWindow = new IntPtr(hwnd);
         if (_handOff != null)
             Guard(() => ContinueHandOff(message));
         if (message == InputRouterService.WmMouseMove)

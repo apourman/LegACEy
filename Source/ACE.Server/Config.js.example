@@ -38,6 +38,14 @@
         // Note that for servers running on Windows, a path like c:\ace\ MUST be entered as c:\\ace\\, replacing the single backslashes (\) with double backslashes (\\)
         "DatFilesDirectory": "c:\\ACE\\Dats\\",
 
+        // LegACEy world: set LegaceyWorldUpdateUrl when your dats hold a world of your own (patched with LegACEy.WorldPatchBuilder).
+        // At character select the server then tells the LegACEy plugin the world's name, its cell dat edition (read from the dats above)
+        // and this update list's address (https; GitHub's releases/latest/download/world-manifest.json works), and the plugin updates
+        // the player's game folder from it. Leave it empty for retail dats: no note is sent and the plugin leaves players' files alone.
+        // LegaceyWorldName is shown to players; empty uses WorldName.
+        "LegaceyWorldName": "",
+        "LegaceyWorldUpdateUrl": "",
+
         // The folder that contains Harmony mods
         "ModsDirectory": "c:\\ACE\\Mods\\",
 

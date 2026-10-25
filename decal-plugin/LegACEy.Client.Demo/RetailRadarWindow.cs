@@ -198,7 +198,10 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && _player != null)
             {
                 e.Handled = true;
-                PingRequested?.Invoke(RadarScope.PositionAt(_player, Options, Radius, e.GetPosition(_scope)));
+                var at = RadarScope.PositionAt(_player, Options, Radius, e.GetPosition(_scope));
+                // Indoors, on the level drawn under the pointer: the solid one, or a faint one where only it has floor.
+                if (_plan != null && _frame?.Ladder is { } ladder) at = _plan.Pin(at, ladder.Current, ladder.Peek);
+                PingRequested?.Invoke(at);
                 return;
             }
             var hit = _frame == null ? null : RadarScope.Hit(_frame, e.GetPosition(_scope));
@@ -336,7 +339,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     // Each sender's pings keep one colour, picked from their name, so fellows' pings tell apart.
     private static readonly Color[] PingColours = { Color.Parse("#FF9A2E"), Color.Parse("#FF5FD2"), Color.Parse("#7CFF6B"), Color.Parse("#5CC8FF"), Color.Parse("#FFE14D") };
 
-    private static Color PingColour(string sender)
+    public static Color PingColour(string sender)
     {
         var hash = 0;
         foreach (var c in sender) hash = hash * 31 + c;

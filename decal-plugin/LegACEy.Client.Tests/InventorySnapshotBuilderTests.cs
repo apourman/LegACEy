@@ -67,6 +67,21 @@ public sealed class InventorySnapshotBuilderTests
     }
 
     [Fact]
+    public void Items_in_a_pack_with_no_slot_yet_take_its_free_slots_instead_of_vanishing()
+    {
+        // A pack picked up off the ground: ACE sends its slot list before the items, so Decal has no slot for them until a relog.
+        var reader = new FakeReader { SidePackCapacity = 1 };
+        reader.Objects.Add(Pack(PackInSlotZero, slot: 0, capacity: 24));
+        reader.Objects.Add(Item(0x50000101, container: PackInSlotZero, slot: 1));
+        reader.Objects.Add(Item(0x50000102, container: PackInSlotZero, slot: -1));
+        reader.Objects.Add(Item(0x50000103, container: PackInSlotZero, slot: -1));
+
+        var snapshot = InventorySnapshotBuilder.Build(reader);
+
+        Assert.Equal(new[] { (0x50000101u, 1), (0x50000102u, 0), (0x50000103u, 2) }, snapshot.Items.Select(item => (item.Id, item.Slot)));
+    }
+
+    [Fact]
     public void A_multi_slot_armour_item_is_in_every_slot_it_covers()
     {
         var reader = new FakeReader();

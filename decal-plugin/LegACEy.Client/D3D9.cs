@@ -63,7 +63,7 @@ internal static unsafe class D3D9
 
     // Values from mingw-w64 d3d9types.h.
     public const uint FvfXyz = 0x002, FvfXyzRhw = 0x004, FvfNormal = 0x010, FvfDiffuse = 0x040, FvfTex1 = 0x100, FvfTex2 = 0x200, FvfTex3 = 0x300;
-    public const int LineStrip = 3, TriangleList = 4, TriangleStrip = 5;
+    public const int LineList = 2, LineStrip = 3, TriangleList = 4, TriangleStrip = 5;
     public const int TransformView = 2, TransformProjection = 3, TransformWorld = 256;
     private const int StateBlockAll = 1, FormatA8R8G8B8 = 21, PoolDefault = 0, PoolManaged = 1, UsageRenderTarget = 1, ClearTarget = 1, ClearZBuffer = 2;
 
@@ -72,7 +72,7 @@ internal static unsafe class D3D9
         ZEnable = 7, FillMode = 8, ShadeMode = 9, ZWriteEnable = 14, AlphaTestEnable = 15, SrcBlend = 19, DestBlend = 20,
         CullMode = 22, ZFunc = 23, AlphaRef = 24, AlphaFunc = 25, AlphaBlendEnable = 27, FogEnable = 28, SpecularEnable = 29, FogColor = 34, FogTableMode = 35, FogDensity = 38, RangeFogEnable = 48,
         StencilEnable = 52, TextureFactor = 60, Lighting = 137, Ambient = 139, FogVertexMode = 140, ColorVertex = 141, NormalizeNormals = 143, ColorWriteEnable = 168,
-        BlendOp = 171, ScissorTestEnable = 174, SeparateAlphaBlendEnable = 206
+        ClipPlaneEnable = 152, BlendOp = 171, ScissorTestEnable = 174, SeparateAlphaBlendEnable = 206
     }
 
     public enum StageState { ColorOp = 1, ColorArg1 = 2, ColorArg2 = 3, AlphaOp = 4, AlphaArg1 = 5, AlphaArg2 = 6, TexCoordIndex = 11, TextureTransformFlags = 24 }
@@ -82,7 +82,7 @@ internal static unsafe class D3D9
     // D3DTOP, D3DTA, D3DTEXF, D3DTADDRESS, D3DCMP, D3DCULL, D3DFILL, D3DSHADE, D3DBLEND and D3DBLENDOP values.
     public const int OpDisable = 1, OpSelectArg1 = 2, OpModulate = 4, OpModulate2x = 5, OpAddSigned = 8, OpBlendDiffuseAlpha = 12, ArgDiffuse = 0, ArgCurrent = 1, ArgTexture = 2, ArgFactor = 3, ArgComplement = 0x10;
     public const int FilterNone = 0, FilterPoint = 1, FilterLinear = 2, AddressWrap = 1, AddressClamp = 3;
-    public const int CmpLessEqual = 4, CmpGreaterEqual = 7, CullNone = 1, FillSolid = 3, ShadeGouraud = 2;
+    public const int CmpLessEqual = 4, CmpGreater = 5, CmpGreaterEqual = 7, CmpAlways = 8, CullNone = 1, FillSolid = 3, ShadeGouraud = 2;
     public const int BlendOne = 2, BlendSrcColor = 3, BlendSrcAlpha = 5, BlendInvSrcAlpha = 6, BlendDestColor = 9, BlendOpAdd = 1;
 
     /// <summary>D3DSURFACE_DESC.</summary>

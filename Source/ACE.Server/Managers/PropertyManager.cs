@@ -590,6 +590,7 @@ namespace ACE.Server.Managers
                 ("runrate_add_hooks", new Property<bool>(false, "if TRUE, adds some runrate hooks that were missing from retail (exhaustion done, raise skill/attribute")),
                 ("reportbug_enabled", new Property<bool>(false, "toggles the /reportbug player command")),
                 ("require_spell_comps", new Property<bool>(true, "if FALSE, spell components are no longer required to be in inventory to cast spells. defaults to enabled, as in retail")),
+                ("refuse_older_dats", new Property<bool>(true, "with DAT patching off, clients whose dats are older than the server's reach character select (where the LegACEy plugin updates them) and, if TRUE, are refused at Enter; if FALSE they enter with a chat warning")),
                 ("safe_spell_comps", new Property<bool>(false, "if TRUE, disables spell component burning for everyone")),
                 ("salvage_handle_overages", new Property<bool>(false, "in retail, if 2 salvage bags were combined beyond 100 structure, the overages would be lost")),
                 ("show_ammo_buff", new Property<bool>(false, "shows active enchantments such as blood drinker on equipped missile ammo during appraisal")),

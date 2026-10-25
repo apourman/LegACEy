@@ -26,6 +26,25 @@ public sealed class RadarPlanLevel
     /// <summary>The level's height in landblock metres.</summary>
     public float Height { get; }
 
+    /// <summary>A spot on this level: in the cell whose floor it is over, at that floor's height; null when it is over none of the level's floors.</summary>
+    public RadarPosition? On(RadarPosition at)
+    {
+        foreach (var cell in _level.Cells)
+            if (cell.Floors.Any(floor => Inside(floor, at.X, at.Y)))
+                return at with { Cell = (at.Cell & 0xFFFF0000) | cell.Id, Z = cell.Height };
+        return null;
+    }
+
+    private static bool Inside(IReadOnlyList<GroundPoint> polygon, float x, float y)
+    {
+        var inside = false;
+        for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
+            if ((polygon[i].Y > y) != (polygon[j].Y > y) &&
+                x < (polygon[j].X - polygon[i].X) * (y - polygon[i].Y) / (polygon[j].Y - polygon[i].Y) + polygon[i].X)
+                inside = !inside;
+        return inside;
+    }
+
     /// <summary>The floors as one path. Built on first use, so the seam's tests never make platform geometry.</summary>
     public Geometry Floors => _floors ??= FloorPath(_level);
 
@@ -118,6 +137,19 @@ public sealed class RadarPlan
         for (var level = 0; level < Levels.Count; level++)
             if (nearest < 0 || Math.Abs(Levels[level].Height - z) < Math.Abs(Levels[nearest].Height - z)) nearest = level;
         return nearest;
+    }
+
+    /// <summary>
+    /// Where a ping lands for a radar showing <paramref name="playerLevel"/> and <paramref name="peekLevel"/>: on the level drawn on top at
+    /// the spot (the solid level, then the faint ones over the others), in the cell under it, at its floor. Over no floor, it keeps its cell
+    /// and takes the solid level's height.
+    /// </summary>
+    public RadarPosition Pin(RadarPosition at, int playerLevel, int peekLevel = -1)
+    {
+        var draws = DrawOrder(playerLevel, peekLevel);
+        for (var i = draws.Count - 1; i >= 0; i--)
+            if (draws[i].Level.On(at) is { } on) return on;
+        return draws.Count == 0 ? at : at with { Z = draws[draws.Count - 1].Level.Height };
     }
 
     /// <summary>

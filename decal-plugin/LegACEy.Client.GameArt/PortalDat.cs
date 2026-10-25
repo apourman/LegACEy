@@ -43,6 +43,12 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     public string Path { get; }
 
     /// <summary>
+    /// The world laid over the dats (the client's dat overlay): a record's bytes by dat file name and id, or null to read the file.
+    /// Process-wide, as the client's own overlay is, so the radar, water and weather see the server's world too.
+    /// </summary>
+    public static Func<string, uint, byte[]?>? Overlay { get; set; }
+
+    /// <summary>
     /// Decode an interface image to premultiplied BGRA, or return null if it is missing or in an unsupported format.
     /// Each id is decoded once; callers share the result and must not change its pixels.
     /// </summary>
@@ -200,6 +206,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     /// <summary>Find a file in the B-tree and read its blocks, one read at a time on the shared stream.</summary>
     internal byte[]? ReadFile(uint id)
     {
+        if (Overlay?.Invoke(System.IO.Path.GetFileName(Path), id) is { } overlaid) return overlaid;
         lock (_stream) return FindFile(id);
     }
 

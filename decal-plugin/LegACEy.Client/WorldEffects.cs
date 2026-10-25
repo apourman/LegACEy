@@ -12,7 +12,8 @@ using static LegACEy.Client.DecalPlugin.D3D9;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Effects drawn into retail's 3D world: the selection outline, livelier water (<see cref="Water"/>) and the storm fog preview (<see cref="StormFog"/>).
+/// Effects drawn into retail's 3D world: the selection outline, livelier water (<see cref="Water"/>), the storm fog preview (<see cref="StormFog"/>)
+/// and radar pings (<see cref="PingBeams"/>).
 /// The outline is a gold glow around the selected object, seen through walls. While retail draws a part, <c>CPhysicsPart::Draw</c> keeps the part in a
 /// global; each of the device's indexed draws made for a part of the selected object is drawn again, flat white with no depth test, into
 /// a mask. After retail's world (<c>SmartBox::Draw</c>), the mask is spread into a glow texture by drawing it several times offset, and the
@@ -22,10 +23,20 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed unsafe class WorldEffects : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xAD0 near 0x50E000, +0xA0 near 0x455000) for names; our objdump read of installed acclient.exe";
-    private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartArrayDrawAddress = 0x00518E00;
+    private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartDrawAddress = 0x0050E270;
+    private const uint SphereTestAddress = 0x0054CE60, UpdatePartsAddress = 0x00510140, PartViewerDistanceAddress = 0x0050EB00;
     private const uint LandscapeDrawAddress = 0x00506D90;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
+    // The view retail draws through: the portal views RenderDeviceD3D::DrawMesh loops over (0x867330, per room), then the current view and
+    // the clip planes its polygons are cut to, as set by the view setter (0x54DCF0). After the world they are the last room's.
+    private const uint FullViewAddress = 0x0054FB60;
+    private static readonly int*[] ViewGlobals =
+    {
+        (int*)0x00867330, (int*)0x008672EC, (int*)0x00847054, (int*)0x00847060, (int*)0x008671C8,
+        (int*)0x00847050, (int*)0x00867304, (int*)0x008470D0, (int*)0x008470CC, (int*)0x00867300
+    };
+    private readonly int[] _savedView = new int[ViewGlobals.Length];
     // The player's CPhysicsObj, kept by CPhysicsObj::SetPlayer.
     private static readonly int* PlayerObject = (int*)0x00844D68;
     private const uint Gold = 0xFFFFC040;
@@ -55,8 +66,27 @@ internal sealed unsafe class WorldEffects : IDisposable
             Source, "the layout read here: CPhysicsObj +0x4C is its cell id: the player's, for the storm and weather (outdoors, a building's room, a dungeon)"),
         new NativeUiEntry("CPhysicsObj::GetObjectA", GetObjectAddress, NativeUiCatalogue.Bytes("8B 0D 64 4D 84 00 85 C9 74 0B 8B 44 24 04 50"),
             Source, "Cdecl (object id): CObjectMaint lookup, null when the object is not in the world"),
-        new NativeUiEntry("CPartArray::Draw", PartArrayDrawAddress, NativeUiCatalogue.Bytes("56 57 8B F9 8B 47 58 33 F6 85 C0 76 1C 8D 49 00 8B 47 5C 8B 0C B0 85 C9 74 07 6A 00"),
-            Source, "ThisCall (Position*, unused): CPhysicsPart::Draw(0) for each part; part count +0x58, parts +0x5C"),
+        new NativeUiEntry("CPartArray::Draw", 0x00518E00, NativeUiCatalogue.Bytes("56 57 8B F9 8B 47 58 33 F6 85 C0 76 1C 8D 49 00 8B 47 5C 8B 0C B0 85 C9 74 07 6A 00"),
+            Source, "the layout read here: CPartArray part count +0x58, parts +0x5C"),
+        // Past the prologue, in case a hook patches it.
+        new NativeUiEntry("CPhysicsPart::Draw reads its force flag", PartDrawAddress + 0x13, NativeUiCatalogue.Bytes("55 8B 6C 24 0C 85 ED 57 75 12"),
+            Source, "ThisCall (int force): unforced, it skips a part already drawn this frame; forced, RenderDeviceD3D::DrawMesh (0x5A1970) queues it through the paperdoll's BSP path, which never reaches the device draws hooked here"),
+        new NativeUiEntry("CPhysicsObj::UpdatePartsInternal", UpdatePartsAddress,
+            NativeUiCatalogue.Bytes("8B 81 A8 00 00 00 F6 C4 10 75 12 8B 41 10 85 C0 74 0B 83 C1 50 51 8B C8 E8"),
+            Source, "ThisCall (): CPartArray::SetFrame (0x519E40) with the object's frame (+0x50) places its parts where it is now"),
+        new NativeUiEntry("CPhysicsPart::UpdateViewerDistance", PartViewerDistanceAddress, NativeUiCatalogue.Bytes("83 EC 1C 56 8B F1 8B 46 20 D9 46 24 8B 00 D8 48 7C"),
+            Source, "ThisCall (): picks the part's detail by the viewer's distance, then calc_draw_frame (0x50EA70) copies its place (+0x34, +0x38) to the place it is drawn at (+0x78)"),
+        new NativeUiEntry("Render: draw through the whole screen", FullViewAddress, NativeUiCatalogue.Bytes("8A 0D 38 03 87 00 56 B8 01 00 00 00 33 F6 84 C8"),
+            Source, "Cdecl (): the portal views become one full-screen view (0x8702F0), set as the current view; as before the landscape"),
+        new NativeUiEntry("Render: draw through the whole screen sets the portal views", 0x0054FBFB, NativeUiCatalogue.Bytes("C7 05 30 73 86 00 F0 02 87 00"),
+            Source, "the global saved and put back here: 0x867330, the portal views RenderDeviceD3D::DrawMesh loops over"),
+        new NativeUiEntry("Render: set the current view", 0x0054DCF0, NativeUiCatalogue.Bytes(
+            "8B 54 24 04 8B 44 24 08 A3 EC 72 86 00 89 15 54 70 84 00 8B 4A 04 8D 04 40 8D 04 C1 8B 08 89 0D 60 70 84 00 41 56 BE 01 00 00 00 " +
+            "D3 E6 4E 89 35 C8 71 86 00 8B 48 04 8B 52 14 8D 0C 49 8D 0C CA 89 0D 50 70 84 00 8B 50 08 89 15 04 73 86 00 8B 48 0C 89 0D D0 70 84 00 " +
+            "8B 50 10 89 15 CC 70 84 00 8B 40 14 A3 00 73 86 00 5E C3"),
+            Source, "the globals it writes, saved and put back around the full-screen view"),
+        new NativeUiEntry("The view-cone sphere test", SphereTestAddress, NativeUiCatalogue.Bytes("83 EC 1C D9 05 84 FC 81 00 8B 15 34 73 86 00"),
+            Source, "Cdecl (CSphere*): 0 when a part's bounding sphere is outside the view cone; RenderDeviceD3D::DrawMesh skips the part then. Hooked only while the culled selection is drawn"),
         new NativeUiEntry("CPhysicsObj::SetLuminosity reads the part array", 0x00512374, NativeUiCatalogue.Bytes("8B 4E 10 85 C9 74 76"),
             Source, "the layout read here: CPhysicsObj +0x10 is its CPartArray")
     };
@@ -96,13 +126,29 @@ internal sealed unsafe class WorldEffects : IDisposable
     private delegate IntPtr GetObjectFn(uint objectId);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate void DrawPartsFn(IntPtr partArray, IntPtr position);
+    private delegate void DrawPartFn(IntPtr part, int force);
+
+    [Function(CallingConventions.Cdecl)]
+    private delegate int SphereTestFn(IntPtr sphere);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void FullViewFn();
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void UpdatePartsFn(IntPtr physicsObject);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void PartViewerDistanceFn(IntPtr part);
 
     private readonly GetObjectFn _getObject = Marshal.GetDelegateForFunctionPointer<GetObjectFn>(new IntPtr(GetObjectAddress));
-    private readonly DrawPartsFn _drawParts = Marshal.GetDelegateForFunctionPointer<DrawPartsFn>(new IntPtr(PartArrayDrawAddress));
+    private readonly DrawPartFn _drawPart = Marshal.GetDelegateForFunctionPointer<DrawPartFn>(new IntPtr(PartDrawAddress));
+    private readonly UpdatePartsFn _updateParts = Marshal.GetDelegateForFunctionPointer<UpdatePartsFn>(new IntPtr(UpdatePartsAddress));
+    private readonly PartViewerDistanceFn _partViewerDistance =
+        Marshal.GetDelegateForFunctionPointer<PartViewerDistanceFn>(new IntPtr(PartViewerDistanceAddress));
+    private readonly FullViewFn _useFullView = Marshal.GetDelegateForFunctionPointer<FullViewFn>(new IntPtr(FullViewAddress));
     // While retail draws its world: parts drawn outside it (retail's 3D paperdoll in the inventory, with its own camera) are not measured or
     // outlined. While the selection, culled this frame, is drawn into the mask only.
-    private bool _inWorld, _forcing;
+    private bool _inWorld, _drawingCulledSelection;
 
     private readonly IntPtr _device;
     private readonly Action<string> _log;
@@ -113,10 +159,12 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<DrawIndexedFn> _drawHook;
     private readonly IHook<DrawFn> _drawPrimitiveHook;
     private readonly IHook<ResetFn> _resetHook;
+    private readonly IHook<SphereTestFn> _sphereHook;
     private readonly StormFog _fog;
     private readonly Weather _weather;
     private readonly Water _water;
     private readonly CombatText _combat;
+    private readonly PingBeams _pings;
     private GCHandle _root;
     private IntPtr _mask, _glow;
     private int _width, _height;
@@ -137,12 +185,16 @@ internal sealed unsafe class WorldEffects : IDisposable
         _weather = new Weather(device, _fog, portal, log);
         _water = new Water(device, _fog, portal, log);
         _combat = new CombatText(device, log);
+        _pings = new PingBeams(device);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         if (landscape) _landscapeHook = ReloadedHooks.Instance.CreateHook<LandscapeDrawFn>(OnLandscapeDraw, LandscapeDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
         _drawPrimitiveHook = ReloadedHooks.Instance.CreateHook<DrawFn>(OnDraw, Method(device, DrawPrimitiveSlot).ToInt64());
         _resetHook = ReloadedHooks.Instance.CreateHook<ResetFn>(OnReset, Method(device, ResetSlot).ToInt64());
+        _sphereHook = ReloadedHooks.Instance.CreateHook<SphereTestFn>(OnSphereTest, SphereTestAddress);
+        _sphereHook.Activate();
+        _sphereHook.Disable();
         _resetHook.Activate();
         _drawHook.Activate();
         _drawPrimitiveHook.Activate();
@@ -169,6 +221,9 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     /// <summary>Floating combat text over the targets of the hits the server reports.</summary>
     public CombatText Combat => _combat;
+
+    /// <summary>Radar pings as beams on the pinged spots.</summary>
+    public PingBeams Pings => _pings;
 
     /// <summary>The weather and the landblock in the middle of it, or null for clear skies.</summary>
     public (WeatherKind Kind, int X, int Y)? Weather { get => _serverWeather; set => _weather.Current = _serverWeather = value; }
@@ -225,7 +280,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     {
         _drawCalls++;
         var original = _drawHook.OriginalFunction;
-        if (_forcing)
+        if (_drawingCulledSelection)
         {
             // Not on screen: the selection is drawn here only so the outline shows through what culled it.
             try { if (DrawsSelected()) MaskIndexed(original, device, type, baseVertex, minIndex, vertices, startIndex, primitives, SelectionChannels); }
@@ -342,6 +397,13 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// </summary>
     private int OnDraw(IntPtr device, int type, uint startVertex, uint primitives)
     {
+        if (_drawingCulledSelection)
+        {
+            // As in OnDrawIndexed: the forced selection goes into the mask only.
+            try { if (DrawsSelected()) DrawIntoMask(() => _drawPrimitiveHook.OriginalFunction(device, type, startVertex, primitives), SelectionChannels); }
+            catch (Exception exception) { Fail(exception); }
+            return 0;
+        }
         if (Fogging && _worldFog is { } fog && device == _device && !_failed)
         {
             try { ApplyFog(fog); }
@@ -387,6 +449,9 @@ internal sealed unsafe class WorldEffects : IDisposable
                 SetRenderState(_device, RenderState.AlphaTestEnable, 0);
                 SetRenderState(_device, RenderState.FogEnable, 0);
                 SetRenderState(_device, RenderState.StencilEnable, 0);
+                // Indoors retail may hold drawing to the portal in view; the outline must show past it (backlog 051).
+                SetRenderState(_device, RenderState.ScissorTestEnable, 0);
+                SetRenderState(_device, RenderState.ClipPlaneEnable, 0);
                 SetRenderState(_device, RenderState.ColorWriteEnable, channels);
                 SetRenderState(_device, RenderState.TextureFactor, unchecked((int)0xFFFFFFFF));
                 SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
@@ -461,8 +526,9 @@ internal sealed unsafe class WorldEffects : IDisposable
                 }
                 start = PhaseTimes.Start();
                 _combat.Draw(_fog);
+                _pings.Draw(_fog);
                 if (!_outlined && Selected != 0) DrawCulledSelection();
-                _phases.Add("combat+selection", start);
+                _phases.Add("combat+pings+selection", start);
                 _frames++;
             }
             catch (Exception exception) { Fail(exception); }
@@ -493,8 +559,11 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>
-    /// Has retail draw the selected object's parts again, into the mask only: indoors, retail culls what is in rooms out of view.
-    /// ponytail: a culled object's draw position is where retail last placed it; a moving one may lag until it is in view again.
+    /// Has retail draw the selected object's parts again, into the mask only: indoors, retail culls what is in rooms out of view. Unforced,
+    /// with the view-cone test passing every part: retail skips a part whose sphere is outside every portal's cone, so a target a room or
+    /// two away was not outlined, and forced, the parts went through the paperdoll's path and never reached the device (backlog 051).
+    /// Through the whole screen: after the world the view left is the last room drawn's, whose doorway cut a farther target away.
+    /// ponytail: the parts keep the pose they were last animated in; only their place follows the object.
     /// </summary>
     private void DrawCulledSelection()
     {
@@ -502,11 +571,37 @@ internal sealed unsafe class WorldEffects : IDisposable
         // Out of the world (picked up into a pack, or gone): no cell, and its parts keep the place it was last drawn.
         if (physicsObject == IntPtr.Zero || Marshal.ReadIntPtr(physicsObject, 0x90) == IntPtr.Zero) return;
         var parts = Marshal.ReadIntPtr(physicsObject, 0x10);
-        if (parts == IntPtr.Zero || Marshal.ReadInt32(parts, 0x58) == 0) return;
-        _forcing = true;
-        try { _drawParts(parts, IntPtr.Zero); }
-        finally { _forcing = false; }
+        if (parts == IntPtr.Zero) return;
+        // Retail places the parts only for objects in rooms it draws: never drawn, they are drawn at zero; out of view, where they were last
+        // seen. The object's frame to its parts, then (per part, below) their places to where they are drawn.
+        _updateParts(physicsObject);
+        int count = Marshal.ReadInt32(parts, 0x58);
+        var list = Marshal.ReadIntPtr(parts, 0x5C);
+        // The last room's view is not the selection's: its polygons were cut to that room's doorway. Through the whole screen instead.
+        for (var i = 0; i < ViewGlobals.Length; i++) _savedView[i] = *ViewGlobals[i];
+        _drawingCulledSelection = true;
+        try
+        {
+            _useFullView();
+            _sphereHook.Enable();
+            for (var i = 0; i < count; i++)
+            {
+                var part = Marshal.ReadIntPtr(list, i * 4);
+                if (part == IntPtr.Zero) continue;
+                _partViewerDistance(part);
+                _drawPart(part, 0);
+            }
+        }
+        finally
+        {
+            _sphereHook.Disable();
+            _drawingCulledSelection = false;
+            for (var i = 0; i < ViewGlobals.Length; i++) *ViewGlobals[i] = _savedView[i];
+        }
     }
+
+    // Enabled only for the culled selection. Retail's test still runs for what it records; outside the cone (0) becomes 1, partly in view.
+    private int OnSphereTest(IntPtr sphere) => Math.Max(_sphereHook.OriginalFunction(sphere), 1);
 
     /// <summary>Spreads the mask into the glow texture, then adds the glow to the screen in gold outside the mask.</summary>
     private void Composite()
@@ -651,11 +746,13 @@ internal sealed unsafe class WorldEffects : IDisposable
         _drawHook.Disable();
         _drawPrimitiveHook.Disable();
         _resetHook.Disable();
+        _sphereHook.Disable();
         ReleaseTextures();
         _fog.Dispose();
         _weather.Dispose();
         _water.Dispose();
         _combat.Dispose();
+        _pings.Dispose();
         if (_root.IsAllocated) _root.Free();
     }
 }
