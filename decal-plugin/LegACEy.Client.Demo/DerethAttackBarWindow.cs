@@ -10,8 +10,8 @@ namespace LegACEy.Client.Demo;
 /// LegACEy's attack bar, drawn as the mockup's gilded panel: retail's layout one for one at half its width, 320 by 58 DIPs, in the Dereth theme.
 /// It shows in melee and missile only. A click on the bar sets the set point, a plaque sets the height and a gem flips an option, each through
 /// <see cref="IAttackBarPort"/>; the charge and every value follow the port. A press on the plate away from the controls drags the window, unless
-/// retail's UI is locked. A drag on an edge or a corner gives it more width or height: the bar lengthens and the rows spread
-/// (see <see cref="DerethAttackLayout"/>), while the text keeps its size. Per-window scaling draws the whole bar larger or smaller.
+/// retail's UI is locked. A drag on an edge or a corner gives it more width or height: more height draws the whole bar larger, and more
+/// width lengthens the bar (see <see cref="DerethAttackLayout"/>). Per-window scaling draws the whole bar larger or smaller.
 /// </summary>
 public sealed class DerethAttackBarWindow : UserControl, IDisposable
 {
@@ -93,8 +93,8 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
 
     private void SetPointAt(double x)
     {
-        var groove = new DerethAttackLayout(_root.Bounds.Size).Groove;
-        var fraction = (x - groove.X) / groove.Width;
+        var layout = new DerethAttackLayout(_root.Bounds.Size);
+        var fraction = (x / layout.Scale - layout.Groove.X) / layout.Groove.Width;
         // Retail's power bar clamps the set point to 0 to 1, so the bar does too.
         _port.SetPoint = DerethAttackBarArt.Clamp01(fraction);
         Sync();
@@ -124,12 +124,12 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
         var layout = new DerethAttackLayout(size);
         Put(_plate, new Rect(size));
         Put(_corners, new Rect(size));
-        _plate.OrnamentX = layout.OrnamentX;
-        Put(_groove, layout.GrooveHit);
+        _plate.OrnamentX = layout.OrnamentX * layout.Scale;
+        Put(_groove, layout.GrooveHit * layout.Scale);
         for (var i = 0; i < 3; i++)
         {
-            Put(_plaques[i], layout.Plaque(i));
-            Put(_toggles[i], layout.ToggleHit(i));
+            Put(_plaques[i], layout.Plaque(i) * layout.Scale);
+            Put(_toggles[i], layout.ToggleHit(i) * layout.Scale);
         }
     }
 
