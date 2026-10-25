@@ -39,6 +39,12 @@ public sealed record WaterOption(bool On, int Percent, Action<bool, int> Set)
 /// <summary>Retail's Lock UI for this character: whether it is on now, whether it can be set, and the change that sets it. Greyed out when it can't.</summary>
 public sealed record LockUiChoice(bool Locked, bool Enabled, Action<bool> Set);
 
+/// <summary>
+/// Where game messages show: whether the player is placing them now, whether they were moved from their first place, and the changes that
+/// start or stop placing them and put them back.
+/// </summary>
+public sealed record GameMessagePlaceChoice(bool Moving, bool Moved, Action<bool> SetMoving, Action Reset);
+
 /// <summary>The tabs of the Settings window, in the order they show.</summary>
 public enum SettingsTab { General, Windows, World, Plugins }
 
@@ -62,6 +68,9 @@ public sealed class ClientSettings
     private OptionChoice<RadarOptions>? _radar;
     private OptionChoice<WeatherKind>? _testWeather;
     private OptionChoice<bool>? _testFog;
+    private OptionChoice<bool>? _gameMessagesShown;
+    private OptionChoice<int>? _gameMessageTextSize;
+    private GameMessagePlaceChoice? _gameMessagePlace;
 
     /// <param name="uiSize">The UI size, for all characters. Null where the UI cannot scale, which hides the row.</param>
     /// <param name="update">The version and the check. Null hides the row.</param>
@@ -119,6 +128,15 @@ public sealed class ClientSettings
 
     /// <summary>Whether the storm's fog rings the player's landblock for testing, for this session only. Null hides its row.</summary>
     public OptionChoice<bool>? TestFog { get => _testFog; set => Moved(ref _testFog, value); }
+
+    /// <summary>Whether game messages show at all, for all characters; off hides them, retail's yellow text too. Null hides its row.</summary>
+    public OptionChoice<bool>? GameMessagesShown { get => _gameMessagesShown; set => Moved(ref _gameMessagesShown, value); }
+
+    /// <summary>The game messages' text size in percent, for all characters. Null hides its row.</summary>
+    public OptionChoice<int>? GameMessageTextSize { get => _gameMessageTextSize; set => Moved(ref _gameMessageTextSize, value); }
+
+    /// <summary>Where game messages show, for all characters. Null hides its row.</summary>
+    public GameMessagePlaceChoice? GameMessagePlace { get => _gameMessagePlace; set => Moved(ref _gameMessagePlace, value); }
 
     /// <summary>Puts this character's LegACEy windows back where they first opened, once the player confirms. Null hides its row.</summary>
     public Action? ResetPositions { get; init; }
@@ -251,11 +269,16 @@ public sealed class SettingsPanel : UserControl
     /// A labelled slider for all characters, or for this one, with the percent beside it. The readout follows the thumb as it is dragged, and
     /// <paramref name="commit"/> gets the value when the pointer lets go. <paramref name="current"/> is the value to show, or null when the setting is gone.
     /// </summary>
-    private Control SliderRow(string label, int smallest, int largest, int step, Func<int?> current, Action<int> commit, bool thisCharacter = false)
+    private Control SliderRow(string label, int smallest, int largest, int step, Func<int?> current, Action<int> commit, bool thisCharacter = false,
+        Action<int>? dragged = null)
     {
         var slider = new DerethSlider(smallest, largest, step);
         var readout = new TextBlock { FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center };
-        void ShowReadout(int percent) => readout.Text = $"{percent}%";
+        void ShowReadout(int percent)
+        {
+            readout.Text = $"{percent}%";
+            dragged?.Invoke(percent);
+        }
         void Show()
         {
             if (current() is not { } percent) return;
@@ -397,17 +420,70 @@ public sealed class SettingsPanel : UserControl
         if (window == "Vitals" && _settings.Vitals != null) rows.Add(VitalsRow());
         if (window == "Vitals" && _settings.VitalsRetailBars != null) rows.Add(ToggleRow("Retail-style bars", () => _settings.VitalsRetailBars));
         if (window == "Radar" && _settings.Radar != null) rows.AddRange(RadarRows());
+        if (window == "Game messages" && _settings.GameMessagesShown != null)
+            rows.Add(ToggleRow("Show messages", () => _settings.GameMessagesShown, thisCharacter: false));
+        if (window == "Game messages" && _settings.GameMessageTextSize != null) rows.Add(GameMessageTextSizeRow());
+        if (window == "Game messages" && _settings.GameMessagePlace != null) rows.Add(GameMessagePlaceRow());
         return rows;
     }
 
-    /// <summary>A row for an option on Dereth: its label with the "This character" tag, and its control on the right.</summary>
-    private static Control OptionRow(string text, Control control)
+    /// <summary>A row for an option on Dereth: its label with the tag that says whom it applies to, "This character" unless said, and its control on the right.</summary>
+    private static Control OptionRow(string text, Control control, bool thisCharacter = true)
     {
         var row = new DockPanel();
         DockPanel.SetDock(control, Dock.Right);
         row.Children.Add(control);
-        row.Children.Add(ScopedLabel(text, thisCharacter: true));
+        row.Children.Add(ScopedLabel(text, thisCharacter));
         return row;
+    }
+
+    /// <summary>
+    /// The game messages' text size: a slider, and under it a band as the game draws one over a patch of sky, which follows the thumb as it
+    /// is dragged. The size is set when the pointer lets go.
+    /// </summary>
+    private Control GameMessageTextSizeRow()
+    {
+        var preview = new Border
+        {
+            Height = 64, CornerRadius = new CornerRadius(3), ClipToBounds = true, BorderBrush = DerethPalette.Brush(DerethPalette.Line), BorderThickness = new Thickness(1),
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.Parse("#9AA3A8"), 0), new GradientStop(Color.Parse("#C9C2AE"), 0.55), new GradientStop(Color.Parse("#5E6B3E"), 1) }
+            }
+        };
+        void Preview(int percent)
+        {
+            preview.Child = DerethMessageBands.Sample("The chest is locked!", percent);
+            preview.Child.VerticalAlignment = VerticalAlignment.Center;
+        }
+        var slider = SliderRow("Text size", DerethMessageBands.SmallestTextSize, DerethMessageBands.LargestTextSize, DerethMessageBands.TextSizeStep,
+            () => _settings.GameMessageTextSize?.Value, percent => _settings.GameMessageTextSize?.Set(percent), dragged: Preview);
+        return new StackPanel { Spacing = 6, Children = { slider, preview } };
+    }
+
+    /// <summary>
+    /// Where game messages show: Move shows a sample band on the screen to drag into place and turns into Done; Reset puts them back at the
+    /// top centre, and is greyed out while they are there.
+    /// </summary>
+    private Control GameMessagePlaceRow()
+    {
+        var move = new DerethButton { Content = "Move" };
+        var reset = new DerethButton { Content = "Reset" };
+        void Show()
+        {
+            if (_settings.GameMessagePlace is not { } place) return;
+            move.Content = place.Moving ? "Done" : "Move";
+            reset.IsEnabled = place.Moved;
+        }
+        move.Click += (_, _) =>
+        {
+            if (_settings.GameMessagePlace is { } place) place.SetMoving(!place.Moving);
+        };
+        reset.Click += (_, _) => _settings.GameMessagePlace?.Reset();
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Position", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { move, reset } }, thisCharacter: false);
     }
 
     private Control VitalsRow()
@@ -421,14 +497,14 @@ public sealed class SettingsPanel : UserControl
     }
 
     /// <summary>A toggle row for an on/off option, read through <paramref name="option"/> so it follows the settings' current value.</summary>
-    private Control ToggleRow(string text, Func<OptionChoice<bool>?> option)
+    private Control ToggleRow(string text, Func<OptionChoice<bool>?> option, bool thisCharacter = true)
     {
         var toggle = new DerethToggle();
         void Show() => toggle.On = option() is { Value: true };
         toggle.Changed += on => option()?.Set(on);
         _redraws.Add(Show);
         Show();
-        return OptionRow(text, toggle);
+        return OptionRow(text, toggle, thisCharacter);
     }
 
     /// <summary>The chat text size, stepped down or up in the chat's steps and within its bounds.</summary>

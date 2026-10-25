@@ -172,6 +172,32 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
+    public void The_game_messages_card_hides_them_moves_them_and_previews_their_size_for_all_characters() => RenderThread.Run(() =>
+    {
+        var changes = new List<object>();
+        var settings = new ClientSettings(null, null, Windows("Game messages"))
+        {
+            GameMessagesShown = new OptionChoice<bool>(true, value => changes.Add(value)),
+            GameMessageTextSize = new OptionChoice<int>(100, value => changes.Add(value)),
+            GameMessagePlace = new GameMessagePlaceChoice(false, false, moving => changes.Add($"moving {moving}"), () => changes.Add("reset")),
+        };
+        using var panel = Tab(settings);
+        Assert.Equal("The chest is locked!", TextOf(panel, "The chest is locked!").Text);
+        var position = TextOf(panel, "Position").GetVisualAncestors().OfType<DockPanel>().First();
+        Assert.Contains("All characters", position.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
+        // Reset is greyed out while they stand where they first showed.
+        Assert.False(ButtonNamed(panel, "Reset").IsEnabled);
+        PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
+        PressCentre(panel, ButtonNamed(panel, "Move"));
+
+        settings.GameMessagePlace = new GameMessagePlaceChoice(true, true, moving => changes.Add($"moving {moving}"), () => changes.Add("reset"));
+        panel.Tick();
+        PressCentre(panel, ButtonNamed(panel, "Done"));
+        PressCentre(panel, ButtonNamed(panel, "Reset"));
+        Assert.Equal(new object[] { false, "moving True", "moving False", "reset" }, changes);
+    });
+
+    [Fact]
     public void A_change_made_in_a_window_redraws_the_open_panel() => RenderThread.Run(() =>
     {
         var settings = new ClientSettings(null, null, Windows("Chat", "Radar"))
