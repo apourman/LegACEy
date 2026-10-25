@@ -4,8 +4,8 @@ namespace LegACEy.Client.Demo;
 
 /// <summary>
 /// The Dereth chat window's idle fade. The caller says whether the window is awake (the pointer is over it, its box has the keyboard, a
-/// talk-target menu is open, or it is being moved or resized). Awake, everything shows. Left alone for <see cref="IdleAfterSeconds"/>, the
-/// window is idle: the frame, tabs, input and scrollbar fade out over <see cref="ChromeFadeSeconds"/>, and each line holds for
+/// talk-target menu is open, or it is being moved or resized). Awake, the window shows at its active opacity. Left alone for <see cref="IdleAfterSeconds"/>,
+/// the window is idle: the frame, tabs, input and scrollbar fade to its inactive opacity over <see cref="ChromeFadeSeconds"/>, and each line holds for
 /// <see cref="LineStaySeconds"/> after it arrived and then fades over <see cref="LineFadeSeconds"/>. A line that had already held its time
 /// when the window went idle fades from that moment. The time is passed in, so the rule runs without sleeping.
 /// </summary>

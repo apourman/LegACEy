@@ -3914,7 +3914,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// The chat log backdrop's active opacity set from the Settings window: applied to the open chat, or kept for the chat to open with when it is
+    /// The chat window's active opacity set from the Settings window: applied to the open chat, or kept for the chat to open with when it is
     /// closed; either way the value is published back to the Settings window.
     /// </summary>
     private void SetChatActiveOpacity(int percent)
@@ -3925,7 +3925,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_settings != null) _settings.ChatActiveOpacity = new OptionChoice<int>(opacity, SetChatActiveOpacity);
     }
 
-    /// <summary>The chat log backdrop's inactive opacity set from the Settings window; see <see cref="SetChatActiveOpacity"/>.</summary>
+    /// <summary>The chat window's inactive opacity set from the Settings window; see <see cref="SetChatActiveOpacity"/>.</summary>
     private void SetChatInactiveOpacity(int percent)
     {
         var opacity = RetailChatWindows.ClampOpacity(percent);
