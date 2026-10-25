@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -925,17 +926,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// </summary>
     private static Control BurdenMeter(InventorySnapshot snapshot)
     {
+        const double Height = 62, Inside = Height - 4, LeastBand = 3;
         var load = snapshot.BurdenLimit <= 0 ? 0 : (double)snapshot.Burden / snapshot.BurdenLimit;
-        var bands = BurdenBandBrushes.Select((_, band) => Math.Max(0, Math.Min(1, load - band)) / 3).ToArray();
-        var empty = 1 - bands.Sum();
+        var bands = BurdenBandBrushes.Select((_, band) => Math.Max(0, Math.Min(1, load - band)) * Inside / 3).ToArray();
+        // The band the load is in shows at least a sliver, so a load just past the limit already shows yellow (and past twice it, red).
+        var top = Array.FindLastIndex(bands, height => height > 0);
+        if (top > 0) bands[top] = Math.Max(bands[top], LeastBand);
         var track = new Border
         {
             Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(2), Padding = new Thickness(1), VerticalAlignment = VerticalAlignment.Center, Width = 12, Height = 62,
+            CornerRadius = new CornerRadius(2), Padding = new Thickness(1), VerticalAlignment = VerticalAlignment.Center, Width = 12, Height = Height,
         };
         // The bands run from the foot in order; the empty share sits at the top.
-        var shares = bands.Append(empty).Select(share => $"{share:0.###}*").Reverse();
-        var holder = new Grid { RowDefinitions = new RowDefinitions(string.Join(",", shares)) };
+        var rows = new[] { "*" }.Concat(Enumerable.Reverse(bands).Select(height => height.ToString("0.###", CultureInfo.InvariantCulture)));
+        var holder = new Grid { RowDefinitions = new RowDefinitions(string.Join(",", rows)) };
         for (var band = 0; band < bands.Length; band++)
         {
             var fill = new Border { Background = BurdenBandBrushes[band] };

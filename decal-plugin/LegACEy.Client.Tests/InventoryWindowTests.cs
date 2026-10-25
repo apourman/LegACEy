@@ -51,6 +51,14 @@ public sealed class InventoryWindowTests
         InventoryDriver.Tick(host.Host);
         var reading = Assert.Single(host.Host.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "111%");
         Assert.Same(DerethPalette.TextBrush, reading.Foreground);
+
+        // Just past the limit, the yellow band already shows over the full green one.
+        port.Push(InventorySample.Snapshot(burden: 5460));
+        InventoryDriver.Tick(host.Host);
+        Assert.Equal("101%", Assert.Single(host.Host.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text.EndsWith("%")).Text);
+        var bands = host.Host.Content.GetVisualDescendants().OfType<Border>().Where(border => border.Parent is Grid { RowDefinitions.Count: 4 }).ToArray();
+        Assert.True(bands[1].Bounds.Height >= 3, $"The yellow band is {bands[1].Bounds.Height} px tall.");
+        Assert.True(bands[0].Bounds.Height > 18, $"The green band is {bands[0].Bounds.Height} px tall.");
     });
 
     [Fact]
