@@ -341,7 +341,10 @@ namespace ACE.Server.Market
             {
                 log.Error($"[VAULT] Batch deposit of {items.Count} items for {player.Name} may or may not have been saved; the objects are dropped and the database decides at the next login");
                 foreach (var item in items)
+                {
+                    WarnIfPackGone(player, item, item.Name);
                     player.SendRemovedForVault(item);
+                }
                 FinishBatch(player, VaultOutcome.Unconfirmed, items[0].Name, itemGuids, completed);
                 return;
             }
@@ -361,9 +364,13 @@ namespace ACE.Server.Market
             }
 
             // the database still has every item in the pack, as after a failed single deposit; they go back last first, to the places they were taken from
-            if (!player.IsLoggingOut)
-                for (var index = items.Count - 1; index >= 0; index--)
+            for (var index = items.Count - 1; index >= 0; index--)
+            {
+                if (player.IsLoggingOut)
+                    KeepForLogin(player, items[index], items[index].Name);
+                else
                     ReturnToPack(player, items[index], items[index].Name);
+            }
 
             FinishBatch(player, outcome, items[0].Name, itemGuids, completed);
         }
@@ -828,6 +835,7 @@ namespace ACE.Server.Market
             {
                 // the database has the item either in the pack or in the Vault; putting it back here could make a second copy, so the next login shows which
                 log.Error($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} may or may not have been saved; the object is dropped and the database decides at the next login");
+                WarnIfPackGone(player, item, name);
                 player.SendRemovedForVault(item);
                 Finish(player, VaultOutcome.Unconfirmed, name, item.Guid.ClientGUID, completed);
                 return;
@@ -849,7 +857,9 @@ namespace ACE.Server.Market
             }
 
             // the database still has the item in the pack (the live item kept its container throughout). A player who has gone gets it back when they log in, so the object is just discarded.
-            if (!player.IsLoggingOut)
+            if (player.IsLoggingOut)
+                KeepForLogin(player, item, name);
+            else
                 ReturnToPack(player, item, name);
 
             Finish(player, outcome, name, item.Guid.ClientGUID, completed);
@@ -876,6 +886,32 @@ namespace ACE.Server.Market
             item.SaveBiotaToDatabase();
 
             log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed and the pack has no room for it; the database has it in the main pack for the next login");
+        }
+
+        /// <summary>
+        /// A refused deposit's item for a player who has gone: the database already has it in the pack it was taken from, for the next login.
+        /// If that pack is no longer theirs (given, dropped or traded away meanwhile), the row is pointed at the main pack instead, or the pack's new owner would get it.
+        /// </summary>
+        private static void KeepForLogin(Player player, WorldObject item, string name)
+        {
+            if (PackAt(player, (uint)(item.ContainerId ?? 0)) != null)
+                return;
+
+            log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed after its pack 0x{item.ContainerId:X8} left them; the database has it in the main pack for the next login");
+
+            item.ContainerId = player.Guid.ClientGUID;
+            item.OwnerId = player.Guid.ClientGUID;
+            item.PlacementPosition = 0;
+            item.SaveBiotaToDatabase();
+        }
+
+        /// <summary>
+        /// An Unknown deposit's item may already be in the Vault, so it is never saved anywhere; if its pack has left the player, an admin may have to sort out who holds it
+        /// </summary>
+        private static void WarnIfPackGone(Player player, WorldObject item, string name)
+        {
+            if (PackAt(player, (uint)(item.ContainerId ?? 0)) == null)
+                log.Error($"[VAULT] Unconfirmed deposit of {name} (0x{item.Guid}) for {player.Name}: its pack 0x{item.ContainerId:X8} is no longer theirs, so if the deposit was not saved, the pack's new owner has the item");
         }
 
         private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed, PackPlace? place)
