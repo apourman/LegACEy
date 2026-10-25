@@ -878,18 +878,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             _packList.Children.Add(PackTab(snapshot, snapshot.SidePacks[position], position, open));
     }
 
-    /// <summary>A pack in the vertical column: its icon, with an upright fill bar on its right. An empty side-pack slot is a placeholder.</summary>
+    /// <summary>A pack in the vertical column: its icon, with an upright fill bar inside its right edge, as retail's. An empty side-pack slot is a placeholder.</summary>
     private Control PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
     {
-        // The fill bar stands right of the tile, only for a container holding something; otherwise a gap of the bar's width keeps every tile lined up.
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = FillGap };
         var count = pack.Id == 0 ? 0 : ItemsIn(snapshot, pack.Id);
         var tile = pack.Id == 0
             ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null))
             : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
-        row.Children.Add(tile);
-        row.Children.Add(pack.Capacity > 0 && count > 0 ? FillBar(count, pack.Capacity) : new Control { Width = FillWidth });
-        return row;
+        // Only a container holding something shows its fill. The bar takes no presses, so the tile under it still does.
+        if (pack.Capacity <= 0 || count <= 0) return tile;
+        var bar = FillBar(count, pack.Capacity);
+        bar.HorizontalAlignment = HorizontalAlignment.Right;
+        bar.Margin = new Thickness(0, 0, FillInset, 0);
+        bar.IsHitTestVisible = false;
+        return new Grid { HorizontalAlignment = HorizontalAlignment.Left, Children = { tile, bar } };
     }
 
     /// <summary>A pack in the horizontal strip: its icon, with "n/cap" under it. An empty side-pack slot is a placeholder.</summary>
@@ -944,7 +946,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private static int ItemsIn(InventorySnapshot snapshot, uint container) => snapshot.Items.Count(item => item.Container == container);
 
-    private const double FillWidth = 4, FillGap = 3;
+    // The bar sits this far in from the tile's right edge, inside its rim.
+    private const double FillWidth = 3, FillInset = 3;
 
     /// <summary>A pack's fill: a narrow upright groove, filled in gold from the foot to the share of its slots in use.</summary>
     private static Control FillBar(int count, int capacity)
@@ -1032,10 +1035,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Margin = new Thickness(0, 4, 0, 0),
         };
         var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 0, 0) };
-        // The burden sits centred over the tiles, not over the tiles and their fill bars.
-        var overTiles = new Thickness(0, 0, FillWidth + FillGap, 0);
-        column.Children.Add(At(new Border { Margin = overTiles, Child = Centred(_burdenMeter) }, 0));
-        column.Children.Add(At(new Border { Margin = overTiles, Child = Centred(_burdenText) }, 1));
+        column.Children.Add(At(Centred(_burdenMeter), 0));
+        column.Children.Add(At(Centred(_burdenText), 1));
         column.Children.Add(At(packs, 2));
 
         var body = new Grid

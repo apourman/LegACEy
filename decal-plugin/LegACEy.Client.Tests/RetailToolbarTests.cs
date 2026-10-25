@@ -16,7 +16,7 @@ namespace LegACEy.Client.Tests;
 
 public sealed class RetailToolbarTests
 {
-    private const int Width = 600;
+    private const int Width = 300;
     private const int Height = 90;
 
     [Fact]
@@ -206,6 +206,28 @@ public sealed class RetailToolbarTests
         Assert.True(row2.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y > row1.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y);
         // Retail's toolbar width, which the Dereth inventory shares, so the two line up stacked.
         Assert.Equal(300, toolbar.DesiredSize.Width);
+    });
+
+    [Fact]
+    public void The_toolbar_is_as_wide_as_a_retail_width_window_at_every_size() => RenderThread.Run(() =>
+    {
+        // The inventory, retail's 300 DIPs, is that times its scale, rounded; stacked, the two must line up at every Ctrl+wheel size.
+        for (var percent = WindowManager.SmallestSize; percent <= WindowManager.LargestSize; percent += WindowManager.SizeStep)
+        {
+            var scale = percent / 100.0;
+            RetailToolbar? toolbar = null;
+            ShortcutBar row = Row(0, new ShortcutDragSource());
+            using var panel = AvaloniaPanel.Create(() => toolbar = new RetailToolbar(new FakeToolbarPort(), () => { }, _ => true), 1, 1, scale);
+            toolbar!.SetShortcutRows(new[] { row });
+            toolbar.Measure(Size.Infinity);
+            var width = (int)Math.Round(toolbar.DesiredSize.Width * scale);
+            Assert.Equal((int)Math.Round(300 * scale), width);
+            panel.Resize(width, (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
+            panel.Tick();
+            // The ninth slot still ends inside the frame.
+            var lastSlot = row.SlotAt(ShortcutBar.SlotCount - 1);
+            Assert.InRange(lastSlot.TranslatePoint(default, toolbar)!.Value.X + lastSlot.Bounds.Width, 0, toolbar.Bounds.Width - 5);
+        }
     });
 
     [Fact]

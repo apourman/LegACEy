@@ -126,6 +126,11 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     };
     private readonly Border _meterSlot = new() { IsVisible = false };
     private readonly StackPanel _plaqueContent;
+    /// <summary>
+    /// Retail's toolbar width, as the Dereth inventory's: 6 + 9 × 32 + 6. Set, not left to the parts, so it scales as a window does; the
+    /// parts, each rounded up to whole pixels, would make it a few pixels wider at most scales.
+    /// </summary>
+    public const double RetailWidth = 300;
     // The part above the rows, then the shortcut rows in order, touching as retail's do.
     private readonly StackPanel _sections = new();
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
@@ -140,6 +145,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _openMenu = openMenu ?? throw new ArgumentNullException(nameof(openMenu));
         _moveToMainPack = moveToMainPack ?? throw new ArgumentNullException(nameof(moveToMainPack));
         _startMove = startMove;
+        Width = RetailWidth;
 
         _stance = new DerethMedallion(GlyphOf(port.Stance), 40, 25);
         ToolTip.SetTip(_stance, "Combat stance");

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -45,7 +46,9 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     // The drag of a shortcut from a slot: its icon while it is held.
     private IDisposable? _dragIcon;
     // One slot per shortcut.
-    private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal };
+    // Each slot gets a ninth of the row, so at any scale the row fills the toolbar's width exactly, where slots each rounded up to whole
+    // pixels would add up past it. The slots ask no width (see DerethSlot's flush), so the row takes the toolbar's.
+    private readonly Grid _row = new() { ColumnDefinitions = new ColumnDefinitions(string.Join(",", Enumerable.Repeat("*", SlotCount))) };
     private readonly ShortcutSlotView?[] _shown = new ShortcutSlotView?[SlotCount];
     // The icon each slot's art was drawn into; a slot's icon is disposed when the slot is rebuilt or the bar closes.
     private readonly WriteableBitmap?[] _icons = new WriteableBitmap?[SlotCount];
@@ -66,10 +69,16 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         _drag = drag ?? throw new ArgumentNullException(nameof(drag));
         _dragSource = dragSource ?? throw new ArgumentNullException(nameof(dragSource));
 
-        for (var i = 0; i < SlotCount; i++) _row.Children.Add(new DerethSlot(null, flush: true));
+        for (var i = 0; i < SlotCount; i++) _row.Children.Add(At(new DerethSlot(null, flush: true), i));
         Child = _row;
         Refresh();
         port.Changed += Refresh;
+    }
+
+    private static Control At(Control slot, int position)
+    {
+        Grid.SetColumn(slot, position);
+        return slot;
     }
 
     /// <summary>The slot at a position in the row, zero-based: where the player clicks it.</summary>
@@ -96,7 +105,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             if (view == _shown[position]) continue;
             _shown[position] = view;
             var previous = _icons[position];
-            _row.Children[position] = Slot(view, position);
+            _row.Children[position] = At(Slot(view, position), position);
             // The new slot is in place before the old icon goes, so nothing draws a disposed bitmap.
             previous?.Dispose();
         }
