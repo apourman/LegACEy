@@ -326,8 +326,8 @@ release PRs, versions, tags, and changelogs. Its shared configuration is in
 The publishing workflow's build is
 [`build/Build-Release.ps1`](build/Build-Release.ps1): the Release tests, the stub
 build, the trimmed win-x86 runtime, the hook check, the package and setup.exe.
-Every pull request into `next` or `master` runs the same script on
-`windows-2022`, so a Windows-only or Release-only failure turns the pull request
+Every pull request into `next`, `master` or a `marketplace` branch runs the same
+script on `windows-2022`, so a Windows-only or Release-only failure turns the pull request
 red instead of breaking the release. To run it by hand on Windows (.NET 10,
 Python and Inno Setup 6), from PowerShell 7:
 

@@ -1,6 +1,6 @@
 name: Pull request checks
 
-# The cheap checks for every pull request: no retail DATs, no MySQL, no game data. The local gate (scripts/market/gate.sh) runs these
+# The checks for every pull request that need no retail DATs, MySQL or game data. The local gate (scripts/market/gate.sh) runs these
 # too, plus the test suites that need MySQL and the end-to-end stack. Deploys stay in deploy-main.yml (pushes to master).
 # They also run everything the releases run, in the release configuration (the server's Linux Release publish, the plugin's
 # Windows Release build in windows-plugin), so nothing first builds or tests at release time.

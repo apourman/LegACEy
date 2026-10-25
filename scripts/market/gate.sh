@@ -6,8 +6,10 @@
 # Runs, stopping at the first failure:
 #   - a check of the end-to-end settings (common.sh: docker.env and its secrets), so a missing one stops the gate before the long steps;
 #   - its own result-reconciliation tests (test_gate_results.py);
-#   - everything the pull-request workflow runs (.github/workflows/pull-request.yml): the .NET solution build; the website's npm ci, type
-#     check and production build; the BFF request, unit and component tests (Vitest); the OpenAPI drift check (openapi-drift.sh);
+#   - everything the pull-request workflow's Linux job runs (.github/workflows/pull-request.yml): the .NET solution build; the server
+#     release's source checks and Release linux-x64 publish; the website's npm ci, type check and production build; the BFF request,
+#     unit and component tests (Vitest); the OpenAPI drift check (openapi-drift.sh). Its Windows job is
+#     decal-plugin/build/Build-Release.ps1, run on Windows;
 #   - the Market API, database and game server test suites (the game server's with x64 and without StartupTests);
 #   - the browser checks against the fake API (npm run test:browser, unfiltered, on MARKET_WEB_TEST_PORT, default 5187);
 #   - the end-to-end pair: e2e.sh up (fresh data, then the production stack), the Playwright suite (npm run test:e2e), the ledger audit,
@@ -63,6 +65,8 @@ STEPS=(
     "E2E settings (docker.env)|step_settings"
     "Gate self-test|step_self_test"
     ".NET build|step_dotnet_build"
+    "Server release source checks|step_server_release_checks"
+    "Server Release publish (linux-x64)|step_server_release_publish"
     "Website install|step_web_install"
     "Website typecheck|step_web_typecheck"
     "Website build|step_web_build"
@@ -175,6 +179,11 @@ step_settings() {
 }
 step_self_test() { check_exit python3 -m unittest discover -s "$SCRIPTS" -p 'test_gate_*.py'; }
 step_dotnet_build() { check_exit dotnet build "$ROOT/Source/ACE.sln" -c Debug -p:Platform=x64; }
+step_server_release_checks() { check_exit python3 -m unittest discover -s "$ROOT/.github/tests" -p 'test_*.py'; }
+step_server_release_publish() {
+    check_exit dotnet publish "$ROOT/Source/ACE.Server/ACE.Server.csproj" --configuration Release --runtime linux-x64 \
+        --self-contained false -p:Platform=x64 --output "$run_dir/ace-publish"
+}
 step_web_install() { check_exit in_web npm ci; }
 step_web_typecheck() { check_exit in_web npm run typecheck; }
 step_web_build() { check_exit in_web npm run build; }

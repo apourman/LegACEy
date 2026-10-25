@@ -154,7 +154,7 @@ releases run: the server's Linux Release publish and, on `windows-2022`, the plu
 Before opening the pull request, run the local gate from the repository root:
 
 ```bash
-./scripts/market/gate.sh                # everything the workflow runs, the .NET test suites, the fake-API browser checks, the e2e suite
+./scripts/market/gate.sh                # everything the workflow's Linux job runs, the .NET test suites, the fake-API browser checks, the e2e suite
 ./scripts/market/gate.sh --play-test    # also the automated play-test (needs the game server running)
 ```
 
