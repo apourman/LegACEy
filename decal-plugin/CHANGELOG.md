@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.16.0...decal-plugin-v0.16.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* plugin release build on Windows ([#163](https://github.com/apourman/LegACEy/issues/163)) ([e7392f9](https://github.com/apourman/LegACEy/commit/e7392f9cfe58f9036775be595dc981b54a8f76c4))
+
 ## [0.16.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.15.0...decal-plugin-v0.16.0) (2026-10-25)
 
 
