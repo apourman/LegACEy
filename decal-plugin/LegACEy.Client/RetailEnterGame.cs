@@ -8,7 +8,7 @@ using Reloaded.Hooks.Definitions.X86;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Holds entering the world while the game folder doesn't match the server's world: waiting for its note, updating, or another world. Two retail functions are held, each on its own:
+/// Holds entering the world while the game doesn't have the server's world yet: waiting for its note, checking, downloading or switching it on. Two retail functions are held, each on its own:
 /// <list type="bullet">
 /// <item><c>gmCharacterManagementUI::EnterGame</c>, which character select's Enter button and a double click on a character call. Held
 /// there, the player stays at character select with no Entering World dialog.</item>
@@ -73,10 +73,10 @@ internal sealed class RetailEnterGame : IDisposable
     {
         var holds = new RetailEnterGame(hold, held, entering, log);
         if (NativeUiCatalogue.Validate(readMemory, log, EnterGameEntries,
-                "Character select's Enter isn't held for a world update: the running client does not match its entry."))
+                "Character select's Enter isn't held for the server's world: the running client does not match its entry."))
             holds._enterGame = holds.Place<EnterGameFn>(holds.OnEnterGame, EnterGameAddress, "Character select's Enter");
         if (NativeUiCatalogue.Validate(readMemory, log, LogOnEntries,
-                "Logging a character on isn't held for a world update: the running client does not match its entry."))
+                "Logging a character on isn't held for the server's world: the running client does not match its entry."))
             holds._logOn = holds.Place<LogOnCharacterFn>(holds.OnLogOnCharacter, LogOnCharacterAddress, "Logging a character on");
         if (holds._enterGame != null || holds._logOn != null) return holds;
         holds._root.Free();
@@ -93,7 +93,7 @@ internal sealed class RetailEnterGame : IDisposable
         }
         catch (Exception exception)
         {
-            _log($"{what} isn't held for a world update: {exception.Message}");
+            _log($"{what} isn't held for the server's world: {exception.Message}");
             return null;
         }
     }
@@ -124,9 +124,9 @@ internal sealed class RetailEnterGame : IDisposable
             Report($"Could not ask whether to hold entering the world; letting it through: {exception.Message}");
             return false;
         }
-        Report($"{what}: the game folder doesn't match this server's world yet (see the world update toast).");
+        Report($"{what}: the game doesn't have this server's world yet (see the world toast).");
         try { _held(); }
-        catch (Exception exception) { Report($"Could not show the world update toast: {exception.Message}"); }
+        catch (Exception exception) { Report($"Could not show the world toast: {exception.Message}"); }
         return true;
     }
 
@@ -148,7 +148,7 @@ internal sealed class RetailEnterGame : IDisposable
         catch (Exception exception)
         {
             // Still callable: stays rooted and keeps forwarding.
-            Report($"Could not remove the world update holds; they let everything through from now on: {exception.Message}");
+            Report($"Could not remove the world holds; they let everything through from now on: {exception.Message}");
             return;
         }
         if (_root.IsAllocated) _root.Free();

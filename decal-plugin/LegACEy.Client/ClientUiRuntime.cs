@@ -364,7 +364,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailEnterGame? _enterGame;
     private DateTime _lastOverlaySummary = DateTime.UtcNow;
     private static readonly TimeSpan OverlaySummaryEvery = TimeSpan.FromMinutes(5);
-    // The world update toast last shown, so another shows only when the state or percent changes; cleared by an Enter press, which raises
+    // The world toast last shown, so another shows only when the state or percent changes; cleared by an Enter press, which raises
     // the toast again (and shows Checking, which otherwise stays quiet).
     private (WorldState State, int Percent)? _worldShown;
     private bool _worldRaised;
@@ -1345,7 +1345,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Out of game or with the windows off, the LegACEy windows are neither captured nor uploaded: they keep their last frame.
         var held = !_inGame || !_windowsEnabled;
         foreach (var surface in _featureSurfaces.Values) surface.Held = held;
-        // At character select the toast shows a world update, before any window can.
+        // At character select the toast shows the server's world, before any window can.
         if (_updateToastSurface != null) _updateToastSurface.Held = held && _loggedIn;
         if (_dragIconSurface != null) _dragIconSurface.Held = held;
 
@@ -2338,7 +2338,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     };
 
     /// <summary>
-    /// Shows a world update toast: in the world once windows can open, at character select on the toast's own surface. False to try again
+    /// Shows a world toast: in the world once windows can open, at character select on the toast's own surface. False to try again
     /// next frame.
     /// </summary>
     private bool ShowWorldToast(ToastNotice toast)
@@ -2372,10 +2372,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return EnsurePostUiDrawHook();
     }
 
-    /// <summary>
-    /// At character select the toast is the only LegACEy surface, and it takes the pointer only over itself (its ×); everything else stays
-    /// retail's. True when the message was the toast's.
-    /// </summary>
+    // Whether the pointer is over the toast at character select, so leaving it is sent once.
     private bool _toastHovered;
 
     /// <summary>A toast from character select (the world's) has said its piece: it doesn't follow the character into portal space.</summary>
@@ -2384,6 +2381,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_updateToast != null) Guard(() => _updateToast.IsVisible = false);
     }
 
+    /// <summary>
+    /// At character select the toast is the only LegACEy surface, and it takes the pointer only over itself (its ×); everything else stays
+    /// retail's. True when the message was the toast's.
+    /// </summary>
     private bool CharacterSelectToastInput(int message, int lParam)
     {
         if (_updateToastSurface is not { Visible: true } toast) return false;
@@ -3755,7 +3756,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>
     public bool WindowMessage(int hwnd, int message, int wParam, int lParam)
     {
-        // Known from character select on, which a world update closes.
+        // Known from character select on.
         _gameWindow = new IntPtr(hwnd);
         if (!_failed && !_loggedIn)
             return CharacterSelectToastInput(message, lParam);

@@ -233,7 +233,7 @@ namespace ACE.Server.Network.Handlers
             }
             else
             {
-                // Older dats without DAT patching reach character select, where the LegACEy plugin updates the game folder; Enter decides.
+                // Older dats without DAT patching reach character select, where the LegACEy plugin can switch the server's world on and report again; Enter decides.
                 session.DatVerdict = verdict;
                 if (verdict != DatVerdict.LetIn)
                     log.Info($"[DDD] client {session.Account} has older dats: {(verdict == DatVerdict.RefuseAtEnter ? "refused" : "warned")} at Enter");

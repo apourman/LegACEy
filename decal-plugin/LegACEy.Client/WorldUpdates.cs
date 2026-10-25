@@ -105,10 +105,10 @@ internal sealed class WorldUpdates
         if (_cache.ForServer(_server) is not { } world) return null;
         if (_cache.IsUnconfirmed(_server))
         {
-            // The last start with it on never heard the server's note: most likely kicked at connect for a world the server dropped.
+            // The last start with it on never heard the server's note: most likely kicked at connect for a world the server dropped, or
+            // changed. The mark stays until a note clears it, so the game keeps starting retail for this server until then.
             ClientUiRuntime.Log($"World: {world.Name} isn't switched on at startup: the last game started with it never heard this server's note. "
                 + "A note at character select switches it on again.");
-            _cache.Unconfirmed(_server, false);
             return null;
         }
         if (_cache.Open(world, ClientUiRuntime.Log) is not { } patch) return null;
@@ -136,19 +136,15 @@ internal sealed class WorldUpdates
     }
 
     /// <summary>
-    /// The DDD exchange ended without a note: a plain server, so the overlay goes off (<see cref="Active"/> null) and the server is forgotten,
-    /// unless a late note still comes (<see cref="Heard"/>). Only the first end of a connection counts: after a note, or after this, it's ignored.
+    /// The DDD exchange ended without a note: a plain server, so the overlay goes off (<see cref="Active"/> null), unless a late note still
+    /// comes (<see cref="Heard"/>). A world switched on at startup keeps its unconfirmed mark, so the next start is retail for this server
+    /// until a note clears it. Only the first end of a connection counts: after a note, or after this, it's ignored.
     /// </summary>
     public void NoNote()
     {
         if (Interlocked.CompareExchange(ref _state, (int)WorldState.Off, (int)WorldState.Waiting) != (int)WorldState.Waiting) return;
         ClientUiRuntime.Log(Active == null ? "World: Off. The server sent no world note; the game reads its retail dats."
-            : $"World: Off. The server sent no world note, so {Active.Name} is switched off and not switched on for it again.");
-        if (Active != null && _server != null)
-        {
-            _cache.Forget(_server);
-            _cache.Unconfirmed(_server, false);
-        }
+            : $"World: Off. The server sent no world note, so {Active.Name} is switched off.");
         (Active, ActivePatch) = (null, null);
     }
 
@@ -199,14 +195,15 @@ internal sealed class WorldUpdates
     {
         try
         {
-            if (Active?.Address == note.UpdateList && Active.Edition >= note.Edition)
+            // Only the server's own edition: a newer world (the server rolled its world back) would be kicked as newer dats.
+            if (Active?.Address == note.UpdateList && Active.Edition == note.Edition)
             {
                 if (_server != null) _cache.Remember(_server, note.UpdateList);
                 Set(WorldState.UpToDate);
                 return;
             }
             var cached = _cache.Find(note.UpdateList);
-            if (cached != null && cached.Edition >= note.Edition && Switch(cached, "is cached")) return;
+            if (cached != null && cached.Edition == note.Edition && Switch(cached, "is cached")) return;
             if (Refused(note.UpdateList)) return;
             WorldManifest manifest;
             using (var deadline = new CancellationTokenSource(ManifestDeadline))
@@ -214,7 +211,7 @@ internal sealed class WorldUpdates
             ClientUiRuntime.Log($"World check: cached {(cached == null ? "none" : $"world {cached.Edition}")}; {note.UpdateList} has world {manifest.Version}.");
             if (manifest.Version < note.Edition)
                 ClientUiRuntime.Log($"The update list's world {manifest.Version} is behind the server's edition {note.Edition}; the server may still refuse Enter.");
-            if (cached != null && manifest.Version <= cached.Edition && Switch(cached, "is the newest there is")) return;
+            if (cached != null && manifest.Version == cached.Edition && Switch(cached, "is the newest there is")) return;
             if (Refused(manifest.Patch)) return;
             Set(WorldState.Downloading);
             for (var attempt = 1; attempt <= 2; attempt++)
