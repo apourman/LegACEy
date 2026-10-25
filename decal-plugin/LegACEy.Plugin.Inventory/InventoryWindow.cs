@@ -37,8 +37,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private const double EmptyOpacity = 0.8;
     // A lifted item's slots fade while it is dragged, as the Vault's do.
     private const double LiftedOpacity = 0.4;
-    // A figure: a head over shoulders and a body.
-    private const string FigureGlyph = "M7,1.5 A2.2,2.2 0 1 1 6.99,1.5 Z M2.5,13 V9.5 Q2.5,6.8 7,6.8 Q11.5,6.8 11.5,9.5 V13 Z";
     private const double DragThreshold = 4;
 
     private static readonly IBrush GoldBrush = DerethPalette.GoldBrush;
@@ -97,14 +95,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private uint _picked;
     private IDisposable? _dragIcon;
     private bool _showSlots;
-    // The equipment and paperdoll section is left out: the window is the packs and their contents. Fixed for the window's life.
-    private readonly bool _collapsed;
     private bool _suspended;
     private bool _disposed;
 
     /// <param name="port">The character's inventory. The window reads its snapshot and re-renders on its change event.</param>
     /// <param name="art">The game art the icons are drawn from.</param>
-    /// <param name="settings">Whether the armour slots show, and whether the equipment section is collapsed.</param>
+    /// <param name="settings">Whether the armour slots show.</param>
     /// <param name="dragHost">Shows the icon of a dragged item under the pointer, and hands an item released outside the slots to the
     /// LegACEy window under the pointer. Null shows no icon and hands nothing over; the drag still works.</param>
     public InventoryWindow(IInventoryPort port, IGameArtSource art, InventorySettings settings, IItemDragHost? dragHost = null)
@@ -113,9 +109,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _art = art ?? throw new ArgumentNullException(nameof(art));
         _dragHost = dragHost;
         _showSlots = settings.ShowSlots;
-        _collapsed = settings.Collapsed;
 
-        _frame = new DerethWindow(Title, null, Body(), EquipmentToggle(), centreTitle: true);
+        _frame = new DerethWindow(Title, null, Body(), centreTitle: true);
         _frame.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Content = new Grid { Children = { _frame, _dropIndicator } };
         // The window takes the pointer on its own handlers, so a drag that leaves a slot, or the window, still ends here.
@@ -133,10 +128,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _port.Changed += OnChanged;
     }
 
-    /// <summary>The window's current settings: the Slots toggle and the collapsed section.</summary>
-    private InventorySettings Settings => new(_showSlots, _collapsed);
+    /// <summary>The window's current settings: the Slots toggle.</summary>
+    private InventorySettings Settings => new(_showSlots);
 
-    /// <summary>Raised when the player changes the Slots toggle or collapses the section. The settings are the new ones.</summary>
+    /// <summary>Raised when the player changes the Slots toggle. The settings are the new ones.</summary>
     public event Action<InventorySettings>? SettingsChanged;
 
     /// <summary>Raised when the player asks to see the character in the larger Inspect window.</summary>
@@ -992,29 +987,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(2, 8, 2, 6)
         };
-        if (!_collapsed)
-        {
-            body.Children.Add(At(_paperdoll, 0));
-            body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
-        }
+        body.Children.Add(At(_paperdoll, 0));
+        body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
         body.Children.Add(At(pack, 2));
         body.Children.Add(At(column, 0, 1));
         Grid.SetRowSpan(column, 3);
         return body;
-    }
-
-    /// <summary>A header button that shows or collapses the equipment and paperdoll section. Lit green while the section shows.</summary>
-    private Control EquipmentToggle()
-    {
-        var icon = new DerethPathGlyph(FigureGlyph)
-        {
-            Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
-            Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
-        };
-        var button = new DerethHeaderButton(icon) { Name = "EquipmentToggle" };
-        ToolTip.SetTip(button, _collapsed ? "Show equipment" : "Hide equipment");
-        button.Click += (_, _) => SettingsChanged?.Invoke(new InventorySettings(_showSlots, !_collapsed));
-        return button;
     }
 
     private Control ContentsLine()
