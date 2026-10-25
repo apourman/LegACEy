@@ -448,11 +448,20 @@ public sealed class DerethHeaderButton : Button
 /// <summary>A window with the Dereth frame, a header of icon, title and close box, the title rule and content.</summary>
 public sealed class DerethWindow : UserControl
 {
+    /// <summary>The header of a window without an icon: the title and the header buttons.</summary>
+    public const int HeaderHeight = 28;
+
+    /// <summary>The header of a window with an icon: as tall as a game icon, which a layout never squeezes.</summary>
+    public const int IconHeaderHeight = 32;
+
     /// <summary>
-    /// The strip from a Dereth window's top that drags it: the 8 px frame edge and the 40 px header. A window passes it as its
+    /// The strip from a Dereth window's top that drags it: the 8 px frame edge and the header. A window passes it as its
     /// title-bar height.
     /// </summary>
-    public const int TitleBarHeight = 48;
+    public const int TitleBarHeight = 8 + HeaderHeight;
+
+    /// <summary>The title-bar height of a window with an icon in its header.</summary>
+    public const int IconTitleBarHeight = 8 + IconHeaderHeight;
 
     /// <summary>The title's own row under the header, in a window that centres its title.</summary>
     public const int TitleRowHeight = 24;
@@ -478,15 +487,19 @@ public sealed class DerethWindow : UserControl
     /// The title takes a row of its own under the header, centred across the window as retail centres its panel titles, so a long title
     /// has the full width; the header keeps the icon, the actions and the close box.
     /// </param>
+    /// <param name="iconHeader">
+    /// The header is <see cref="IconHeaderHeight"/> tall, for a window that shows an icon, or may show one later; otherwise
+    /// <see cref="HeaderHeight"/>.
+    /// </param>
     public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null, bool stretchActions = false,
-        bool centreTitle = false)
+        bool centreTitle = false, bool iconHeader = false)
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
         var columns = headerActions == null ? "Auto,*,Auto" : stretchActions ? "Auto,Auto,*,Auto" : "Auto,*,Auto,Auto";
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = centreTitle ? CentredHeaderHeight : 40 };
-        // The emblem's frame fits round its icon at the icon size: a layout never squeezes an icon. It is always there, and
-        // takes no space while it has no icon, so a window that changes its icon keeps the same header.
-        _emblem = new DerethFrame(DerethFrameArt.Button) { VerticalAlignment = VerticalAlignment.Center };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = centreTitle ? CentredHeaderHeight : iconHeader ? IconHeaderHeight : HeaderHeight };
+        // The icon is bare, at its own size: a layout never squeezes an icon, and a frame round it would make the header taller.
+        // It is always there, and takes no space while it has no icon, so a window that changes its icon keeps the same header.
+        _emblem = new Decorator { VerticalAlignment = VerticalAlignment.Center };
         header.Children.Add(_emblem);
         SetIcon(icon);
         _name = new DerethTitleText
@@ -529,7 +542,7 @@ public sealed class DerethWindow : UserControl
         Content = new DerethFrame(DerethFrameArt.Window) { Child = body };
     }
 
-    private readonly DerethFrame _emblem;
+    private readonly Decorator _emblem;
     private readonly TextBlock _name;
 
     /// <summary>The title in the header.</summary>

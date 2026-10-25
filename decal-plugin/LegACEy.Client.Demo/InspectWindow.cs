@@ -46,7 +46,7 @@ public sealed class InspectWindow
         var body = new DockPanel { Margin = new Thickness(4, 8, 4, 2) };
         body.Children.Add(hint);
         body.Children.Add(_stage);
-        Window = new DerethWindow(string.Empty, null, body);
+        Window = new DerethWindow(string.Empty, null, body, iconHeader: true);
         Window.CloseRequested += (_, _) => Close?.Invoke();
     }
 

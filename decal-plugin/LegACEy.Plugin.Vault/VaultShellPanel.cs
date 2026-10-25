@@ -628,7 +628,7 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IItem
     public VaultShellWindow(VaultShellPanel panel)
     {
         _panel = panel ?? throw new ArgumentNullException(nameof(panel));
-        var window = new DerethWindow("Vault", panel.HeaderIcon(), panel);
+        var window = new DerethWindow("Vault", panel.HeaderIcon(), panel, iconHeader: true);
         window.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Content = window;
     }

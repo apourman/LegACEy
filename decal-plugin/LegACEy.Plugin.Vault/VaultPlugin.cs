@@ -30,7 +30,7 @@ public sealed class VaultPlugin : ILegACEyPlugin
 
     public void Start(ILegACEyClient client) =>
         client.RegisterStationWindow(Station, WindowId, "Vault",
-            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close), new DerethClientTheme(), Sizing, DerethWindow.TitleBarHeight);
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close), new DerethClientTheme(), Sizing, DerethWindow.IconTitleBarHeight);
 
     private static Control CreateWindow(ILegACEyClient client, Action close)
     {

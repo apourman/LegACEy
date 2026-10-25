@@ -29,7 +29,7 @@ public sealed class AppraisalWindow
     /// <summary>The smallest the player can resize the window to: the header, the summary and a few rows.</summary>
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(260, 160));
     // The Dereth frame and header, the title rule and the body's bottom margin, around the body.
-    private const int Chrome = DerethWindow.TitleBarHeight + 5 + 6 + 8;
+    private const int Chrome = DerethWindow.IconTitleBarHeight + 5 + 6 + 8;
     // The frame and the window's side margins, and the body's padding, around the text.
     private const int BodyInset = 40;
 
@@ -84,7 +84,7 @@ public sealed class AppraisalWindow
         var glyph = new DerethPathGlyph(FigureGlyph) { Stroke = DerethPalette.MutedBrush };
         var button = new DerethHeaderButton(glyph) { Name = "InspectButton" };
         ToolTip.SetTip(button, "Inspect");
-        var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot), button);
+        var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot), button, iconHeader: true);
         // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels.
         var height = measure == null
             ? layout.Height
