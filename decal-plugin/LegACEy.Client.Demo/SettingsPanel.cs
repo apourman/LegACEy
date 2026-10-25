@@ -24,7 +24,10 @@ public sealed record UiSizeChoice(int Percent, Action<int> Set)
 public sealed record UpdateChoice(string Label, bool Enabled, Action Check);
 
 /// <summary>A window the player can have as LegACEy's (custom) or retail's (native): whether it is custom now, and the switch.</summary>
-public sealed record UiWindowChoice(string Title, Func<bool> IsCustom, Action<bool> SetCustom);
+public sealed record UiWindowChoice(string Title, Func<bool> IsCustom, Action<bool> SetCustom, WindowSizeChoice? Size = null);
+
+/// <summary>A window's own size in percent, for this character, and the change that makes it some steps bigger (or, negative, smaller).</summary>
+public sealed record WindowSizeChoice(Func<int> Percent, Action<int> Step);
 
 /// <summary>A per-character option the Settings window shows: its current value, and the change that sets it.</summary>
 public sealed record OptionChoice<T>(T Value, Action<T> Set);
@@ -379,6 +382,7 @@ public sealed class SettingsPanel : UserControl
         head.Children.Add(ScopedLabel(title));
 
         var options = new StackPanel { Spacing = 6 };
+        if (window.Size != null) options.Children.Add(SizeRow(window.Size));
         foreach (var row in OptionRows(window.Title)) options.Children.Add(row);
         var frame = new Rectangle
         {
@@ -403,6 +407,31 @@ public sealed class SettingsPanel : UserControl
         _redraws.Add(Show);
         Show();
         return card;
+    }
+
+    /// <summary>
+    /// "Size": − and + make the window a step smaller or bigger, as Ctrl and the wheel over it do, for players without a wheel. Both are greyed
+    /// out while the UI is locked, which holds every window's size.
+    /// </summary>
+    private Control SizeRow(WindowSizeChoice size)
+    {
+        var smaller = new DerethButton { Content = "\u2212", MinWidth = 28 };
+        var bigger = new DerethButton { Content = "+", MinWidth = 28 };
+        var readout = new TextBlock
+        {
+            FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.CreamBrush, MinWidth = 40, TextAlignment = TextAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        void Show()
+        {
+            readout.Text = $"{size.Percent()}%";
+            smaller.IsEnabled = bigger.IsEnabled = _settings.LockUi?.Locked != true;
+        }
+        smaller.Click += (_, _) => { size.Step(-1); Show(); };
+        bigger.Click += (_, _) => { size.Step(1); Show(); };
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Size", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { smaller, readout, bigger } });
     }
 
     /// <summary>The options a window shows on Dereth. A window has a row only for the options the settings carry.</summary>

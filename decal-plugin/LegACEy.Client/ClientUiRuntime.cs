@@ -1099,13 +1099,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private IReadOnlyList<UiWindowChoice> WindowChoices() => new[]
     {
-        Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default),
-        Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }),
-        Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default),
-        Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default),
-        Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default),
-        Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default),
-        Choice("Attack bar", RetailAttackSwitchFile, () => _lastAttackSwitchCheck = default),
+        Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default, InventoryWindowId),
+        Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }, AppraisalFeature.WindowId),
+        Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default, ToolbarSurfaceId),
+        Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default, ChatWindowId),
+        Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default, DerethVitalsWindow.StackedId, DerethVitalsWindow.SideBySideId),
+        Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default, RadarWindowId),
+        Choice("Attack bar", RetailAttackSwitchFile, () => _lastAttackSwitchCheck = default, DerethAttackBarWindow.WindowId),
         Choice("Game messages", RetailGameMessagesSwitchFile, () =>
         {
             _gameMessagesRetail = !SwitchCustom(IOPath.Combine(PluginDirectory, RetailGameMessagesSwitchFile));
@@ -1113,9 +1113,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         })
     };
 
-    private UiWindowChoice Choice(string title, string file, Action recheck)
+    // The Inventory plugin's window, as the plugin registry names it (plugin name/window id). Plugins load at runtime, so it is spelled out.
+    private const string InventoryWindowId = "Inventory/inventory-vertical";
+
+    /// <summary>
+    /// A window's card: its switch file, and the ids of the windows its Size row scales, the first of which it reads the size from. A window
+    /// that is not open has its size saved for when it opens.
+    /// </summary>
+    private UiWindowChoice Choice(string title, string file, Action recheck, params string[] sizeIds)
     {
         var path = IOPath.Combine(PluginDirectory, file);
+        var size = sizeIds.Length == 0 ? null : new WindowSizeChoice(
+            () => _windows?.SizePercentOf(PlaceIdOf(sizeIds[0])) ?? 100,
+            steps => Guard(() => { if (_windows != null) foreach (var id in sizeIds) RescaleWindow(id, steps); }));
         return new UiWindowChoice(title, () => SwitchCustom(path), custom =>
         {
             try
@@ -1131,7 +1141,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _switchHeld[path] = custom;
             }
             recheck();
-        });
+        }, size);
     }
 
     /// <summary>Whether a switch's window is on LegACEy's: the file's absence, unless a write this session could not change it.</summary>
@@ -4380,6 +4390,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         ? _toolbarTakeover?.Holds == true
         : id != null && _windows?.Get(id) != null;
 
+    /// <summary>The id a surface's size is saved under: the toolbar's place, or the window's own id.</summary>
+    private static string PlaceIdOf(string id) => id == ToolbarSurfaceId ? ToolbarPlaceId : id;
+
     // How long a window's size shows over it after a wheel notch.
     private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);
 
@@ -4390,7 +4403,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void RescaleWindow(string id, int steps)
     {
         if (!AvaloniaPanel.CanScale || _windows!.Locked) return;
-        var placeId = id == ToolbarSurfaceId ? ToolbarPlaceId : id;
+        var placeId = PlaceIdOf(id);
         if (_windows.Rescale(placeId, steps))
         {
             if (id == ToolbarSurfaceId) ScaleToolbar();
