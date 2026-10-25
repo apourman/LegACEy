@@ -59,6 +59,7 @@ public sealed class WorldUpdatesTests : IDisposable
         var updates = Updates(() => Manifest(version, patch), patch);
         await updates.Heard(Note(version));
         updates.SwitchedOn(reported: true);
+        updates.ActivePatch!.Dispose(); // the game closed: Windows refuses to change a patch file still open
         (fetches, downloads) = (0, 0);
     }
 
