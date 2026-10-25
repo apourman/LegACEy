@@ -222,7 +222,6 @@ public sealed class RetailToolbarTests
             toolbar.Measure(Size.Infinity);
             // The client sizes the panel as a window's: retail's width at the scale, rounded. The toolbar asks for no more than a pixel past it.
             var width = (int)Math.Round(RetailToolbar.RetailWidth * scale);
-            Assert.Equal((int)Math.Round(310 * scale), width);
             Assert.InRange(toolbar.DesiredSize.Width * scale - width, -1, 1);
             panel.Resize(width, (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
             panel.Tick();

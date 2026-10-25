@@ -73,7 +73,7 @@ internal static class InventorySample
             Wielded(WieldedSword, "Sword", 0x060010DA, 0x00100000, PaperdollSlot.Weapon),
         };
 
-        return new InventorySnapshot(main, sides, items, worn, burden, 5400, 25000, openContainer, selected, characterName);
+        return new InventorySnapshot(main, sides, items, worn, burden, 5400, openContainer, selected, characterName);
     }
 
     /// <summary>A stack of the main pack's apple kind (same name and type as the sample's apple), for a merge test.</summary>

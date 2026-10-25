@@ -163,18 +163,13 @@ public sealed class InventorySnapshotBuilderTests
     }
 
     [Fact]
-    public void The_burden_limit_stops_growing_at_the_augmentation_cap_and_pyreals_total_the_pyreal_stacks_in_packs()
+    public void The_burden_limit_stops_growing_at_the_augmentation_cap()
     {
         var reader = new FakeReader { Strength = 100, CarryingAugmentations = 10 };
-        reader.Objects.Add(Pack(PackInSlotZero, slot: 0, capacity: 24));
-        reader.Objects.Add(Item(0x50000110, container: Character, slot: 0, wcid: 273, stackCount: 40));
-        reader.Objects.Add(Item(0x50000111, container: PackInSlotZero, slot: 3, wcid: 273, stackCount: 10));
-        reader.Objects.Add(Item(0x50000112, container: PackInSlotZero, slot: 1, wcid: 1, stackCount: 1));
 
         var snapshot = InventorySnapshotBuilder.Build(reader);
 
         Assert.Equal(30000, snapshot.BurdenLimit);
-        Assert.Equal(50, snapshot.Pyreals);
     }
 
     private static InventoryObjectRead Pack(uint id, int slot, int capacity) =>

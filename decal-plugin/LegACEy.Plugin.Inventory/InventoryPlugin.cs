@@ -114,7 +114,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
             _settings = settings;
             client.SaveSettings(settings.ToInt());
             if (settings.Collapsed == collapsed) return;
-            // Hiding keeps this view's size and position. The other view opens with its own saved size.
+            // Hiding keeps this window's size and position. The full or collapsed one opens with its own saved size.
             Hide(collapsed, close);
             Toggle(client, settings.Collapsed);
         };
@@ -143,7 +143,9 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     // The ids the vertical layout's windows had, so their saved places and sizes still apply.
     private static string WindowId(bool collapsed) => "inventory-vertical" + (collapsed ? "-compact" : string.Empty);
 
-    private const int VerticalWidth = 310, TallestVertical = 10_000;
+    // Retail's toolbar window width, so the inventory stacked on the toolbar lines up with it.
+    private const int Width = (int)RetailToolbar.RetailWidth;
+    private const int TallestVertical = 10_000;
 
     /// <summary>
     /// Each view's default size and minimum. The minimum keeps the paperdoll, unless it is collapsed, and one row of the grid visible.
@@ -153,7 +155,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     /// </summary>
     private static (int Width, int Height, WindowResizing Sizing) Shape(bool collapsed) => collapsed switch
     {
-        false => (VerticalWidth, 794, new WindowResizing(new Size(VerticalWidth, 431), new Size(VerticalWidth, TallestVertical))),
-        _ => (VerticalWidth, 276, new WindowResizing(new Size(VerticalWidth, 210), new Size(VerticalWidth, TallestVertical))),
+        false => (Width, 794, new WindowResizing(new Size(Width, 431), new Size(Width, TallestVertical))),
+        _ => (Width, 276, new WindowResizing(new Size(Width, 210), new Size(Width, TallestVertical))),
     };
 }

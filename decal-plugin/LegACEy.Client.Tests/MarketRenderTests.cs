@@ -51,7 +51,7 @@ public sealed class MarketRenderTests
             var main = new InventoryPack(0x50000001, "Main", 0, 102);
             var items = market.Server.Pack.Keys.Select((guid, slot) => new InventoryItem(guid, market.Server.Pack[guid].Name, main.Id, slot,
                 market.Server.Pack[guid].Visual, 1, 1, 1, 0)).ToList();
-            market.Inventory.Push(new InventorySnapshot(main, Array.Empty<InventoryPack>(), items, Array.Empty<WieldedItem>(), 0, 0, 0, 0, 0));
+            market.Inventory.Push(new InventorySnapshot(main, Array.Empty<InventoryPack>(), items, Array.Empty<WieldedItem>(), 0, 0, 0, 0));
             market.Host.Resize(width, height);
             void Save(string name)
             {

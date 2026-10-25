@@ -718,13 +718,13 @@ public sealed class InventoryWindowTests
     {
         private readonly InventoryWindow _window;
 
-        /// <param name="width">The panel's width; by default the window's fixed width.</param>
+        /// <param name="width">The panel's width; by default the window's fixed width, retail's toolbar window width.</param>
         /// <param name="height">The panel's height; by default the window's default height.</param>
         public InventoryHost(FakeInventoryPort port, bool showSlots, int? width = null, int? height = null)
         {
             InventoryWindow? window = null;
             Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(showSlots), Drag),
-                width ?? 310, height ?? 794);
+                width ?? (int)RetailToolbar.RetailWidth, height ?? 794);
             Host.ApplyTheme(new DerethClientTheme());
             _window = window!;
             InventoryDriver.Tick(Host);

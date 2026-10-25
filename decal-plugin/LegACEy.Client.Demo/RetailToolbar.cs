@@ -127,8 +127,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private readonly Border _meterSlot = new() { IsVisible = false };
     private readonly StackPanel _plaqueContent;
     /// <summary>
-    /// Retail's toolbar window width, as the Dereth inventory's: its 300 DIP toolbar inside a 5 DIP border, 5 + 300 + 5. Set, not left to the parts, so it scales as a window does; the
-    /// parts, each rounded up to whole pixels, would make it a few pixels wider at most scales.
+    /// Retail's toolbar window width (its 300 DIP toolbar in a 5 DIP border), which the Dereth inventory shares. Set, not left to the
+    /// parts, so it scales as a window does; the parts, each rounded up to whole pixels, would make it a few pixels wider at most scales.
     /// </summary>
     public const double RetailWidth = 310;
     // The part above the rows, then the shortcut rows in order, touching as retail's do.

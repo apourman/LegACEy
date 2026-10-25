@@ -2952,9 +2952,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool OnToolbarMoveEdge(Point point) =>
         _toolbarSurface is { } surface && _toolbarTakeover?.Holds == true && point.Y - surface.Location.Y < WindowManager.ResizeBand;
 
-    /// <summary>Whether a screen point is on the toolbar's bottom edge, where a drag shows and hides shortcut row 2, as retail's does.</summary>
+    /// <summary>
+    /// Whether a screen point is on the toolbar's bottom edge, where a drag shows and hides shortcut row 2, as retail's does. Never while
+    /// retail's UI is locked.
+    /// </summary>
     private bool OnToolbarRowEdge(Point point) =>
-        _toolbarSurface is { } surface && _toolbarTakeover?.Holds == true && _shortcutBar != null
+        _toolbarSurface is { } surface && _toolbarTakeover?.CanDrag == true && _shortcutBar != null
         && surface.Location.Y + surface.Bounds.Height - point.Y <= WindowManager.ResizeBand;
 
     /// <summary>
@@ -2991,10 +2994,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// The button went up: the Dereth toolbar stays where it was dropped, and the place is saved for this character with the LegACEy
-    /// windows. A failure gives retail's toolbar back.
-    /// </summary>
-    /// <summary>
     /// The bottom edge is dragged: half a row up hides row 2, half a row down shows it, and the toolbar's top edge stays. The choice is
     /// kept for the character, as Settings keeps it.
     /// </summary>
@@ -3019,6 +3018,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarRowDragY = from + (show ? row : -row);
     }
 
+    /// <summary>
+    /// The button went up: the Dereth toolbar stays where it was dropped, and the place is saved for this character with the LegACEy
+    /// windows. A failure gives retail's toolbar back.
+    /// </summary>
     private void EndToolbarDrag()
     {
         _toolbarDragOffset = null;
@@ -4214,7 +4217,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
         if (_toolbarRowDragY != null) return RetailCursor(DatCursorNS, IdcSizeNS);
         if (owner == ToolbarSurfaceId && OnToolbarMoveEdge(point)) return RetailCursor(DatCursorMove, IdcSizeAll);
-        if (owner == ToolbarSurfaceId && _toolbarTakeover?.CanDrag == true && OnToolbarRowEdge(point)) return RetailCursor(DatCursorNS, IdcSizeNS);
+        if (owner == ToolbarSurfaceId && OnToolbarRowEdge(point)) return RetailCursor(DatCursorNS, IdcSizeNS);
         if (owner == GameMessagesSurfaceId) return RetailCursor(DatCursorMove, IdcSizeAll);
         if (_windows == null) return IntPtr.Zero;
         if (owner != null && _windows.MoveEdgeAt(point) == owner) return RetailCursor(DatCursorMove, IdcSizeAll);

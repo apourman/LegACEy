@@ -32,7 +32,7 @@ namespace LegACEy.Plugin.Inventory;
 public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZone, IRetailItemDropTarget
 {
     internal const string Title = "Inventory";
-    /// <summary>The vertical layout's grid is retail's main pack: six columns, whatever the width.</summary>
+    /// <summary>The grid is retail's main pack: six columns, whatever the width.</summary>
     internal const int RetailColumns = 6;
     private const double EmptyOpacity = 0.8;
     // A lifted item's slots fade while it is dragged, as the Vault's do.
@@ -60,7 +60,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private readonly DerethSlotGrid _grid = new() { ColumnAlignment = HorizontalAlignment.Left };
     private readonly TextBlock _contentsName = Label(string.Empty, TextBrush, 13);
     private readonly TextBlock _contentsCount = Label(string.Empty, MutedBrush, 13);
-    // The pack list: a column in the vertical layout, a strip of tabs in the horizontal one.
+    // The pack list: the main pack, a rule and the side packs, in a column right of the grid.
     private readonly StackPanel _packList = new() { Spacing = 4 };
     private readonly ContentControl _burdenMeter = new();
     private readonly TextBlock _burdenText = Label(string.Empty, TextBrush, 12);
@@ -115,7 +115,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _showSlots = settings.ShowSlots;
         _collapsed = settings.Collapsed;
 
-        // Every header button is the same gap from the next, the close box included.
         _frame = new DerethWindow(Title, null, Body(), EquipmentToggle(), centreTitle: true);
         _frame.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Content = new Grid { Children = { _frame, _dropIndicator } };
