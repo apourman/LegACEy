@@ -73,5 +73,5 @@ public sealed class InventoryRefreshTests
     }
 
     private static InventorySnapshot Snapshot(int burden) => new(new InventoryPack(1, "Main Pack", 0, 96), Array.Empty<InventoryPack>(),
-        Array.Empty<InventoryItem>(), Array.Empty<WieldedItem>(), burden, 0, 0, 0, 0);
+        Array.Empty<InventoryItem>(), Array.Empty<WieldedItem>(), burden, 0, 0, 0);
 }

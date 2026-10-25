@@ -574,6 +574,7 @@ public sealed class DerethSlot : Grid
     private static readonly BoxShadows CarriedGlow = new(new BoxShadow { IsInset = true, Blur = 10, Spread = 1, Color = DerethPalette.TealText });
 
     private readonly double _side;
+    private readonly bool _flush;
     private readonly Border _wash;
     private readonly Border _outline;
     private bool _carried;
@@ -587,7 +588,10 @@ public sealed class DerethSlot : Grid
     public DerethSlot(Control? content, bool flush = false)
     {
         _side = flush ? ItemCellSize.Standard.Icon : ItemCellSize.Standard.Cell;
-        HorizontalAlignment = HorizontalAlignment.Left;
+        // A flush slot asks no width and fills the width it is given, so touching slots share their row's width exactly at any scale;
+        // each asking for its side, rounded up to whole pixels, they would run past it.
+        _flush = flush;
+        HorizontalAlignment = flush ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         VerticalAlignment = VerticalAlignment.Top;
         Background = Brushes.Transparent;
         _wash = new Border { Margin = new Thickness(2), CornerRadius = new CornerRadius(3), Background = WashBrush, IsVisible = false, IsHitTestVisible = false };
@@ -634,6 +638,6 @@ public sealed class DerethSlot : Grid
     protected override Size MeasureOverride(Size availableSize)
     {
         base.MeasureOverride(new Size(_side, _side));
-        return new Size(_side, _side);
+        return new Size(_flush ? 0 : _side, _side);
     }
 }

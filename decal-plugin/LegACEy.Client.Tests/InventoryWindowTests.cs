@@ -25,7 +25,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         Assert.Equal(InventorySample.Helm, InventoryDriver.Id(Slot(host, PaperdollSlot.Head)).ItemId);
         // The coat is one item in three slots.
@@ -51,6 +51,14 @@ public sealed class InventoryWindowTests
         InventoryDriver.Tick(host.Host);
         var reading = Assert.Single(host.Host.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "111%");
         Assert.Same(DerethPalette.TextBrush, reading.Foreground);
+
+        // Just past the limit, the yellow band already shows over the full green one.
+        port.Push(InventorySample.Snapshot(burden: 5460));
+        InventoryDriver.Tick(host.Host);
+        Assert.Equal("101%", Assert.Single(host.Host.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text.EndsWith("%")).Text);
+        var bands = host.Host.Content.GetVisualDescendants().OfType<Border>().Where(border => border.Parent is Grid { RowDefinitions.Count: 4 }).ToArray();
+        Assert.True(bands[1].Bounds.Height >= 3, $"The yellow band is {bands[1].Bounds.Height} px tall.");
+        Assert.True(bands[0].Bounds.Height > 18, $"The green band is {bands[0].Bounds.Height} px tall.");
     });
 
     [Fact]
@@ -58,7 +66,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var reported = new List<InventorySettings>();
         host.Window.SettingsChanged += reported.Add;
 
@@ -77,7 +85,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot(openContainer: InventorySample.Character));
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         Assert.Equal(96, host.Cells.Length);
         Assert.Equal(InventorySample.Apple, InventoryDriver.Id(host.Cells[0]).ItemId);
 
@@ -98,28 +106,11 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
-    public void The_layout_toggle_asks_for_the_other_layout_and_keeps_the_slots_choice() => RenderThread.Run(() =>
-    {
-        var port = new FakeInventoryPort();
-        port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
-        var reported = new List<InventorySettings>();
-        host.Window.SettingsChanged += reported.Add;
-
-        InventoryDriver.PressLayout(host.Host, InventoryLayout.Vertical);
-        Assert.Empty(reported);
-        InventoryDriver.PressLayout(host.Host, InventoryLayout.Horizontal);
-        var choice = Assert.Single(reported);
-        Assert.Equal(InventoryLayout.Horizontal, choice.Layout);
-        Assert.False(choice.ShowSlots);
-    });
-
-    [Fact]
     public void Clicking_a_pack_shows_its_contents_without_asking_the_server() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         // The server answers a use of a carried pack with only "use done" (a busy cursor); retail switches packs locally.
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
@@ -137,7 +128,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot(focus: true));
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Focus));
         Assert.Equal(new[] { $"select 0x{InventorySample.Focus:X8}" }, port.Commands);
@@ -153,7 +144,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot(focus: true));
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         InventoryDriver.Tick(host.Host);
 
         bool HasLine(uint pack) => ((Panel)InventoryDriver.PackSlot(host.Host, pack).Parent!).Children[1] is Border;
@@ -167,7 +158,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var main = InventoryDriver.PackSlot(host.Host, InventorySample.Character);
 
         InventoryDriver.Drop(host.Host, main, InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
@@ -186,7 +177,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var apple = host.Cells[0];
         var outside = new Avalonia.Point(-50, -50);
 
@@ -204,7 +195,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var outside = new Avalonia.Point(-50, -50);
         host.Drag.Target = ItemDropTarget.World;
 
@@ -220,7 +211,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         host.Drag.Target = ItemDropTarget.World;
         DragOut(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack), new Avalonia.Point(-50, -50));
 
@@ -242,7 +233,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         host.Drag.Target = ItemDropTarget.World;
         host.Drag.TakeHandOff = true;
 
@@ -261,7 +252,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         host.Drag.Target = ItemDropTarget.World;
         host.Drag.TakeHandOff = true;
         // The main pack's cells are its slots: apple 0, scroll 4, sword 7, cap 9.
@@ -292,7 +283,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot(openContainer: InventorySample.Potions));
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         // The potions pack's cells: blue potion 0, yellow potion 5.
         Click(host.Host, host.Cells[0], Avalonia.Input.KeyModifiers.Control);
@@ -328,7 +319,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var apple = InventoryDriver.Centre(host.Host, host.Cells[0]);
 
         host.Host.PointerMove(apple.X, apple.Y);
@@ -344,7 +335,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var apple = host.Cells[0];
         var select = $"select 0x{InventorySample.Apple:X8}";
 
@@ -359,7 +350,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         InventoryDriver.RightClick(host.Host, host.Cells[0]);
         InventoryDriver.RightClick(host.Host, host.Cells[10]);
@@ -372,7 +363,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var cells = host.Cells;
 
         // The scroll sits in slot 4 of the main pack; it goes to the empty slot 10. Its icon rides the pointer until the release.
@@ -389,7 +380,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         Assert.False(host.Cells[4].Selected);
         var other = host.Cells[5].Opacity;
 
@@ -410,7 +401,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var potions = InventoryDriver.PackSlot(host.Host, InventorySample.Potions);
 
         // The potions pack holds seventeen items in slots 0 to 16, so the scroll goes to slot 17.
@@ -425,7 +416,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var head = Slot(host, PaperdollSlot.Head);
 
         InventoryDriver.Drop(host.Host, host.Cells[9], head);
@@ -440,7 +431,7 @@ public sealed class InventoryWindowTests
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
         port.WorldLocations[bow] = 0x00400000; // MissileWeapon: not the sword's MeleeWeapon location, but the same slot
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var target = (IRetailItemDropTarget)host.Window;
 
         Assert.True(target.RetailDrop(bow, "Bow", InventoryDriver.Centre(host.Host, Slot(host, PaperdollSlot.Weapon))));
@@ -454,7 +445,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
+        using var host = new InventoryHost(port, showSlots: false);
         var doll = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DollArea");
 
         InventoryDriver.Drop(host.Host, host.Cells[9], doll);
@@ -467,7 +458,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
+        using var host = new InventoryHost(port, showSlots: false);
         var doll = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DollArea");
         var indicator = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator");
 
@@ -484,7 +475,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
+        using var host = new InventoryHost(port, showSlots: false);
         host.Window.SetDoll(new PaperdollView(new SilentLooks(), string.Empty) { Still = true });
         InventoryDriver.Tick(host.Host);
         var doll = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DollArea");
@@ -523,7 +514,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         InventoryDriver.DragTo(host.Host, host.Cells[0], host.Cells[10]);
 
@@ -537,7 +528,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var cells = host.Cells;
 
         // The move is sent, and the port pushes no change: the scroll stays where it was.
@@ -553,7 +544,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var weapon = Slot(host, PaperdollSlot.Weapon);
 
         // A cap can't go in the weapon slot.
@@ -571,7 +562,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         // Side packs are numbered on their own: the potions pack is the second side pack, so the sack moves to position 1.
         InventoryDriver.Drop(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack), InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
@@ -584,7 +575,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         InventoryDriver.Drop(host.Host, Slot(host, PaperdollSlot.Head), host.Cells[10]);
 
@@ -596,7 +587,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         // An apple on a scroll: both stack, but they are different kinds, so the server places the apple in the scroll's cell.
         InventoryDriver.Drop(host.Host, host.Cells[0], host.Cells[4]);
@@ -610,7 +601,7 @@ public sealed class InventoryWindowTests
         var port = new FakeInventoryPort();
         // A second apple, in slot 5: the same name and type as the sample's apple in slot 0, so the drop merges the two.
         port.Push(InventorySample.Snapshot(extra: new[] { InventorySample.AppleStack(0x80000200, slot: 5, stack: 20) }));
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
 
         InventoryDriver.Drop(host.Host, host.Cells[0], host.Cells[5]);
 
@@ -622,7 +613,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         const uint CorpseItem = 0x90000001; // not in our snapshot: it lies in another retail window
         var target = (IRetailItemDropTarget)host.Window;
         var empty = host.Cells[10];
@@ -641,7 +632,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var zone = (IInventoryDropZone)host.Window;
         var indicator = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator");
 
@@ -669,7 +660,7 @@ public sealed class InventoryWindowTests
         // A helm lying in another window: not in our snapshot, so its locations come from the world, as the port reads them.
         const uint CorpseHelm = 0x90000002;
         port.WorldLocations[CorpseHelm] = 0x00000001; // HeadWear
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var target = (IRetailItemDropTarget)host.Window;
         var indicator = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator");
         var overHead = InventoryDriver.Centre(host.Host, Slot(host, PaperdollSlot.Head));
@@ -692,7 +683,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var start = InventoryDriver.Centre(host.Host, host.Cells[0]);
 
         // The focus is lost mid-drag: the release comes from nowhere in the window.
@@ -710,7 +701,7 @@ public sealed class InventoryWindowTests
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
-        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        using var host = new InventoryHost(port, showSlots: true);
         var start = InventoryDriver.Centre(host.Host, host.Cells[0]);
 
         host.Host.PointerDown(start.X, start.Y);
@@ -727,14 +718,13 @@ public sealed class InventoryWindowTests
     {
         private readonly InventoryWindow _window;
 
-        /// <param name="width">The panel's width; by default the vertical window's fixed width, or 360 for the horizontal one.</param>
-        /// <param name="height">The panel's height; by default the vertical window's default height, or 530 for the horizontal one.</param>
-        public InventoryHost(FakeInventoryPort port, InventoryLayout layout, bool showSlots, int? width = null, int? height = null)
+        /// <param name="width">The panel's width; by default the window's fixed width, retail's toolbar window width.</param>
+        /// <param name="height">The panel's height; by default the window's default height.</param>
+        public InventoryHost(FakeInventoryPort port, bool showSlots, int? width = null, int? height = null)
         {
             InventoryWindow? window = null;
-            var vertical = layout == InventoryLayout.Vertical;
-            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(layout, showSlots), Drag),
-                width ?? (vertical ? 305 : 360), height ?? (vertical ? 818 : 530));
+            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(showSlots), Drag),
+                width ?? (int)RetailToolbar.RetailWidth, height ?? 794);
             Host.ApplyTheme(new DerethClientTheme());
             _window = window!;
             InventoryDriver.Tick(Host);

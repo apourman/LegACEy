@@ -19,63 +19,40 @@ namespace LegACEy.Client.Tests;
 
 /// <summary>
 /// The inventory plugin on a fake client. The client's window placement is the real <see cref="WindowManager"/> over a placements
-/// store, so the sizes and positions each layout keeps are the ones the client keeps. The windows are real headless panels.
+/// store, so the sizes and positions each window keeps are the ones the client keeps. The windows are real headless panels.
 /// </summary>
 public sealed class InventoryPluginTests
 {
-    private const string Vertical = "inventory-vertical";
-    private const string Horizontal = "inventory-horizontal";
+    // The window's id, kept from when it was the vertical of two layouts.
+    private const string Full = "inventory-vertical";
+    private const string Compact = Full + "-compact";
 
-    // Vertical is 0 and horizontal is 1 in the plugin's settings value; the Slots toggle adds 2.
-    private const int VerticalSlotsOff = 0;
-    private const int HorizontalSlotsOn = 3;
-    private const int VerticalSlotsOn = 2;
-    private const int HorizontalSlotsOff = 1;
+    // The plugin's settings value: the Slots toggle is 2, the collapsed section 4.
+    private const int SlotsOff = 0;
+    private const int SlotsOn = 2;
+    private const int Collapsed = 4;
 
     [Fact]
-    public void Switching_layout_hides_one_window_and_opens_the_other_at_its_own_saved_size() => RenderThread.Run(() =>
+    public void Collapsing_the_equipment_opens_the_compact_window_without_the_paperdoll_and_showing_it_comes_back() => RenderThread.Run(() =>
     {
         var positions = new MemoryWindowPositionStore();
-        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(305, 600)));
-        positions.Save("Server", "Character", Horizontal, (new Point(120, 120), new Size(700, 500)));
+        positions.Save("Server", "Character", Full, (new Point(150, 120), null));
         using var client = new FakeInventoryClient(positions);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        Assert.Equal(new Size(305, 600), client.Windows.Get(Vertical)!.Size);
-
-        InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
-        Assert.Null(client.Windows.Get(Vertical));
-        Assert.Equal(new Size(700, 500), client.Windows.Get(Horizontal)!.Size);
-        Assert.Equal(HorizontalSlotsOn, client.Settings);
-
-        // Hiding kept the vertical window's size; it comes back at that size.
-        InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
-        Assert.Null(client.Windows.Get(Horizontal));
-        Assert.Equal(new Size(305, 600), client.Windows.Get(Vertical)!.Size);
-        Assert.Equal(VerticalSlotsOn, client.Settings);
-    });
-
-    [Fact]
-    public void Collapsing_the_equipment_opens_the_layout_s_compact_window_without_the_paperdoll_and_showing_it_comes_back() => RenderThread.Run(() =>
-    {
-        var positions = new MemoryWindowPositionStore();
-        positions.Save("Server", "Character", Vertical, (new Point(150, 120), null));
-        using var client = new FakeInventoryClient(positions);
-        new InventoryPlugin().Start(client);
-        client.Retail!.Toggle();
-        Assert.NotNull(InventoryDriver.SlotOrNull(client.Panel(Vertical), PaperdollSlot.Head));
+        Assert.NotNull(InventoryDriver.SlotOrNull(client.Panel(Full), PaperdollSlot.Head));
 
         // The collapsed window opens where the full one was, and the full one comes back where the collapsed one was left.
-        var full = client.Windows.Get(Vertical)!.Location;
-        InventoryDriver.PressEquipment(client.Panel(Vertical));
-        Assert.Null(client.Windows.Get(Vertical));
-        Assert.Equal(full, client.Windows.Get(Vertical + "-compact")!.Location);
+        var full = client.Windows.Get(Full)!.Location;
+        InventoryDriver.PressEquipment(client.Panel(Full));
+        Assert.Null(client.Windows.Get(Full));
+        Assert.Equal(full, client.Windows.Get(Full + "-compact")!.Location);
         var moved = new Point(full.X + 30, full.Y + 20);
         client.Windows.Press(new Point(full.X + 100, full.Y + 20));
         client.Windows.Move(new Point(moved.X + 100, moved.Y + 20));
         client.Windows.Release();
-        var compact = client.Panel(Vertical + "-compact");
-        Assert.NotNull(client.Windows.Get(Vertical + "-compact"));
+        var compact = client.Panel(Full + "-compact");
+        Assert.NotNull(client.Windows.Get(Full + "-compact"));
         Assert.Null(InventoryDriver.SlotOrNull(compact, PaperdollSlot.Head));
         Assert.NotEmpty(InventoryDriver.Slots(compact));
         Assert.True(InventorySettings.FromInt(client.Settings).Collapsed);
@@ -83,9 +60,9 @@ public sealed class InventoryPluginTests
         // Closed and opened again by retail, it opens collapsed; the button brings the full window back.
         client.Retail!.Toggle();
         client.Retail!.Toggle();
-        Assert.NotNull(client.Windows.Get(Vertical + "-compact"));
+        Assert.NotNull(client.Windows.Get(Full + "-compact"));
         InventoryDriver.PressEquipment(compact);
-        Assert.Equal(moved, client.Windows.Get(Vertical)!.Location);
+        Assert.Equal(moved, client.Windows.Get(Full)!.Location);
         Assert.False(InventorySettings.FromInt(client.Settings).Collapsed);
     });
 
@@ -94,16 +71,16 @@ public sealed class InventoryPluginTests
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         new InventoryPlugin().Start(client);
-        Assert.Null(client.Windows.Get(Vertical));
+        Assert.Null(client.Windows.Get(Full));
 
         client.Retail!.Retail(true);
-        Assert.NotNull(client.Windows.Get(Vertical));
+        Assert.NotNull(client.Windows.Get(Full));
 
-        var window = client.Panel(Vertical);
+        var window = client.Panel(Full);
         // The close box is the header's one button that is neither a layout nor the equipment toggle (the doll's expand button is not in the header).
         InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag == null && button.Name is not ("EquipmentToggle" or "ExpandDoll")));
 
-        Assert.Null(client.Windows.Get(Vertical));
+        Assert.Null(client.Windows.Get(Full));
         Assert.Equal(1, client.Retail.CloseCalls);
         Assert.False(client.Retail.Open);
         // The window stands in for retail's panel, so it has no menu entry of its own.
@@ -111,34 +88,34 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
-    public void A_layout_switch_opens_the_other_layout_even_when_the_client_cannot_save_the_choice() => RenderThread.Run(() =>
+    public void Collapsing_opens_the_compact_window_even_when_the_client_cannot_save_the_choice() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new UnwritablePositionStore());
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
 
-        InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
+        InventoryDriver.PressEquipment(client.Panel(Full));
 
-        Assert.Null(client.Windows.Get(Vertical));
-        Assert.NotNull(client.Windows.Get(Horizontal));
+        Assert.Null(client.Windows.Get(Full));
+        Assert.NotNull(client.Windows.Get(Compact));
     });
 
     [Fact]
-    public void A_layout_switch_neither_closes_retail_nor_hides_the_panel_from_the_window() => RenderThread.Run(() =>
+    public void Collapsing_neither_closes_retail_nor_hides_the_panel_from_the_window() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         new InventoryPlugin().Start(client);
         client.Retail!.Retail(true);
 
-        InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
+        InventoryDriver.PressEquipment(client.Panel(Full));
 
-        Assert.NotNull(client.Windows.Get(Horizontal));
+        Assert.NotNull(client.Windows.Get(Compact));
         Assert.Equal(0, client.Retail.CloseCalls);
         Assert.True(client.Retail.Open);
     });
 
     [Fact]
-    public void The_layout_and_slots_choice_come_back_from_the_settings_file_after_a_restart() => RenderThread.Run(() =>
+    public void The_slots_choice_comes_back_from_the_settings_file_after_a_restart() => RenderThread.Run(() =>
     {
         var path = Path.Combine(Path.GetTempPath(), "legacey-inventory-" + Guid.NewGuid().ToString("N") + ".txt");
         try
@@ -147,19 +124,17 @@ public sealed class InventoryPluginTests
             {
                 new InventoryPlugin().Start(first);
                 first.Retail!.Toggle();
-                InventoryDriver.PressSlots(first.Panel(Vertical));
-                InventoryDriver.PressLayout(first.Panel(Vertical), InventoryLayout.Horizontal);
-                Assert.Equal(HorizontalSlotsOff, first.Settings);
+                InventoryDriver.PressSlots(first.Panel(Full));
+                Assert.Equal(SlotsOff, first.Settings);
             }
 
-            // A new session reads the same file: the horizontal layout opens with the Slots toggle still off.
+            // A new session reads the same file: the window opens with the Slots toggle still off.
             using var second = new FakeInventoryClient(new FileWindowPositionStore(path));
             new InventoryPlugin().Start(second);
             second.Retail!.Toggle();
-            var horizontal = second.Panel(Horizontal);
-            Assert.Null(second.Windows.Get(Vertical));
-            Assert.Null(InventoryDriver.SlotOrNull(horizontal, PaperdollSlot.Head));
-            Assert.NotNull(InventoryDriver.SlotOrNull(horizontal, PaperdollSlot.Neck));
+            var window = second.Panel(Full);
+            Assert.Null(InventoryDriver.SlotOrNull(window, PaperdollSlot.Head));
+            Assert.NotNull(InventoryDriver.SlotOrNull(window, PaperdollSlot.Neck));
         }
         finally
         {
@@ -173,45 +148,34 @@ public sealed class InventoryPluginTests
         var store = new MemoryWindowPositionStore();
         using var client = new FakeInventoryClient(store);
         new InventoryPlugin().Start(client);
-        client.SaveSettings(VerticalSlotsOn);
+        client.SaveSettings(SlotsOn);
         client.Retail!.Toggle();
-        Assert.NotNull(client.Windows.Get(Vertical));
+        Assert.NotNull(client.Windows.Get(Full));
         client.Retail!.Toggle();
-        Assert.Null(client.Windows.Get(Vertical));
+        Assert.Null(client.Windows.Get(Full));
 
-        // Another character logs in and has its own saved layout: the next open follows that character, not the cached one.
+        // Another character logs in with its section collapsed: the next open follows that character, not the cached one.
         client.Character = "Other";
-        store.Save("Server", "Other", "settings:Inventory", (new Point(1, 0), null));
+        store.Save("Server", "Other", "settings:Inventory", (new Point(Collapsed, 0), null));
         client.Retail!.Toggle();
-        Assert.Null(client.Windows.Get(Vertical));
-        Assert.NotNull(client.Windows.Get(Horizontal));
+        Assert.Null(client.Windows.Get(Full));
+        Assert.NotNull(client.Windows.Get(Compact));
     });
 
     [Fact]
-    public void A_hidden_layout_takes_the_slots_choice_made_in_the_other_layout_and_draws_what_changed_meanwhile() => RenderThread.Run(() =>
+    public void A_hidden_window_draws_what_changed_while_it_was_hidden() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
+        InventoryDriver.PressEquipment(client.Panel(Full));
 
-        // Slots goes off in the horizontal window, and the port opens a pack while the vertical one is hidden.
-        InventoryDriver.PressSlots(client.Panel(Horizontal));
+        // The port opens a pack while the full window is hidden; back on screen, it shows that pack.
         client.Port.Push(InventorySample.Snapshot(openContainer: InventorySample.Potions));
-        InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
-        Assert.Equal(VerticalSlotsOff, client.Settings);
-        Assert.Null(InventoryDriver.SlotOrNull(client.Panel(Vertical), PaperdollSlot.Head));
-        // Back on screen, the vertical window shows the pack that was opened while it was hidden.
-        var cells = InventoryDriver.Slots(client.Panel(Vertical)).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Cell).ToArray();
+        InventoryDriver.PressEquipment(client.Panel(Compact));
+        var cells = InventoryDriver.Slots(client.Panel(Full)).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Cell).ToArray();
         Assert.Equal(24, cells.Length);
         Assert.All(cells, cell => Assert.Equal(InventorySample.Potions, InventoryDriver.Id(cell).Container));
-
-        // Once more with the Slots choice unchanged, so only the redraw on showing can bring the grid up to date.
-        InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
-        client.Port.Push(InventorySample.Snapshot(openContainer: InventorySample.Character));
-        InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
-        cells = InventoryDriver.Slots(client.Panel(Vertical)).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Cell).ToArray();
-        Assert.Equal(96, cells.Length);
     });
 
     [Fact]
@@ -219,10 +183,10 @@ public sealed class InventoryPluginTests
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = new ServerChannelClient(new LookTransport()) };
         client.ServerActions.Add(PaperdollProtocol.Look);
-        client.SaveSettings(VerticalSlotsOff);
+        client.SaveSettings(SlotsOff);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        var expand = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(client.Panel(Vertical).Content).OfType<DerethButton>().Single(b => b.Name == "ExpandDoll");
+        var expand = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(client.Panel(Full).Content).OfType<DerethButton>().Single(b => b.Name == "ExpandDoll");
         Assert.True(expand.IsVisible);
 
         expand.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
@@ -239,11 +203,11 @@ public sealed class InventoryPluginTests
         var channel = new ServerChannelClient(transport);
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
         client.ServerActions.Add(PaperdollProtocol.Look);
-        client.SaveSettings(VerticalSlotsOff);
+        client.SaveSettings(SlotsOff);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
 
-        var panel = client.Panel(Vertical);
+        var panel = client.Panel(Full);
         var model = Assert.Single(ModelViews(panel));
         Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
 
@@ -259,7 +223,7 @@ public sealed class InventoryPluginTests
 
         // Hidden, the window stops asking; shown again, it asks.
         client.Retail!.Toggle();
-        Assert.Null(client.Windows.Get(Vertical));
+        Assert.Null(client.Windows.Get(Full));
         channel.Receive(LookChanged());
         Assert.Equal(2, transport.Actions.Count);
         client.Retail!.Toggle();
@@ -271,11 +235,11 @@ public sealed class InventoryPluginTests
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         client.LookCache.Receive(LookCache.CreateObject, LookCacheTests.Created(FakeInventoryClient.Player, setup: 0x02000001));
-        client.SaveSettings(VerticalSlotsOff);
+        client.SaveSettings(SlotsOff);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
 
-        Assert.Single(ModelViews(client.Panel(Vertical)));
+        Assert.Single(ModelViews(client.Panel(Full)));
     });
 
     [Fact]
@@ -284,21 +248,21 @@ public sealed class InventoryPluginTests
         var transport = new LookTransport();
         var channel = new ServerChannelClient(transport);
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
-        client.SaveSettings(VerticalSlotsOff);
+        client.SaveSettings(SlotsOff);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
         // Without the look on the server the doll area is a plain panel and asks for nothing.
-        Assert.Empty(ModelViews(client.Panel(Vertical)));
+        Assert.Empty(ModelViews(client.Panel(Full)));
         channel.Receive(LookChanged());
         Assert.Empty(transport.Actions);
 
         // channel.hello lands after the window opened, as it does at login: the open window gets the doll and asks for the look.
         client.Hello(PaperdollProtocol.Look);
-        Assert.Single(ModelViews(client.Panel(Vertical)));
+        Assert.Single(ModelViews(client.Panel(Full)));
         Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
 
         // Turned and zoomed, then closed and opened again: the doll starts from its first view.
-        var view = ModelViews(client.Panel(Vertical)).Single();
+        var view = ModelViews(client.Panel(Full)).Single();
         view.Zoom = 3;
         view.Focus = 0.9f;
         client.Retail!.Toggle();
@@ -313,10 +277,10 @@ public sealed class InventoryPluginTests
         var channel = new ServerChannelClient(transport);
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
         client.ServerActions.Add(PaperdollProtocol.Look);
-        client.SaveSettings(VerticalSlotsOff);
+        client.SaveSettings(SlotsOff);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        var status = (TextBlock)ModelViews(client.Panel(Vertical)).Single().Child!;
+        var status = (TextBlock)ModelViews(client.Panel(Full)).Single().Child!;
 
         client.Retail!.Toggle();   // hides the window, and with it the doll
         // A reply the server sent before the hide, with a body this client cannot read: it must not reach the status line.
@@ -331,11 +295,11 @@ public sealed class InventoryPluginTests
         var channel = new ServerChannelClient(transport);
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
         client.ServerActions.Add(PaperdollProtocol.Look);
-        client.SaveSettings(VerticalSlotsOn);
+        client.SaveSettings(SlotsOn);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
 
-        var panel = client.Panel(Vertical);
+        var panel = client.Panel(Full);
         Assert.Empty(ModelViews(panel));
         channel.Receive(LookChanged());
         Assert.Empty(transport.Actions);
@@ -353,31 +317,26 @@ public sealed class InventoryPluginTests
 
     /// <summary>
     /// Every visible control lies inside the window at the minimum and default sizes the plugin asks for, with the full sample drawn,
-    /// and the pack grid shows at least one row. At its minimum the horizontal pack strip stays on one row. Run it again with the
-    /// Windows fonts (FONTCONFIG_FILE) to check the taller text.
+    /// and the pack grid shows at least one row. Run it again with the Windows fonts (FONTCONFIG_FILE) to check the taller text.
     /// </summary>
-    [Theory]
-    [InlineData(InventoryLayout.Vertical)]
-    [InlineData(InventoryLayout.Horizontal)]
-    public void Nothing_spills_outside_the_window_at_the_minimum_and_default_sizes_in_both_layouts(InventoryLayout layout) => RenderThread.Run(() =>
+    [Fact]
+    public void Nothing_spills_outside_the_window_at_the_minimum_and_default_sizes() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         client.Port.Push(InventorySample.Snapshot(openContainer: InventorySample.Potions, selected: InventorySample.BluePotion));
-        client.SaveSettings(new InventorySettings(layout, showSlots: true).ToInt());
+        client.SaveSettings(new InventorySettings(showSlots: true).ToInt());
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
 
-        var id = layout == InventoryLayout.Horizontal ? Horizontal : Vertical;
-        var requested = client.Requested[id];
-        var panel = client.Panel(id);
-        Assert.Equal(new Size(requested.Width, requested.Height), client.Windows.Get(id)!.Size);
+        var requested = client.Requested[Full];
+        var panel = client.Panel(Full);
+        Assert.Equal(new Size(requested.Width, requested.Height), client.Windows.Get(Full)!.Size);
         AssertFitsWithOneGridRow(panel);
 
         var minimum = requested.Resizing!.Minimum;
         panel.Resize(minimum.Width, minimum.Height);
         InventoryDriver.Tick(panel);
         AssertFitsWithOneGridRow(panel);
-        if (layout == InventoryLayout.Horizontal) AssertPackTabsOnOneRow(panel);
     });
 
     /// <summary>
@@ -392,10 +351,12 @@ public sealed class InventoryPluginTests
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
 
-        var (width, _, resizing) = client.Requested[Vertical];
+        var (width, _, resizing) = client.Requested[Full];
+        // Retail's toolbar window width, as the Dereth toolbar's, so the two line up stacked.
+        Assert.Equal(RetailToolbar.RetailWidth, width);
         Assert.Equal(width, resizing!.Minimum.Width);
         Assert.Equal(width, resizing.Maximum!.Value.Width);
-        var panel = client.Panel(Vertical);
+        var panel = client.Panel(Full);
         InventoryDriver.Tick(panel);
         var grid = Assert.Single(panel.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
         var pitch = grid.ColumnPitch;
@@ -430,7 +391,7 @@ public sealed class InventoryPluginTests
         client.Port.Push(InventorySample.Snapshot(characterName: "Sir Reginald Ashbourne the Unyielding"));
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        var panel = client.Panel(Vertical);
+        var panel = client.Panel(Full);
         InventoryDriver.Tick(panel);
 
         var title = Assert.Single(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of Sir Reginald Ashbourne the Unyielding");
@@ -443,15 +404,6 @@ public sealed class InventoryPluginTests
         AssertNothingOutsideFrame(panel);
         var grid = Assert.Single(panel.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
         Assert.True(grid.Bounds.Height >= ItemCellSize.Standard.Cell, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
-    }
-
-    /// <summary>The main pack, the divider and the seven side packs are eight pack tabs, and they all sit on one row.</summary>
-    private static void AssertPackTabsOnOneRow(AvaloniaPanel panel)
-    {
-        var tabs = InventoryDriver.Slots(panel).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Pack).ToArray();
-        Assert.Equal(8, tabs.Length);
-        var rows = tabs.Select(tab => tab.TranslatePoint(default, panel.Content)!.Value.Y).Distinct().Count();
-        Assert.Equal(1, rows);
     }
 
     private static IEnumerable<ModelView> ModelViews(AvaloniaPanel panel) => panel.Content.GetVisualDescendants().OfType<ModelView>();

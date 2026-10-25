@@ -12,8 +12,8 @@ namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
 /// The paperdoll block: retail's paperdoll on six columns at the <see cref="ItemCellSize"/> pitch: the left
-/// jewellery column, three armour columns over the doll and two right columns, the aetheria and the cloak a square at the top of those, so
-/// none of it sits over the doll. Rows keep retail's spacing. It fills the width it is given: the left column keeps to the left edge, the
+/// jewellery column, three armour columns over the doll and two right columns. The aetheria are one row across the top right, as retail's,
+/// the first over the doll area's corner, so the doll stands below that row. Rows keep retail's spacing. It fills the width it is given: the left column keeps to the left edge, the
 /// right columns to the right edge, and the doll area takes the rest, with the armour slots centred over it. The doll area is the one control
 /// the 3D character fills; the Slots toggle sits in its bottom-left corner. Slots are placed by <see cref="Show"/>.
 /// </summary>
@@ -32,6 +32,11 @@ internal sealed class InventoryPaperdoll : Canvas
     // the window, so it stays off the row rather than hide the toggle.
     private const int CornerInset = 4;
     private const int CornerRowHeight = 20;
+    // The aetheria row's top. The row moves with the right side, so its cells stay one pitch apart.
+    private const int AetheriaY = 8;
+    // How far the doll area keeps clear of the aetheria row, beside and under the first aetheria.
+    private const double AetheriaGap = 4;
+    private static readonly HashSet<PaperdollSlot> Aetheria = new() { PaperdollSlot.AetheriaOne, PaperdollSlot.AetheriaTwo, PaperdollSlot.AetheriaThree };
 
     private static readonly (PaperdollSlot Slot, int Column, int Y)[] Positions =
     {
@@ -40,8 +45,9 @@ internal sealed class InventoryPaperdoll : Canvas
         (PaperdollSlot.Head, 2, 28), (PaperdollSlot.UpperArms, 1, 64), (PaperdollSlot.Chest, 2, 64), (PaperdollSlot.LowerArms, 1, 100),
         (PaperdollSlot.Abdomen, 2, 100), (PaperdollSlot.UpperLegs, 3, 100), (PaperdollSlot.Hands, 1, 136), (PaperdollSlot.LowerLegs, 3, 136),
         (PaperdollSlot.Feet, 3, 172),
-        // Retail packs the aetheria over the doll's side; here they and the cloak make a square at the top of the right columns.
-        (PaperdollSlot.AetheriaOne, 4, 8), (PaperdollSlot.AetheriaTwo, 5, 8), (PaperdollSlot.AetheriaThree, 4, 44), (PaperdollSlot.Cloak, 5, 44),
+        // The aetheria are one row, as retail's, the first over the doll area's corner; the cloak heads the clothing column.
+        (PaperdollSlot.AetheriaOne, 3, AetheriaY), (PaperdollSlot.AetheriaTwo, 4, AetheriaY), (PaperdollSlot.AetheriaThree, 5, AetheriaY),
+        (PaperdollSlot.Cloak, 5, 44),
         (PaperdollSlot.LeftWrist, 4, 80), (PaperdollSlot.LeftRing, 4, 116), (PaperdollSlot.Weapon, 4, 172), (PaperdollSlot.Ammo, 5, 172),
         (PaperdollSlot.Shirt, 5, 80), (PaperdollSlot.Pants, 5, 116),
     };
@@ -52,7 +58,7 @@ internal sealed class InventoryPaperdoll : Canvas
         PaperdollSlot.UpperLegs, PaperdollSlot.Hands, PaperdollSlot.LowerLegs, PaperdollSlot.Feet,
     };
 
-    private readonly List<(Control Cell, int X, int Y)> _placed = new();
+    private readonly List<(Control Cell, int X, int Y, bool Right)> _placed = new();
     private static readonly ItemCellSize Cells = ItemCellSize.Standard;
     // The width the block was placed for, and how much of it is past the narrowest: the doll area takes it.
     private double _width, _spare;
@@ -111,19 +117,26 @@ internal sealed class InventoryPaperdoll : Canvas
         var height = Scale(RetailHeight);
         DollArea.Width = (ArmourRight - ArmourLeft) * Cells.Pitch + Cells.Cell + 2 * DollClearance + _spare;
         DollArea.Height = height;
-        DollArea.Padding = new Thickness(0, 0, 0, CornerRowHeight + 2 * CornerInset);
+        // The doll stands below the aetheria row and above the corner row.
+        var rowBottom = Scale(AetheriaY) + Cells.Cell + AetheriaGap;
+        DollArea.Padding = new Thickness(0, rowBottom, 0, CornerRowHeight + 2 * CornerInset);
         SetLeft(DollArea, ArmourLeft * Cells.Pitch + SideGap + 1 - DollClearance);
+        // The first aetheria reaches over the doll area's top-right corner, so that corner is cut away round it, a gap clear of its
+        // cell, and the cell sits in the window's own space beside the doll.
+        var notchLeft = 3 * Cells.Pitch + 2 * SideGap + _spare + 1 - AetheriaGap - GetLeft(DollArea);
+        DollArea.Clip = new CombinedGeometry(GeometryCombineMode.Exclude,
+            new RectangleGeometry(new Rect(0, 0, DollArea.Width, height)), new RectangleGeometry(new Rect(notchLeft, 0, DollArea.Width - notchLeft, rowBottom)));
         SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
         SetTop(SlotsToggle, height - CornerRowHeight - CornerInset);
         SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - CornerInset);
         SetTop(ExpandButton, height - CornerRowHeight - CornerInset);
-        foreach (var (cell, column, y) in _placed) PlaceCell(cell, column, y);
+        foreach (var (cell, column, y, right) in _placed) PlaceCell(cell, column, y, right);
     }
 
-    private void PlaceCell(Control cell, int column, int y)
+    private void PlaceCell(Control cell, int column, int y, bool right)
     {
         // The left column stays at the left edge, the armour over the doll moves half the spare width, and the right side all of it.
-        var shift = column >= RightLeft ? 2 * SideGap + _spare : column >= ArmourLeft ? SideGap + Math.Round(_spare / 2) : 0;
+        var shift = right ? 2 * SideGap + _spare : column >= ArmourLeft ? SideGap + Math.Round(_spare / 2) : 0;
         SetLeft(cell, column * Cells.Pitch + shift + 1);
         SetTop(cell, Scale(y) + 1);
     }
@@ -156,15 +169,16 @@ internal sealed class InventoryPaperdoll : Canvas
     /// </summary>
     public void Show(Func<PaperdollSlot, Control> slotFor, bool showArmour)
     {
-        foreach (var (control, _, _) in _placed) Children.Remove(control);
+        foreach (var (control, _, _, _) in _placed) Children.Remove(control);
         _placed.Clear();
         foreach (var (slot, x, y) in Positions)
         {
             if (!showArmour && Armour.Contains(slot)) continue;
             var cell = slotFor(slot);
-            PlaceCell(cell, x, y);
+            var right = x >= RightLeft || Aetheria.Contains(slot);
+            PlaceCell(cell, x, y, right);
             Children.Add(cell);
-            _placed.Add((cell, x, y));
+            _placed.Add((cell, x, y, right));
         }
     }
 
