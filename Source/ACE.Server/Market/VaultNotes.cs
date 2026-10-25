@@ -247,15 +247,9 @@ namespace ACE.Server.Market
 
             log.Warn($"[VAULT] Note deposit of {amount:N0} MMD for {player.Name} failed ({result}); nothing was saved");
 
-            // the database still has the notes in the pack (the live notes kept their container throughout). A player who has gone gets them back when they log in, so the objects are just discarded.
-            // they go back last first, to the places they were taken from
+            // the database still has the notes in the pack (the live notes kept their container throughout); they go back last first, to the places they were taken from
             for (var index = notes.Count - 1; index >= 0; index--)
-            {
-                if (player.IsLoggingOut)
-                    KeepForLogin(player, notes[index], notes[index].Name);
-                else
-                    ReturnToPack(player, notes[index], notes[index].Name);
-            }
+                ReturnToPack(player, notes[index], notes[index].Name);
 
             FinishNotes(player, VaultOutcome.SaveFailed, amount, balance, completed);
         }

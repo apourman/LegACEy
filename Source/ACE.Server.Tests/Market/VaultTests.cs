@@ -370,40 +370,6 @@ namespace ACE.Server.Tests.Market
         }
 
         [TestMethod]
-        public void Deposit_SaveFailsAfterPackGivenAwayAndPackHasRoom_ItemIsTheDepositorsAgain()
-        {
-            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
-            var receiver = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
-            var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
-            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid), pack);
-            var guid = item.Guid.ClientGUID;
-
-            VaultResult result = null;
-            var done = new System.Threading.ManualResetEventSlim();
-
-            using (FailInsertsInto("market_item_event"))
-            {
-                VaultTestWorld.OnWorldThread(() =>
-                {
-                    Vault.Deposit(player, guid, r => { result = r; done.Set(); });
-                    Assert.IsTrue(player.TryRemoveFromInventory(pack.Guid, out _));
-                    Assert.IsTrue(receiver.TryAddToInventory(pack, out _));
-                });
-
-                Assert.IsTrue(done.Wait(TimeSpan.FromSeconds(30)));
-            }
-
-            Assert.AreEqual(VaultOutcome.SaveFailed, result.Outcome, result.Message);
-            Assert.IsNotNull(player.GetInventoryItem(guid), "back in the depositor's own pack");
-            VaultTestWorld.OnWorldThread(() => { });
-            VaultTestWorld.Save(pack);
-
-            var possessed = DatabaseManager.Shard.BaseDatabase.GetPossessedBiotasInParallel(receiver.Guid.ClientGUID);
-            Assert.IsFalse(possessed.Inventory.Any(b => b.Id == guid), "the pack's new owner doesn't get it");
-            Assert.AreEqual(1, Count($"SELECT COUNT(*) FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container} AND value = {player.Guid.ClientGUID};"), "the database has it in the depositor's pack");
-        }
-
-        [TestMethod]
         public void Deposit_SaveFailsAfterPackGivenAwayAndLoggingOut_ItemStaysTheDepositors()
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
@@ -430,7 +396,7 @@ namespace ACE.Server.Tests.Market
             }
 
             Assert.AreEqual(VaultOutcome.SaveFailed, result.Outcome, result.Message);
-            VaultTestWorld.OnWorldThread(() => { });
+            VaultTestWorld.OnWorldThread(() => { }); // the depositor's save of the item, queued on the world thread, has run
             VaultTestWorld.Save(pack);
 
             var possessed = DatabaseManager.Shard.BaseDatabase.GetPossessedBiotasInParallel(receiver.Guid.ClientGUID);

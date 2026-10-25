@@ -365,12 +365,7 @@ namespace ACE.Server.Market
 
             // the database still has every item in the pack, as after a failed single deposit; they go back last first, to the places they were taken from
             for (var index = items.Count - 1; index >= 0; index--)
-            {
-                if (player.IsLoggingOut)
-                    KeepForLogin(player, items[index], items[index].Name);
-                else
-                    ReturnToPack(player, items[index], items[index].Name);
-            }
+                ReturnToPack(player, items[index], items[index].Name);
 
             FinishBatch(player, outcome, items[0].Name, itemGuids, completed);
         }
@@ -856,11 +851,8 @@ namespace ACE.Server.Market
                 log.Warn($"[VAULT] Could not read the Vault size for {player.Name}'s failed deposit: {ex.Message}");
             }
 
-            // the database still has the item in the pack (the live item kept its container throughout). A player who has gone gets it back when they log in, so the object is just discarded.
-            if (player.IsLoggingOut)
-                KeepForLogin(player, item, name);
-            else
-                ReturnToPack(player, item, name);
+            // the database still has the item in the pack (the live item kept its container throughout)
+            ReturnToPack(player, item, name);
 
             Finish(player, outcome, name, item.Guid.ClientGUID, completed);
         }
@@ -869,9 +861,20 @@ namespace ACE.Server.Market
         /// A refused deposit's item goes back to the place it was taken from, which the live item still names. The client was never told it left.
         /// If that pack is gone, the client is told it left and gets it as a new item wherever there is room.
         /// With no room either, it is saved in the main pack for the next login: its row still names the old pack, which may now be another character's.
+        /// A player who has gone gets it from the database at the next login, in the pack it came from, or in the main pack if that pack is no longer theirs.
         /// </summary>
         private static void ReturnToPack(Player player, WorldObject item, string name)
         {
+            if (player.IsLoggingOut)
+            {
+                if (PackAt(player, (uint)(item.ContainerId ?? 0)) == null)
+                {
+                    log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed after its pack 0x{item.ContainerId:X8} left them; the database has it in the main pack for the next login");
+                    SaveInMainPack(player, item);
+                }
+                return;
+            }
+
             if (player.TryReturnFromVault(item, (uint)(item.ContainerId ?? 0), item.PlacementPosition ?? 0))
                 return;
 
@@ -880,25 +883,13 @@ namespace ACE.Server.Market
             if (player.TryCreateInInventoryWithNetworking(item))
                 return;
 
-            item.ContainerId = player.Guid.ClientGUID;
-            item.OwnerId = player.Guid.ClientGUID;
-            item.PlacementPosition = 0;
-            item.SaveBiotaToDatabase();
+            SaveInMainPack(player, item);
 
             log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed and the pack has no room for it; the database has it in the main pack for the next login");
         }
 
-        /// <summary>
-        /// A refused deposit's item for a player who has gone: the database already has it in the pack it was taken from, for the next login.
-        /// If that pack is no longer theirs (given, dropped or traded away meanwhile), the row is pointed at the main pack instead, or the pack's new owner would get it.
-        /// </summary>
-        private static void KeepForLogin(Player player, WorldObject item, string name)
+        private static void SaveInMainPack(Player player, WorldObject item)
         {
-            if (PackAt(player, (uint)(item.ContainerId ?? 0)) != null)
-                return;
-
-            log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed after its pack 0x{item.ContainerId:X8} left them; the database has it in the main pack for the next login");
-
             item.ContainerId = player.Guid.ClientGUID;
             item.OwnerId = player.Guid.ClientGUID;
             item.PlacementPosition = 0;
