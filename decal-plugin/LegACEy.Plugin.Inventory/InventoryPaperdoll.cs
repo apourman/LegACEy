@@ -121,7 +121,7 @@ internal sealed class InventoryPaperdoll : Canvas
         var rowBottom = Scale(AetheriaY) + Cells.Cell + AetheriaGap;
         var notchLeft = 3 * Cells.Pitch + 2 * SideGap + _spare + 1 - AetheriaGap - GetLeft(DollArea);
         // The doll stands above the corner row with its head beside the aetheria row; the host draws only the figure, not its view.
-        // Starting a third of the way down that row puts the stance's shoulders below the first aetheria and its gap.
+        // Starting a third of the way from the panel top to that row's bottom puts the stance's shoulders below the first aetheria and its gap.
         DollArea.Padding = new Thickness(0, rowBottom / 3, 0, CornerRowHeight + 2 * CornerInset);
         DollArea.Clip = new CombinedGeometry(GeometryCombineMode.Exclude,
             new RectangleGeometry(new Rect(0, 0, DollArea.Width, height)), new RectangleGeometry(new Rect(notchLeft, 0, DollArea.Width - notchLeft, rowBottom)));

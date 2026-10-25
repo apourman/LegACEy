@@ -60,6 +60,7 @@ internal static class DatModels
 {
     private const uint SetupHasParent = 0x1, SetupHasDefaultScale = 0x2;
     private const uint GfxHasPhysics = 0x1, GfxHasDrawing = 0x2;
+    private const uint AnimationHasMoves = 0x1;
     private const uint SurfaceBase1Image = 0x2, SurfaceBase1ClipMap = 0x4;
     private const int StipplingNoPos = 0x4, StipplingNoNeg = 0x8;
     private const int SidesNone = 1, SidesClockwise = 2;
@@ -108,7 +109,7 @@ internal static class DatModels
         var frames = reader.ReadInt32();
         if (frame >= frames) return null;
         // the whole object's moves, one per frame, come first when the animation has them
-        if ((flags & 0x1) != 0) reader.BaseStream.Seek(frames * 28L, SeekOrigin.Current);
+        if ((flags & AnimationHasMoves) != 0) reader.BaseStream.Seek(frames * 28L, SeekOrigin.Current);
         // each frame is its parts' places, then its hooks; a hook's size depends on its kind, so a frame after one is not reached
         for (var i = 0; i < frame; i++)
         {
