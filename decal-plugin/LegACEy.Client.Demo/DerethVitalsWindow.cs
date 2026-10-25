@@ -13,8 +13,8 @@ namespace LegACEy.Client.Demo;
 /// LegACEy's vitals window in one of two layouts, both in the gilded frame. Stacked (A): retail's three bars in retail's order and colours on
 /// an ornate gilded plate, each with its glyph in an engraved gold bezel at the left and current / max on a plaque at the right. Side by side
 /// (D): the same parts in one row on a slim gilded plate, sharing the width equally, with a gold lozenge between vitals. Either way a pale trail stays behind a drop, health pulses at its edge under a quarter, and a gear
-/// shown on hover switches the layout. With retail-style bars, either layout drops the glyphs and plaques, as retail's bars do, and shows each
-/// vital's numbers in the middle of its taller bar. Its values come from the game's state each frame.
+/// shown on hover switches the layout. With retail-style bars, either layout is retail's window instead: its thin bronze edge around retail's
+/// bars, touching, each with its current/max in the middle in bold outlined numbers. Its values come from the game's state each frame.
 /// </summary>
 public sealed class DerethVitalsWindow : UserControl
 {
@@ -34,8 +34,9 @@ public sealed class DerethVitalsWindow : UserControl
 
     // The bezels' diameters, stacked and in the strip, and the stacked window's value plaque, in DIPs.
     private const double StackedBezel = 17.6, SideBezel = 14.4, PlaqueWidth = 44, PlaqueHeight = 15;
-    // A retail-style stacked bar's height in DIPs, tall enough for its numbers inside.
-    private const double RetailBarHeight = 15;
+    // Retail's window heights at 1x, side by side and stacked: three 16-DIP bars inside its 5-DIP edge. The retail-style window draws at
+    // its height over these, so its bars keep retail's shape at any size. The numbers' size, in those DIPs.
+    private const double RetailSideHeight = 26, RetailStackedHeight = 58, RetailNumberSize = 10.5;
     private const double GearDiameter = 11, GearGlyphSize = 7;
 
     private readonly IGameStatePort _game;
@@ -52,6 +53,8 @@ public sealed class DerethVitalsWindow : UserControl
         public DerethVitalBar Bar = null!;
         public TextBlock Label = null!;
         public Run CurrentText = null!, MaxText = null!;
+        // A retail-style bar's numbers, in place of the label.
+        public OutlinedText? Number;
         // The values the label and tooltip show, so they are set only when a value changes.
         public int Current = -1, Max = -1;
     }
@@ -72,19 +75,22 @@ public sealed class DerethVitalsWindow : UserControl
         var side = layout == VitalsLayout.SideBySide;
 
         // Stacked: three rows 21 DIPs apart inside the ornate plate. Side by side: three equal parts with a lozenge between each, inset on both
-        // sides past the gear in the top-right corner, so the gear never covers the last value.
-        var lines = side
-            ? new Grid { ColumnDefinitions = new ColumnDefinitions("*,14,*,14,*"), Margin = new Thickness(13, 0) }
-            : new Grid { RowDefinitions = new RowDefinitions("*,*,*"), Margin = new Thickness(13.2, 10.5, 9, 10.5) };
+        // sides past the gear in the top-right corner, so the gear never covers the last value. Retail-style: retail's bars touching inside
+        // its edge.
+        var lines = retailBars
+            ? side ? new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") } : new Grid { RowDefinitions = new RowDefinitions("*,*,*") }
+            : side
+                ? new Grid { ColumnDefinitions = new ColumnDefinitions("*,14,*,14,*"), Margin = new Thickness(13, 0) }
+                : new Grid { RowDefinitions = new RowDefinitions("*,*,*"), Margin = new Thickness(13.2, 10.5, 9, 10.5) };
         foreach (var vital in new[] { Vital.Health, Vital.Stamina, Vital.Mana })
         {
-            var row = Line(vital, side, retailBars);
+            var row = retailBars ? RetailLine(vital) : Line(vital, side);
             _rows[vital] = row;
-            if (side) Grid.SetColumn(row.Line, 2 * (int)vital);
+            if (side) Grid.SetColumn(row.Line, retailBars ? (int)vital : 2 * (int)vital);
             else Grid.SetRow(row.Line, (int)vital);
             lines.Children.Add(row.Line);
         }
-        if (side)
+        if (side && !retailBars)
             foreach (var column in new[] { 1, 3 })
             {
                 var lozenge = new DerethLozenge { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -92,7 +98,7 @@ public sealed class DerethVitalsWindow : UserControl
                 lines.Children.Add(lozenge);
             }
 
-        var frame = new DerethGildedPlate(side ? 4 : 6, ornate: !side) { Child = lines };
+        Control frame = retailBars ? new RetailVitalsFrame { Child = lines } : new DerethGildedPlate(side ? 4 : 6, ornate: !side) { Child = lines };
 
         // The gear switches to the other layout. It shows while the pointer is over the window, as the grip does, and a click on it is the
         // gear's own, not a move.
@@ -125,7 +131,7 @@ public sealed class DerethVitalsWindow : UserControl
         root.PointerEntered += (_, _) => _grip.Opacity = _gear.Opacity = 0.9;
         root.PointerExited += (_, _) => _grip.Opacity = _gear.Opacity = 0;
         // Drawn at the window's height over its layout height, so stretching it taller draws it larger.
-        Content = new HeightScaled(side ? SideDesignHeight : DesignHeight) { Child = root };
+        Content = new HeightScaled(retailBars ? side ? RetailSideHeight : RetailStackedHeight : side ? SideDesignHeight : DesignHeight) { Child = root };
         Refresh(TimeSpan.Zero);
     }
 
@@ -183,14 +189,25 @@ public sealed class DerethVitalsWindow : UserControl
             if (reading.Current == row.Current && reading.Max == row.Max) continue;
             row.Current = reading.Current;
             row.Max = reading.Max;
-            row.CurrentText.Text = reading.Current.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            row.MaxText.Text = "/" + reading.Max.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var current = reading.Current.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var max = "/" + reading.Max.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (row.Number != null) row.Number.Text = current + max;
+            else (row.CurrentText.Text, row.MaxText.Text) = (current, max);
             ToolTip.SetTip(row.Line, reading.Tooltip);
         }
         _grip.IsVisible = !_uiLocked();
     }
 
-    private static Row Line(Vital vital, bool side, bool retailBars)
+    // A retail-style bar: retail's tube filling its cell, with its numbers in the middle.
+    private static Row RetailLine(Vital vital)
+    {
+        var art = vital switch { Vital.Health => RetailVitalArt.Health, Vital.Stamina => RetailVitalArt.Stamina, _ => RetailVitalArt.Mana };
+        var row = new Row { Bar = new DerethVitalBar(art) { Height = double.NaN }, Number = new OutlinedText(RetailNumberSize) };
+        row.Line = new Grid { Background = Brushes.Transparent, Children = { row.Bar, row.Number } };
+        return row;
+    }
+
+    private static Row Line(Vital vital, bool side)
     {
         var (glyph, light, mid, dark) = vital switch
         {
@@ -200,41 +217,17 @@ public sealed class DerethVitalsWindow : UserControl
         };
         var row = new Row
         {
-            Bar = new DerethVitalBar(light, mid, dark, ticks: !side && !retailBars),
+            Bar = new DerethVitalBar(light, mid, dark, ticks: !side),
             CurrentText = new Run(),
-            // On the bar's colour the max is cream too, and only smaller.
-            MaxText = new Run { FontSize = side ? 7 : 7.6, Foreground = retailBars ? DerethPalette.CreamBrush : DerethPalette.Brush(Color.Parse("#B49A6A")) }
+            MaxText = new Run { FontSize = side ? 7 : 7.6, Foreground = DerethPalette.Brush(Color.Parse("#B49A6A")) }
         };
-        // Centred on its digits, not on Palatino's tall line box, so it sits in the middle of its plaque or its bar.
+        // Centred on its digits, not on Palatino's tall line box, so it sits in the middle of its plaque.
         row.Label = DerethPalette.CentreInk(new TextBlock
         {
-            FontFamily = DerethPalette.Title, FontSize = side ? (retailBars ? 8.5 : 9.5) : (retailBars ? 9.5 : 10.5), Foreground = DerethPalette.CreamBrush,
-            HorizontalAlignment = retailBars ? HorizontalAlignment.Center : HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = DerethPalette.Title, FontSize = side ? 9.5 : 10.5, Foreground = DerethPalette.CreamBrush,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
             Inlines = { row.CurrentText, row.MaxText }
         });
-        if (retailBars)
-        {
-            // A dark halo keeps the numbers readable over the fill's light band.
-            row.Label.Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 0, BlurRadius = 2.5, Color = Colors.Black };
-            row.Label.IsHitTestVisible = false;
-            Grid retailBar;
-            if (side)
-            {
-                row.Bar.Height = double.NaN;
-                retailBar = new Grid { RowDefinitions = new RowDefinitions("6*,14*,6*"), Margin = new Thickness(6, 0), Children = { row.Bar, row.Label } };
-                Grid.SetRow(row.Bar, 1);
-                Grid.SetRow(row.Label, 1);
-            }
-            else
-            {
-                row.Bar.Height = RetailBarHeight;
-                row.Bar.VerticalAlignment = VerticalAlignment.Center;
-                retailBar = new Grid { Margin = new Thickness(0, 0, 4, 0), Children = { row.Bar, row.Label } };
-            }
-            retailBar.Background = Brushes.Transparent;
-            row.Line = retailBar;
-            return row;
-        }
         var bezel = new DerethVitalGlyph(glyph, light, side ? SideBezel : StackedBezel) { VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(bezel, 0);
 

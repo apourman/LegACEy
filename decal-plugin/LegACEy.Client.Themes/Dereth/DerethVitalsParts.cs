@@ -340,6 +340,10 @@ public sealed class DerethVitalBar : Control
     private readonly IBrush _fill;
     private readonly IBrush _trailBrush;
     private readonly bool _ticks;
+    // Set for a retail bar: its empty track, drawn in place of the Dereth groove.
+    private readonly IBrush? _track;
+    private static readonly IBrush Bead = new SolidColorBrush(Color.FromArgb(0x29, 0, 0, 0));
+    private static readonly IPen RetailEdge = new Pen(new SolidColorBrush(Color.FromArgb(0xE6, 0, 0, 0)), 0.5);
     private double _fraction;
     private double _trail;
     private bool _pulsing;
@@ -377,6 +381,17 @@ public sealed class DerethVitalBar : Control
         _trailBrush = DerethPalette.Brush(Mix(light, Colors.White, 0.6).WithAlpha(0x80));
     }
 
+    /// <summary>A retail bar: retail's track and beaded fill in a rounded tube, with no gold caps, highlight or quarter marks.</summary>
+    public DerethVitalBar(RetailVitalArt art)
+    {
+        Height = BarHeight;
+        _glow = new Pen(_glowBrush, 2);
+        _edge = new Pen(_edgeBrush, 1);
+        _fill = art.Fill;
+        _track = art.Track;
+        _trailBrush = DerethPalette.Brush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
+    }
+
     /// <summary>
     /// Sets the values, as fractions of the vital's max: the fill, the trail's end (drawn from the fill's end when it reaches past it), and
     /// while <paramref name="pulsing"/> the pulse's strength from 0 to 1, at <paramref name="now"/> on the player's clock. The bar is
@@ -412,20 +427,28 @@ public sealed class DerethVitalBar : Control
         var width = Bounds.Width;
         var height = Bounds.Height;
         var radius = height / 2;
-        using (DerethGroove.Begin(context, width, height, Brushes.Black))
+        // A retail bar is a plain rounded tube on retail's track; a Dereth bar sits in its groove between gold caps.
+        var tube = new RoundedRect(new Rect(0, 0, width, height), radius);
+        using (_track != null ? context.PushClip(tube) : DerethGroove.Begin(context, width, height, Brushes.Black))
         {
+            if (_track != null) context.DrawRectangle(_track, null, tube.Rect);
             var trailEnd = width * _trail;
             var fillEnd = width * _fraction;
             if (trailEnd > 0) context.DrawRectangle(_trailBrush, null, new Rect(0, 0, trailEnd, height));
             if (fillEnd > 0)
             {
                 context.DrawRectangle(_fill, null, new Rect(0, 0, fillEnd, height));
+                // Retail's fill has a darker bead every 5 of its 16 rows of height.
+                if (_track != null)
+                    for (var (unit, x) = (height / 16, height / 4); x < fillEnd; x += 5 * unit)
+                        context.DrawRectangle(Bead, null, new Rect(x, 0, Math.Min(unit, fillEnd - x), height));
                 if (_shine >= 0)
                     using (context.PushClip(new Rect(0, 0, fillEnd, height)))
                         context.DrawRectangle(Shine, null, new Rect(-ShineWidth + (fillEnd + ShineWidth) * _shine, 0, ShineWidth, height));
             }
         }
-        DerethGroove.End(context, width, height, _ticks);
+        if (_track != null) context.DrawRectangle(null, RetailEdge, tube);
+        else DerethGroove.End(context, width, height, _ticks);
 
         if (!_pulsing) return;
         // The edge pulses with a glow just outside it, so the warning is the only thing on the window that moves.
