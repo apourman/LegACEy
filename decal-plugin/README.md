@@ -184,8 +184,8 @@ again.
 The Dereth attack bar replaces retail's attack panel in melee and missile combat, centred over retail's place the first time. Click the
 groove to set the power (accuracy with a bow; hover it for the percentage), a plaque to pick High, Medium or Low, and a gem to switch
 Repeat Attacks, Auto Target or Keep in View; retail's keys still work and the bar follows them. The charge fills the groove as retail
-builds it. With the UI unlocked, hovering the bar shows gold corners: drag a side edge to make the bar longer or the bottom edge to
-give it more height (up to 960 by 150 DIPs); the text keeps its size, and Ctrl+wheel scales the whole bar. In peace and magic the bar closes and retail's panels are left as retail draws them. Creating an empty file named
+builds it. With the UI unlocked, hovering the bar shows gold corners: drag the bottom edge to draw the whole bar larger, text and buttons
+with it, or a side edge to make the bar longer (up to 960 by 150 DIPs); Ctrl+wheel also scales the whole bar. In peace and magic the bar closes and retail's panels are left as retail draws them. Creating an empty file named
 `retail-attack-native` beside the main DLL (or the Settings window's Attack bar row) gives retail's panel back within a second.
 
 Retail's yellow game messages at the top of the screen ("You can't move that!", "In Portal Space - Please Wait...") show as Dereth bands
