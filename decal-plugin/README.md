@@ -145,7 +145,7 @@ Channels, Tells); each tab shows its own kinds of line, talks to its own target 
 tab to rename, edit, reorder or remove it, and use + to add one. Drag a tab out of the strip into a window of its own, and drag it back to
 merge it; tabs are kept per character in `chat-tabs.txt` and window places and sizes in `window-positions.txt`. Enter opens the input and
 Escape leaves it. Left alone for 15 seconds, the window fades to bare lines; hovering or pressing Enter brings it back. Settings sets the
-delay per character (Never, Instant as in retail, or 10 to 60 seconds), and the log backdrop's active and inactive opacity, as retail's
+delay per character (Never, Instant as in retail, or 10 to 60 seconds), and the whole window's active and inactive opacity, frame and backdrop alike, as retail's
 General Chat Options do; with an inactive opacity above 0 the lines stay shown while idle. Names are drawn as in retail, in their line's
 colour except in a spell's words, where they are green; Name colour can pick Green, White or Gold for every name instead.
 Retail's chat keeps running out of sight, so Decal plugins see chat as before. Creating an empty file named `retail-chat-native` beside
