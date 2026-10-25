@@ -33,8 +33,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     internal const string Title = "Inventory";
     /// <summary>The vertical layout's grid is retail's main pack: six columns, whatever the width.</summary>
     internal const int RetailColumns = 6;
-    // The pyreal stack's icon in the portal.
-    private const uint PyrealIcon = 0x06001080;
     private const double EmptyOpacity = 0.8;
     // A lifted item's slots fade while it is dragged, as the Vault's do.
     private const double LiftedOpacity = 0.4;
@@ -68,7 +66,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private readonly Panel _packList;
     private readonly ContentControl _burdenMeter = new();
     private readonly TextBlock _burdenText = Label(string.Empty, TextBrush, 12);
-    private readonly TextBlock _pyrealCount = Label(string.Empty, GoldBrush, 12);
     // Shown over the slot under the pointer while an item is dragged: a gold border where the drop is accepted, red where it is refused.
     private readonly Border _dropIndicator = new()
     {
@@ -828,7 +825,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         RenderContents(snapshot, open);
         ShowSelection();
         RenderBurden(snapshot);
-        _pyrealCount.Text = snapshot.Pyreals.ToString("N0");
         _frame.Title = snapshot.CharacterName.Length == 0 ? Title : Title + " of " + snapshot.CharacterName;
         Fade(_dragged, lifted: true);
         if (_indicatorAt is { } at && (_dragged != 0 || _retailItem != 0))
@@ -1041,7 +1037,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
         var body = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), Margin = new Thickness(2, 8, 2, 0)
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(2, 8, 2, 6)
         };
         if (!_collapsed)
         {
@@ -1051,9 +1047,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         body.Children.Add(At(pack, 2));
         body.Children.Add(At(column, 0, 1));
         Grid.SetRowSpan(column, 3);
-        var footer = PyrealsFooter();
-        body.Children.Add(At(footer, 3));
-        Grid.SetColumnSpan(footer, 2);
         return body;
     }
 
@@ -1068,14 +1061,13 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         right.Children.Add(At(ContentsLine(), 1));
         right.Children.Add(At(_grid, 2));
 
-        // The footer: pyreals, then the burden meter with its reading.
-        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 8, Margin = new Thickness(2, 6, 2, 0) };
-        footer.Children.Add(PyrealsLine());
-        footer.Children.Add(At(Label("Burden", MutedBrush, 12), 0, 1));
+        // The footer: the burden meter with its reading.
+        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8, Margin = new Thickness(2, 6, 2, 0) };
+        footer.Children.Add(Label("Burden", MutedBrush, 12));
         // The meter stretches across its star column, so it has a width to fill.
         _burdenMeter.VerticalAlignment = VerticalAlignment.Center;
-        footer.Children.Add(At(_burdenMeter, 0, 2));
-        footer.Children.Add(At(_burdenText, 0, 3));
+        footer.Children.Add(At(_burdenMeter, 0, 1));
+        footer.Children.Add(At(_burdenText, 0, 2));
 
         var body = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"), RowDefinitions = new RowDefinitions("*,Auto"), ColumnSpacing = 10, Margin = new Thickness(2, 8, 2, 0) };
         if (!_collapsed)
@@ -1137,23 +1129,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 2, 6) };
         line.Children.Add(_contentsName);
         line.Children.Add(At(_contentsCount, 0, 1));
-        return line;
-    }
-
-    /// <summary>The pyreal count with its icon, as the footer's first item.</summary>
-    private Control PyrealsLine()
-    {
-        var money = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        money.Children.Add(Icon(new ItemVisual(PyrealIcon, 0, 0, 0)));
-        money.Children.Add(_pyrealCount);
-        return money;
-    }
-
-    /// <summary>The vertical layout's footer: the pyreals alone.</summary>
-    private Grid PyrealsFooter()
-    {
-        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(2, 6, 2, 0) };
-        line.Children.Add(PyrealsLine());
         return line;
     }
 
