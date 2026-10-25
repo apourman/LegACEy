@@ -47,7 +47,6 @@ internal sealed class WorldUpdates
     private static readonly TimeSpan ManifestDeadline = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan DownloadDeadline = TimeSpan.FromMinutes(10);
     private static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan, DefaultRequestHeaders = { { "User-Agent", "LegACEy-decal-plugin" } } };
-    private const string PortalDat = "client_portal.dat";
 
     private readonly WorldCache _cache;
     private readonly string? _server;
@@ -86,8 +85,8 @@ internal sealed class WorldUpdates
     /// <summary>The patch Switching waits to switch on.</summary>
     public WorldPatchIndex? Pending => _pending?.Patch;
 
-    /// <summary>The patch switched on last changes portal dat records the one before it didn't: the client may already hold the old ones,
-    /// so those show after a relaunch.</summary>
+    /// <summary>The patch switched on last changes records the client already held at switch-on (<see cref="WorldPatch.HeldAtSwitchOn"/>)
+    /// that the one before it didn't: those show after a relaunch.</summary>
     public bool PortalNeedsRelaunch { get; private set; }
 
     /// <summary>Whether entering the world waits: for the note, and while the check, download or switch runs.</summary>
@@ -156,18 +155,16 @@ internal sealed class WorldUpdates
     {
         if (State != WorldState.Switching || _pending is not { } pending) return;
         _pending = null;
-        PortalNeedsRelaunch = PortalChanged(ActivePatch, pending.Patch);
+        PortalNeedsRelaunch = HeldChanged(ActivePatch, pending.Patch);
         (Active, ActivePatch) = (pending.World, pending.Patch);
         Set(reported ? WorldState.On : WorldState.Relaunch);
     }
 
-    /// <summary>Whether <paramref name="next"/> has a portal dat record <paramref name="old"/> lacks or holds different bytes for.</summary>
-    private static bool PortalChanged(WorldPatchIndex? old, WorldPatchIndex next)
-    {
-        var before = old?.Records(PortalDat);
-        return next.Records(PortalDat)?.Any(record => before == null || !before.TryGetValue(record.Key, out var was)
-            || !old!.Read(was).AsSpan().SequenceEqual(next.Read(record.Value))) == true;
-    }
+    /// <summary>Whether <paramref name="next"/> has a held record <paramref name="old"/> lacks or holds different bytes for.</summary>
+    private static bool HeldChanged(WorldPatchIndex? old, WorldPatchIndex next) =>
+        next.Dats.Any(dat => next.Records(dat)!.Any(record => WorldPatch.HeldAtSwitchOn(dat, record.Key)
+            && (old?.Records(dat) is not { } before || !before.TryGetValue(record.Key, out var was)
+                || !old.Read(was).AsSpan().SequenceEqual(next.Read(record.Value)))));
 
     /// <summary>https anywhere; plain http only to this machine or a private network, for local testing.</summary>
     public static bool Allowed(string address) =>

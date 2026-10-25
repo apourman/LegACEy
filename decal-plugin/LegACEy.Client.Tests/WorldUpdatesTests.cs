@@ -53,9 +53,9 @@ public sealed class WorldUpdatesTests : IDisposable
         new(cache, server, (_, _) => throw new HttpRequestException("No route to host"), (_, _, _, _) => throw new HttpRequestException("No route to host"));
 
     /// <summary>A first visit: downloaded, switched on and reported, so the world is cached for <see cref="Server"/>.</summary>
-    private async Task Visit(int version)
+    private async Task Visit(int version, params WorldPatchRecord[] records)
     {
-        var patch = Patch(version);
+        var patch = Patch(version, records);
         var updates = Updates(() => Manifest(version, patch), patch);
         await updates.Heard(Note(version));
         updates.SwitchedOn(reported: true);
@@ -111,11 +111,23 @@ public sealed class WorldUpdatesTests : IDisposable
         Assert.Equal(983, updates.Pending!.Version);
     }
 
-    [Fact]
-    public async Task ANewReleaseDownloadsAndSaysWhenItsPortalRecordsNeedARelaunch()
+    private static readonly WorldPatchRecord FontAtlas = new("client_portal.dat", 0x06005ECF, 2, 3, new byte[] { 1, 2 });
+
+    public static TheoryData<string, uint, bool> NewReleaseRecords => new()
+    {
+        { "client_portal.dat", 0x0200F001, false }, // a new model
+        { "client_portal.dat", 0x06004376, false }, // a world texture
+        { "client_cell_1.dat", 0x22A8FFFF, false }, // a landblock, whatever its prefix
+        { "client_portal.dat", 0x06005ECF, true }, // a font atlas held at character select
+        { "client_local_English.dat", 0x21000000, true }, // the connecting screen's layout
+    };
+
+    [Theory]
+    [MemberData(nameof(NewReleaseRecords))]
+    public async Task ANewReleaseDownloadsAndAsksForARelaunchOnlyForRecordsHeldAtSwitchOn(string dat, uint id, bool relaunch)
     {
         await Visit(983);
-        var patch = Patch(984, new WorldPatchRecord("client_portal.dat", 0x01000001, 2, 3, new byte[] { 1, 2 }));
+        var patch = Patch(984, new WorldPatchRecord(dat, id, 2, 3, new byte[] { 1, 2 }));
         var updates = Updates(() => Manifest(984, patch), patch);
         updates.AtStartup();
 
@@ -123,7 +135,21 @@ public sealed class WorldUpdatesTests : IDisposable
         updates.SwitchedOn(reported: true);
 
         Assert.Equal((WorldState.On, 984, 1), (updates.State, updates.ActivePatch!.Version, downloads));
-        Assert.True(updates.PortalNeedsRelaunch);
+        Assert.Equal(relaunch, updates.PortalNeedsRelaunch);
+    }
+
+    [Fact]
+    public async Task AHeldRecordTheLastWorldAlreadyChangedTheSameWayNeedsNoRelaunch()
+    {
+        await Visit(983, FontAtlas);
+        var patch = Patch(984, FontAtlas);
+        var updates = Updates(() => Manifest(984, patch), patch);
+        updates.AtStartup();
+
+        await updates.Heard(Note(984));
+        updates.SwitchedOn(reported: true);
+
+        Assert.False(updates.PortalNeedsRelaunch);
     }
 
     [Fact]

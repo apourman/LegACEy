@@ -40,7 +40,8 @@ static int Build(string retail, string edited, string output, string url)
         }
         using var before = Open(Path.Combine(retail, name));
         using var after = Open(path);
-        int changed = 0, added = 0;
+        int changed = 0, added = 0, textures = 0;
+        long textureBytes = 0;
         var kept = new HashSet<uint>();
         foreach (var file in after.Tree)
         {
@@ -50,10 +51,15 @@ static int Build(string retail, string edited, string output, string url)
             if (old != null && old.AsSpan().SequenceEqual(bytes)) continue;
             if (old == null) added++;
             else changed++;
+            if (file.Id >> 24 == 0x06) (textures, textureBytes) = (textures + 1, textureBytes + bytes.Length);
+            if (old != null && WorldPatch.HeldAtSwitchOn(name, file.Id))
+                Console.Error.WriteLine($"warning: {name} {file.Id:X8} ({bytes.Length} bytes): the game already holds it when a world switches on, so "
+                    + "players see the new one only after a relaunch, or never for a mapper.");
             records.Add(new WorldPatchRecord(name, file.Id, file.Iteration, (ushort)file.Version, bytes));
         }
         var removed = before.Tree.Count(file => !kept.Contains(file.Id));
-        Console.WriteLine($"{name}: {changed} changed, {added} new" + (removed > 0 ? $", {removed} removed in the edit and kept by the patch" : ""));
+        Console.WriteLine($"{name}: {changed} changed, {added} new" + (removed > 0 ? $", {removed} removed in the edit and kept by the patch" : "")
+            + (textures > 0 ? $"; {textures} textures, {textureBytes} bytes uncompressed" : ""));
     }
 
     Directory.CreateDirectory(output);
