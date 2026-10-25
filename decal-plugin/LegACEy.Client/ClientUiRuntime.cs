@@ -362,6 +362,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private WorldUpdates? _world;
     private DatOverlay? _datOverlay;
     private RetailDatReport? _datReport;
+    private bool _probeDatCache;
     private RetailEnterGame? _enterGame;
     private DateTime _lastOverlaySummary = DateTime.UtcNow;
     private static readonly TimeSpan OverlaySummaryEvery = TimeSpan.FromMinutes(5);
@@ -2268,6 +2269,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var game = IOPath.GetDirectoryName(process.MainModule!.FileName)!;
             var world = new WorldUpdates(new WorldCache(game), WorldCache.Server(WorldCache.CommandLine()));
             _datOverlay.Use(world.AtStartup());
+            _probeDatCache = File.Exists(IOPath.Combine(game, DatCacheProbeFile));
             ProbeDatCache("plugin start");
             _world = world;
             _datReport = RetailDatReport.Create(NativeUi.ReadMemory, Log);
@@ -2319,10 +2321,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (DateTime.UtcNow - _lastOverlaySummary >= OverlaySummaryEvery) LogOverlaySummary();
     }
 
-    /// <summary>Logs what the client's object caches hold as the overlay switches on, while the <c>legacey-cache-probe</c> file is beside the DLL.</summary>
+    /// <summary>Logs what the client's object caches hold as the overlay switches on, when the game started with a <c>legacey-cache-probe</c> file beside <c>acclient.exe</c>.</summary>
     private void ProbeDatCache(string moment)
     {
-        if (File.Exists(IOPath.Combine(PluginDirectory, DatCacheProbeFile))) DatCacheProbe.Log(moment, NativeUi.ReadMemory, Log);
+        if (_probeDatCache) DatCacheProbe.Log(moment, NativeUi.ReadMemory, Log);
     }
 
     private void LogOverlaySummary()

@@ -11,7 +11,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// table (id → object), and an object with a reference count of 1 is held only by the cache, on the free list. Every read goes through
 /// <c>ReadProcessMemory</c>, so a table a loader thread is changing gives a wrong count, never a crash.
 /// </summary>
-// ponytail: portal-overlay spike diagnostic, on only while the legacey-cache-probe file is beside the DLL; remove when the spike's spec replaces it.
+// ponytail: portal-overlay spike diagnostic, on only when the game starts with a legacey-cache-probe file beside acclient.exe; remove when the spike's spec replaces it.
 internal static class DatCacheProbe
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build) for names; our objdump read of installed acclient.exe";
