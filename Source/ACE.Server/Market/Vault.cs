@@ -168,6 +168,9 @@ namespace ACE.Server.Market
             item.OwnerId = ownerId;
             item.PlacementPosition = placement;
 
+            // a split changes the source stack in memory only: saving it ahead of the job means a crash can't leave the full source and the split part in the Vault
+            player.SavePlayerToDatabase();
+
             inFlight.Add(player.Guid.ClientGUID);
 
             if (player.CurrentAppraisalTarget == itemGuid)
@@ -277,6 +280,9 @@ namespace ACE.Server.Market
 
                 deposits.Add((escrowed, new ReaderWriterLockSlim(), vaultItem));
             }
+
+            // the source of a split part, as for a single deposit (see Deposit)
+            player.SavePlayerToDatabase();
 
             inFlight.Add(player.Guid.ClientGUID);
 
