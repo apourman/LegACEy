@@ -106,7 +106,8 @@ namespace ACE.Server.Tests.Market
             var part = VaultTestWorld.NewItem(PyrealWcid);
             part.SetStackSize(4);
 
-            long sourceSizeBetween = -1;
+            long sourceSizeAfterJob = -1;
+            var probed = new ManualResetEventSlim();
             VaultResult result = null;
             var done = new ManualResetEventSlim();
 
@@ -120,14 +121,15 @@ namespace ACE.Server.Tests.Market
 
                     Vault.Deposit(player, part.Guid.ClientGUID, r => { result = r; done.Set(); });
 
-                    // what a crash right before the deposit job would leave in the database
-                    DatabaseManager.Shard.GetCurrentQueueWaitTime(_ => sourceSizeBetween = StackSizeRow(source.Guid.ClientGUID));
+                    // what a crash right after the deposit job, before any later player save, would leave in the database
+                    DatabaseManager.Shard.GetCurrentQueueWaitTime(_ => { sourceSizeAfterJob = StackSizeRow(source.Guid.ClientGUID); probed.Set(); });
                 });
             }
 
             Assert.IsTrue(done.Wait(TimeSpan.FromSeconds(30)), "the Vault reported a result");
             Assert.AreEqual(VaultOutcome.Deposited, result.Outcome, result.Message);
-            Assert.AreEqual(6, sourceSizeBetween, "the source's new size was saved ahead of the deposit job");
+            Assert.IsTrue(probed.Wait(TimeSpan.FromSeconds(30)), "the probe ran");
+            Assert.AreEqual(6, sourceSizeAfterJob, "the source's new size was saved by the time the deposit job committed");
         }
 
         [TestMethod]
