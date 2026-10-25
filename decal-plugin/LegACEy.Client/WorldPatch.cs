@@ -43,6 +43,18 @@ public sealed class WorldPatch(int version, IReadOnlyList<WorldPatchRecord> reco
         }
     }
 
+    /// <summary>
+    /// Whether the client already holds this retail record when a world switches on at character select, so a patch's copy of it shows
+    /// only after a relaunch (mappers are held even at plugin start, so may never show). From the portal spike's cache probe: the
+    /// connecting screen's textures and the font atlases by id, and the types held there whose ids it didn't log by prefix: Region (13),
+    /// UI layouts (21, in the local dat), master property (39), fonts (40) and mappers (22, 25, 26, 27). Everything else (new ids, world
+    /// art, character select's own art, the cell dat) shows at once. A new id under one of the prefixes counts too: only retail knows it's new.
+    /// </summary>
+    public static bool HeldAtSwitchOn(string dat, uint id) => !dat.StartsWith("client_cell_", StringComparison.Ordinal) && (
+        (id >> 24) is 0x13 or 0x21 or 0x39 or 0x40 or 0x22 or 0x25 or 0x26 or 0x27
+        || id is 0x06001343 or 0x06004CA9 or 0x06004D68 or >= 0x0600195C and <= 0x06001979
+            or 0x06005ECF or 0x06005ED0 or 0x06005EE7 or 0x06005EE8 or 0x06005EED or 0x06005EEE or 0x06005EF4);
+
     /// <summary>A file's SHA-256, lower-case hex.</summary>
     public static string Sha256(string path)
     {
