@@ -105,7 +105,8 @@ namespace ACE.Server.Market
         /// <summary>
         /// Moves an item from the player's pack into their account's Vault.
         /// The item is taken out of the pack in memory only. The networking removal saves an ownerless item, and destroying the item would delete its row.
-        /// The deposit job then saves the item and the Vault row together. On success the object is forgotten; on a failure that saved nothing it goes back to the pack.
+        /// A player save queued just ahead of the deposit job writes the rest of the pack, so the source of a split part never keeps its old size once
+        /// the Vault has the part. The deposit job then saves the item and the Vault row together. On success the object is forgotten; on a failure that saved nothing it goes back to the pack.
         /// </summary>
         public static void Deposit(Player player, uint itemGuid, Action<VaultResult> completed = null)
         {
@@ -224,7 +225,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// Deposits a set of items in one save: all of them or none. It is instant, with no channel, and refused while a transfer is active or when a
         /// channel could not start (a recent player fight, a trade). Each item's rules come first, so the first refusal is the one reported; then the
-        /// Vault's room for the whole set. The items leave the pack as a single deposit's item does. The result is reported once, on the world thread.
+        /// Vault's room for the whole set. The items leave the pack, and the rest of the pack is saved ahead of the job, as for a single deposit. The result is reported once, on the world thread.
         /// </summary>
         public static void DepositMany(Player player, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
         {

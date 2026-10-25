@@ -35,7 +35,8 @@ namespace ACE.Server.Market
 
         /// <summary>
         /// Banks every whole stack of trade notes in the player's packs (not ones in the trade window). The stacks leave the packs in memory,
-        /// then one save deletes their rows and credits the balance. On success the objects are forgotten; on failure they go back to the pack.
+        /// then one save deletes their rows and credits the balance. A player save goes ahead of it, so a split note stack left in the trade window
+        /// never keeps its old size once its split part is banked (see Vault.Deposit). On success the objects are forgotten; on failure they go back to the pack.
         /// </summary>
         public static void DepositNotes(Player player, Action<VaultResult> completed = null)
         {
@@ -94,6 +95,8 @@ namespace ACE.Server.Market
 
             var amount = notes.Sum(n => (long)(n.StackSize ?? 1));
             var stacks = notes.Select(n => new NoteStack(n.Guid.ClientGUID, n.StackSize ?? 1)).ToList();
+
+            player.SavePlayerToDatabase();
 
             inFlight.Add(player.Guid.ClientGUID);
 
