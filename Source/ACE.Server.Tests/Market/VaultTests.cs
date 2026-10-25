@@ -465,6 +465,7 @@ namespace ACE.Server.Tests.Market
             var nextTick = (ActionQueue)typeof(Player).GetField("actionQueue", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(player);
             void Arrive(WorldObject chest) => VaultTestWorld.OnWorldThread(() => afterMove.Invoke(player, new object[] { key, chest, true /* reached it */ }));
             void Tick() => VaultTestWorld.OnWorldThread(() => nextTick.RunActions());
+            bool NothingQueued() => ((System.Collections.Concurrent.ConcurrentQueue<IAction>)typeof(ActionQueue).GetProperty("Queue", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(nextTick)).IsEmpty;
 
             var held = LockedChest();
             Arrive(held);
@@ -479,9 +480,10 @@ namespace ACE.Server.Tests.Market
             Tick();
             Assert.IsTrue(beforeUnlock.IsLocked, "a key the Vault took before the unlock doesn't unlock it");
 
-            // deposited during the walk
+            // deposited during the walk: the use ends on arrival, before anything is queued (a healing kit has no later check)
             var duringWalk = LockedChest();
             Arrive(duringWalk);
+            Assert.IsTrue(NothingQueued(), "no unlock is queued for a key the Vault took during the walk");
             Tick();
             Assert.IsTrue(duringWalk.IsLocked, "a key the Vault took during the walk doesn't unlock it");
             Assert.AreEqual((ushort)2, key.Structure, "and keeps the uses the Vault saved");
