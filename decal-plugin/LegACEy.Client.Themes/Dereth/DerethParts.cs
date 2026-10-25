@@ -5,7 +5,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Layout;
@@ -371,6 +370,36 @@ public sealed class DerethButton : Button
 }
 
 /// <summary>
+/// A vector glyph scaled to fit <see cref="Size"/> and centred on the control by its own drawn bounds, so a glyph whose shape is off
+/// centre in its path data, or a control a pixel wider than tall, still draws it in the middle.
+/// </summary>
+public sealed class DerethPathGlyph : Control
+{
+    private readonly Geometry _data;
+    private readonly double _size;
+
+    public DerethPathGlyph(string data, double size = DerethWindow.HeaderGlyphSize)
+    {
+        _data = Geometry.Parse(data);
+        _size = size;
+    }
+
+    public IBrush? Stroke { get; init; }
+    public IBrush? Fill { get; init; }
+    public double StrokeThickness { get; init; } = 1;
+
+    public override void Render(DrawingContext context)
+    {
+        var shape = _data.Bounds;
+        var scale = _size / Math.Max(shape.Width, shape.Height);
+        var centre = new Rect(Bounds.Size).Center;
+        using (context.PushTransform(Matrix.CreateTranslation(-shape.Center.X, -shape.Center.Y) * Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation(centre.X, centre.Y)))
+            // The pen is scaled with the shape, so it is divided back to its thickness on screen.
+            context.DrawGeometry(Fill, Stroke == null ? null : new Pen(Stroke, StrokeThickness / scale, lineCap: PenLineCap.Round), _data);
+    }
+}
+
+/// <summary>
 /// A small square header button holding a glyph, drawn as vectors: a thin gold rim on the button art's red fill, so it stays sharp at
 /// any size, where the button sheet's 8 DIP corners would fill a small button and blur.
 /// </summary>
@@ -396,7 +425,8 @@ public sealed class DerethHeaderButton : Button
             {
                 Name = "PART_ContentPresenter",
                 [!ContentPresenter.ContentProperty] = new TemplateBinding(ContentControl.ContentProperty),
-                HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center
+                // The glyph fills the face and centres itself, so layout rounding never moves it off the middle.
+                HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch
             };
             scope.Register(presenter.Name, presenter);
             _face = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3), Child = presenter };
@@ -466,11 +496,7 @@ public sealed class DerethWindow : UserControl
         };
         Grid.SetColumn(_name, 1);
         if (!centreTitle) header.Children.Add(_name);
-        var close = new DerethHeaderButton(new Path
-        {
-            Data = Geometry.Parse("M0,0 L8,8 M8,0 L0,8"), Width = 8, Height = 8, StrokeThickness = 1.5, Stroke = DerethPalette.CreamBrush,
-            StrokeLineCap = PenLineCap.Round, UseLayoutRounding = false
-        });
+        var close = new DerethHeaderButton(new DerethPathGlyph("M0,0 L8,8 M8,0 L0,8", 8) { Stroke = DerethPalette.CreamBrush, StrokeThickness = 1.5 });
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         if (headerActions != null)
         {
@@ -488,8 +514,9 @@ public sealed class DerethWindow : UserControl
             var strip = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
             Grid.SetRow(strip, 1);
             body.Children.Add(strip);
-            // Centred by its capitals: Palatino's tall ascent would leave them low in the row.
-            var titleRow = new Border { Height = TitleRowHeight, Child = DerethPalette.CentreInk(_name) };
+            // Centred by its capitals: Palatino's tall ascent would leave them low in the row. A title is mostly lower case, whose ink sits
+            // below the capitals' middle, so capitals centred between the rules look high: the row's 2 DIP top padding moves it down 1.
+            var titleRow = new Border { Height = TitleRowHeight, Padding = new Thickness(0, 2, 0, 0), Child = DerethPalette.CentreInk(_name) };
             Grid.SetRow(titleRow, 2);
             body.Children.Add(titleRow);
         }

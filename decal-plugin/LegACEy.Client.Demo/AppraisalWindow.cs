@@ -81,10 +81,7 @@ public sealed class AppraisalWindow
         var layout = Layout(content, inscribe);
         var scroll = Scroll(layout.Body);
         var foot = new ContentControl { Content = layout.Foot };
-        var glyph = new Avalonia.Controls.Shapes.Path
-        {
-            Data = Geometry.Parse(FigureGlyph), Width = DerethWindow.HeaderGlyphSize, Height = DerethWindow.HeaderGlyphSize, Stretch = Stretch.Uniform, StrokeThickness = 1, UseLayoutRounding = false, Stroke = DerethPalette.MutedBrush,
-        };
+        var glyph = new DerethPathGlyph(FigureGlyph) { Stroke = DerethPalette.MutedBrush };
         var button = new DerethHeaderButton(glyph) { Name = "InspectButton" };
         ToolTip.SetTip(button, "Inspect");
         var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot), button);

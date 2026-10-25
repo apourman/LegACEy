@@ -12,7 +12,7 @@ using Xunit;
 namespace LegACEy.Client.Tests;
 
 /// <summary>The inventory window in a headless panel, fed by a <see cref="FakeInventoryPort"/>.</summary>
-public sealed class InventoryWindowTests
+public sealed partial class InventoryWindowTests
 {
     private static readonly PaperdollSlot[] ArmourSlots =
     {

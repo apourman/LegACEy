@@ -101,7 +101,7 @@ public sealed class InventoryPluginTests
 
         var window = client.Panel(Vertical);
         // The close box is the header's one button that is neither a layout nor the equipment toggle (the doll's expand button is not in the header).
-        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethHeaderButton>().Single(button => button.Tag == null && button.Name != "EquipmentToggle"));
+        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethHeaderButton>().Single(button => button.Tag == null && button.Name is not ("EquipmentToggle" or "ExpandDoll")));
 
         Assert.Null(client.Windows.Get(Vertical));
         Assert.Equal(1, client.Retail.CloseCalls);
@@ -222,7 +222,7 @@ public sealed class InventoryPluginTests
         client.SaveSettings(VerticalSlotsOff);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        var expand = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(client.Panel(Vertical).Content).OfType<DerethButton>().Single(b => b.Name == "ExpandDoll");
+        var expand = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(client.Panel(Vertical).Content).OfType<DerethHeaderButton>().Single(b => b.Name == "ExpandDoll");
         Assert.True(expand.IsVisible);
 
         expand.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));

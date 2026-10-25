@@ -1102,9 +1102,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// <summary>A header button that shows or collapses the equipment and paperdoll section. Lit green while the section shows.</summary>
     private Control EquipmentToggle()
     {
-        var icon = new Path
+        var icon = new DerethPathGlyph(FigureGlyph)
         {
-            Data = Geometry.Parse(FigureGlyph), Width = DerethWindow.HeaderGlyphSize, Height = DerethWindow.HeaderGlyphSize, Stretch = Stretch.Uniform, StrokeThickness = 1, UseLayoutRounding = false,
             Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
             Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
         };
@@ -1118,11 +1117,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private Control LayoutToggle(InventoryLayout layout, string glyph)
     {
         var active = layout == _layout;
-        var icon = new Path
+        var icon = new DerethPathGlyph(glyph)
         {
-            // Unrounded, so the glyph sits at the button's exact centre: at a scale the button can round to an odd number of
-            // pixels and the glyph to an even one, and snapping both would push the glyph a pixel off.
-            Data = Geometry.Parse(glyph), Width = DerethWindow.HeaderGlyphSize, Height = DerethWindow.HeaderGlyphSize, Stretch = Stretch.Uniform, StrokeThickness = 1, UseLayoutRounding = false,
             Stroke = active ? DerethPalette.TealBrush : MutedBrush,
             Fill = active ? DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)) : null,
         };
