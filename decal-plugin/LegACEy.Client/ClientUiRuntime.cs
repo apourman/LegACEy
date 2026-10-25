@@ -427,6 +427,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
             try { _retailExamine = new RetailExamine(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Switching the appraisal window to retail won't reopen the item in retail's: {exception.Message}"); }
+            try { _gameMessages = new RetailGameMessages(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Retail's yellow game messages stay retail's: {exception.Message}"); }
             try { _busyCursor = new RetailBusyCursor(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"The busy cursor while an appraisal loads is off: {exception.Message}"); }
             try { _textMode = new RetailTextMode(NativeUi.ReadMemory, Log); }
@@ -467,6 +469,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             PortalDat.Overlay = null;
             _datOverlay?.Dispose();
             _datOverlay = null;
+            _gameMessages?.Dispose();
+            _gameMessages = null;
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
@@ -913,6 +917,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toast?.Hide();
         ReleaseFeatureWindow(ToastWindowId);
         DropUpdateToast();
+        DropGameMessageToast();
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -1219,6 +1224,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void FrameCore()
     {
+        // Retail's yellow game messages are ours only while our toast can show them; otherwise retail's spew box shows them.
+        if (_gameMessages != null) _gameMessages.Taking = !_failed && NativeUi.Ready && _inGame && CanOpenWindows;
         // Once the whole UI has failed, a give-back of retail's toolbar that failed is retried each frame until it lands; logged once per streak.
         if (_failed && _toolbarTakeover != null)
         {
@@ -1328,6 +1335,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             TickFeatureWindows();
             _phaseTimes.Add("windows", start);
             PlaceUpdateToast();
+            ShowGameMessages();
             if (_dragIconSurface != null)
                 _dragIconSurface.Location = new Point(_pointer.X - 16, _pointer.Y - 16);
         });
@@ -1351,6 +1359,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var surface in _featureSurfaces.Values) surface.Held = held;
         // At character select the toast shows the server's world, before any window can.
         if (_updateToastSurface != null) _updateToastSurface.Held = held && _loggedIn;
+        if (_gameMessageSurface != null) _gameMessageSurface.Held = held;
         if (_dragIconSurface != null) _dragIconSurface.Held = held;
 
         var start = PhaseTimes.Start();
@@ -1370,6 +1379,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_featureSurfaces.ContainsKey(pair.Key) && PrepareSurface(pair.Value) is { } windowError) _windowFailures[pair.Key](windowError);
         }
         if (PrepareSurface(_updateToastSurface) is { } toastError) UpdateToastFailed(toastError);
+        if (PrepareSurface(_gameMessageSurface) is { } messageError) GameMessagesFailed(messageError);
         if (PrepareSurface(_dragIconSurface) is { } dragIconError) Disable(dragIconError);
         _phaseTimes.Add("upload", start);
     }
@@ -1509,6 +1519,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
         if (windows || !_loggedIn)
         {
+            try { _gameMessageSurface?.DrawNow(); }
+            catch (Exception exception) { GameMessagesFailed(exception); }
             try { _updateToastSurface?.DrawNow(); }
             catch (Exception exception) { UpdateToastFailed(exception); }
         }
@@ -2440,11 +2452,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (surface.Visible)
             {
                 var scale = surface.Panel.Scale;
-                // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
-                if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toast);
-                toast.Measure(Avalonia.Size.Infinity);
-                int width = WholePixels(toast.DesiredSize.Width * scale), height = WholePixels(toast.DesiredSize.Height * scale);
-                if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
+                var (width, height) = FitToast(toast, surface, shown);
                 var screen = GameDevice.ViewportSize(_device);
                 var spot = new Rectangle((screen.Width - width) / 2, screen.Height - height - (int)Math.Round(UpdateToastLift * scale), width, height);
                 var bars = _toolbarSurface is { Visible: true } bar ? new[] { bar.Bounds } : Array.Empty<Rectangle>();
@@ -2453,6 +2461,72 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
         }
         catch (Exception exception) { UpdateToastFailed(exception); }
+    }
+
+    /// <summary>Sizes a toast's surface to the toast at the UI size; its width and height in pixels.</summary>
+    private static (int Width, int Height) FitToast(Control toast, ScreenSurface surface, bool shown)
+    {
+        var scale = surface.Panel.Scale;
+        // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
+        if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toast);
+        toast.Measure(Avalonia.Size.Infinity);
+        int width = WholePixels(toast.DesiredSize.Width * scale), height = WholePixels(toast.DesiredSize.Height * scale);
+        if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
+        return (width, height);
+    }
+
+    // Retail's yellow game messages ("You can't move that!") as Dereth soft bands at the top centre, where retail's stood. They are their own
+    // surface, as the update toast is, drawn under it, and not an input surface: the pointer goes through them to the game, as through
+    // retail's text. A logoff drops them.
+    private const int GameMessageDrop = 48;
+    private RetailGameMessages? _gameMessages;
+    private DerethMessageBands? _gameMessageBands;
+    private ScreenSurface? _gameMessageSurface;
+
+    /// <summary>Shows the game messages that came since the last frame, runs their time, and places them while any shows.</summary>
+    private void ShowGameMessages()
+    {
+        if (_gameMessages is not { } messages) return;
+        try
+        {
+            foreach (var line in messages.Poll())
+            {
+                if (_gameMessageSurface == null)
+                {
+                    var bands = new DerethMessageBands();
+                    var panel = ObservePanel(AvaloniaPanel.Create(() => bands, 1, 1, WindowScale), GameMessagesFailed);
+                    panel.ApplyTheme(new DerethClientTheme());
+                    _gameMessageSurface = new ScreenSurface(_device, panel);
+                    _gameMessageBands = bands;
+                }
+                _gameMessageBands!.Show(line);
+            }
+            if (_gameMessageBands is not { } shownBands || _gameMessageSurface is not { } surface) return;
+            shownBands.Tick();
+            var shown = surface.Visible;
+            surface.Visible = shownBands.IsVisible;
+            if (!surface.Visible) return;
+            var (width, _) = FitToast(shownBands, surface, shown);
+            var screen = GameDevice.ViewportSize(_device);
+            surface.Location = new Point(Math.Max(0, (screen.Width - width) / 2), (int)Math.Round(GameMessageDrop * surface.Panel.Scale));
+        }
+        catch (Exception exception) { GameMessagesFailed(exception); }
+    }
+
+    /// <summary>A failed toast is dropped and retail's spew box gets its messages back for the rest of the session.</summary>
+    private void GameMessagesFailed(Exception exception)
+    {
+        Log($"The game message toast failed; retail shows its yellow messages again: {exception}");
+        DropGameMessageToast();
+        _gameMessages?.Dispose();
+        _gameMessages = null;
+    }
+
+    private void DropGameMessageToast()
+    {
+        _gameMessageSurface?.Dispose();
+        _gameMessageSurface = null;
+        _gameMessageBands = null;
     }
 
     /// <summary>
@@ -4205,6 +4279,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Plugin windows are not in the client UI framework; release them here too.
         ReleaseFeatureWindows();
         DropUpdateToast();
+        DropGameMessageToast();
     }
 
     private void ReleaseFeatureWindows()
@@ -4340,6 +4415,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _windows = null;
         ReleaseFeatureWindows();
         DropUpdateToast();
+        DropGameMessageToast();
         _windowFailures.Clear();
         _windowsEnabled = false;
         _portal?.Dispose();
