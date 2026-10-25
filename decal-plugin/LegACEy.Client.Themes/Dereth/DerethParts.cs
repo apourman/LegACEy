@@ -425,7 +425,7 @@ public sealed class DerethWindow : UserControl
     public const int TitleBarHeight = 48;
 
     /// <summary>The title's own row under the header, in a window that centres its title.</summary>
-    public const int TitleRowHeight = 28;
+    public const int TitleRowHeight = 24;
 
     /// <summary>The header of a window that centres its title: it holds only the header buttons, so it is just taller than they are.</summary>
     public const int CentredHeaderHeight = 24;
@@ -523,11 +523,11 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A window title: 16 DIPs, stepping down to 12 until it fits its width, as a long character name needs; past that it ends in an ellipsis.
+/// A window title: 13 DIPs, stepping down to 11 until it fits its width, as a long character name needs; past that it ends in an ellipsis.
 /// </summary>
 internal sealed class DerethTitleText : TextBlock
 {
-    private const double Largest = 16, Smallest = 12;
+    private const double Largest = 13, Smallest = 11;
 
     protected override Type StyleKeyOverride => typeof(TextBlock);
 

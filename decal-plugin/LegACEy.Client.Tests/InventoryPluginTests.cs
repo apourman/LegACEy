@@ -424,7 +424,7 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
-    public void A_long_character_name_shrinks_the_title_to_fit_down_to_twelve() => RenderThread.Run(() =>
+    public void A_long_character_name_shrinks_the_title_to_fit_down_to_eleven() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         client.Port.Push(InventorySample.Snapshot(characterName: "Sir Reginald Ashbourne the Unyielding"));
@@ -434,7 +434,7 @@ public sealed class InventoryPluginTests
         InventoryDriver.Tick(panel);
 
         var title = Assert.Single(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of Sir Reginald Ashbourne the Unyielding");
-        Assert.InRange(title.FontSize, 12, 15.5);
+        Assert.InRange(title.FontSize, 11, 12.5);
     });
 
     private static void AssertFitsWithOneGridRow(AvaloniaPanel panel)
