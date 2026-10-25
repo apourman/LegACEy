@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.16.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.15.0...decal-plugin-v0.16.0) (2026-10-25)
+
+
+### Features
+
+* radar pings in the world ([#150](https://github.com/apourman/LegACEy/issues/150)) ([1db40c2](https://github.com/apourman/LegACEy/commit/1db40c277710b8d5b41785d8f70d9a536e6bd6de))
+* server-announced worlds ([#153](https://github.com/apourman/LegACEy/issues/153)) ([b4a1cef](https://github.com/apourman/LegACEy/commit/b4a1cef73af27b17f03dd300b6714204e17550dc))
+* world updates at character select ([#152](https://github.com/apourman/LegACEy/issues/152)) ([8345295](https://github.com/apourman/LegACEy/commit/8345295988412f3396622734d1f0852f1bb8a10d))
+* worlds served from memory ([#156](https://github.com/apourman/LegACEy/issues/156)) ([d471f04](https://github.com/apourman/LegACEy/commit/d471f04adcaa80bc4c1c3608ccc143d9c07637bf))
+
+
+### Bug Fixes
+
+* picked-up packs show their items ([#148](https://github.com/apourman/LegACEy/issues/148)) ([d2c4a26](https://github.com/apourman/LegACEy/commit/d2c4a2614ac57390810ec8f9e9b54b50275560e3))
+* relaunch toast only for art the game already holds ([#159](https://github.com/apourman/LegACEy/issues/159)) ([e075612](https://github.com/apourman/LegACEy/commit/e0756129199057b6dd304eb565ea9007bf7a1959))
+* rolled-back worlds and late world notes ([#157](https://github.com/apourman/LegACEy/issues/157)) ([dff8dce](https://github.com/apourman/LegACEy/commit/dff8dcea3b0c0d88cbdfb696e8a07555325c7eea))
+* selection outline through dungeon walls ([#151](https://github.com/apourman/LegACEy/issues/151)) ([33bd070](https://github.com/apourman/LegACEy/commit/33bd070c706dadbed121f9749bb517f62ebebb51))
+* world update failures don't loop ([#154](https://github.com/apourman/LegACEy/issues/154)) ([6f09b6b](https://github.com/apourman/LegACEy/commit/6f09b6bcb38262c4bc91658d43c1ba67d2781675))
+
+
+### Maintenance
+
+* dat cache probe at overlay switch-on ([#158](https://github.com/apourman/LegACEy/issues/158)) ([34eae39](https://github.com/apourman/LegACEy/commit/34eae396185c1c60f1d0558193956b4252b21fac))
+
 ## [0.15.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.14.1...decal-plugin-v0.15.0) (2026-10-24)
 
 
