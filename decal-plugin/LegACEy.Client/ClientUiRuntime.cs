@@ -4013,6 +4013,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The keypad's Enter (an extended key) stays retail's, as the spike recommends.
         if (message == InputRouterService.WmKeyDown && wParam == VkReturn && (lParam & ExtendedKey) == 0 && TryFocusRetailChat()) return true;
         if (CopyChatSelection(message, wParam, lParam)) return true;
+        if (RescaleFromKeys(message, wParam)) return true;
 
         var eat = false;
         if (message == WmSetCursor)
@@ -4134,8 +4135,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     break;
                 case InputAction.MouseWheel:
                     // Ctrl and the wheel over a LegACEy window or the toolbar make it bigger or smaller, and its content does not scroll.
+                    // A trackpad's scroll and pinch come as many small deltas, so they add up to a step per notch's worth.
                     if ((route.Modifiers & InputModifiers.Control) != 0 && Rescalable(route.SurfaceId))
-                        RescaleWindow(route.SurfaceId!, Math.Sign(route.WheelDelta));
+                    {
+                        if (route.SurfaceId != _scaleWheelSurfaceId) (_scaleWheelSurfaceId, _scaleWheel) = (route.SurfaceId, 0);
+                        _scaleWheel += route.WheelDelta;
+                        var steps = _scaleWheel / 120;
+                        _scaleWheel %= 120;
+                        if (steps != 0) RescaleWindow(route.SurfaceId!, steps);
+                    }
                     else
                         target!.Panel.MouseWheel(route.X, route.Y, 0, route.WheelDelta / 120.0, ToKeyModifiers(route.Modifiers));
                     eat = route.Eat;
@@ -4379,6 +4387,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool Rescalable(string? id) => id == ToolbarSurfaceId
         ? _toolbarTakeover?.Holds == true
         : id != null && _windows?.Get(id) != null;
+
+    // Ctrl and the wheel's delta not yet a whole notch, and the surface it is for.
+    private int _scaleWheel;
+    private string? _scaleWheelSurfaceId;
+
+    /// <summary>
+    /// Ctrl and + or − over a LegACEy window or the toolbar make it a step bigger or smaller, and Ctrl and 0 put it back at 100 percent, for
+    /// players without a wheel. A field of ours with the keyboard keeps its keys. True eats the key.
+    /// </summary>
+    private bool RescaleFromKeys(int message, int wParam)
+    {
+        const int VkControl = 0x11, Vk0 = 0x30, VkNumpad0 = 0x60, VkAdd = 0x6B, VkSubtract = 0x6D, VkOemPlus = 0xBB, VkOemMinus = 0xBD;
+        if (message != InputRouterService.WmKeyDown || _hovered == null || (GetKeyState(VkControl) & 0x8000) == 0) return false;
+        if (wParam is not (Vk0 or VkNumpad0 or VkAdd or VkSubtract or VkOemPlus or VkOemMinus)) return false;
+        if (SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true) return false;
+        var id = GetInputSurfaces().FirstOrDefault(surface => SurfaceById(surface.Id) == _hovered)?.Id;
+        if (!Rescalable(id)) return false;
+        Guard(() =>
+        {
+            var placeId = id == ToolbarSurfaceId ? ToolbarPlaceId : id!;
+            var steps = wParam is VkAdd or VkOemPlus ? 1
+                : wParam is VkSubtract or VkOemMinus ? -1
+                : (100 - _windows!.SizePercentOf(placeId)) / WindowManager.SizeStep;
+            if (steps != 0) RescaleWindow(id!, steps);
+        });
+        return true;
+    }
 
     // How long a window's size shows over it after a wheel notch.
     private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);
