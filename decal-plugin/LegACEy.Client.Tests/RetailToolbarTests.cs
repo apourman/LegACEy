@@ -16,7 +16,7 @@ namespace LegACEy.Client.Tests;
 
 public sealed class RetailToolbarTests
 {
-    private const int Width = 300;
+    private const int Width = 310;
     private const int Height = 90;
 
     [Fact]
@@ -205,13 +205,13 @@ public sealed class RetailToolbarTests
         Assert.InRange(Right(toolbar.ButtonFor(RetailPanel.Inventory)) - Right(row2.SlotAt(ShortcutBar.SlotCount - 1)), -1, 1);
         Assert.True(row2.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y > row1.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y);
         // Retail's toolbar width, which the Dereth inventory shares, so the two line up stacked.
-        Assert.Equal(300, toolbar.DesiredSize.Width);
+        Assert.Equal(310, toolbar.DesiredSize.Width);
     });
 
     [Fact]
     public void The_toolbar_is_as_wide_as_a_retail_width_window_at_every_size() => RenderThread.Run(() =>
     {
-        // The inventory, retail's 300 DIPs, is that times its scale, rounded; stacked, the two must line up at every Ctrl+wheel size.
+        // The inventory, retail's 310 DIPs, is that times its scale, rounded; stacked, the two must line up at every Ctrl+wheel size.
         for (var percent = WindowManager.SmallestSize; percent <= WindowManager.LargestSize; percent += WindowManager.SizeStep)
         {
             var scale = percent / 100.0;
@@ -220,8 +220,10 @@ public sealed class RetailToolbarTests
             using var panel = AvaloniaPanel.Create(() => toolbar = new RetailToolbar(new FakeToolbarPort(), () => { }, _ => true), 1, 1, scale);
             toolbar!.SetShortcutRows(new[] { row });
             toolbar.Measure(Size.Infinity);
-            var width = (int)Math.Round(toolbar.DesiredSize.Width * scale);
-            Assert.Equal((int)Math.Round(300 * scale), width);
+            // The client sizes the panel as a window's: retail's width at the scale, rounded. The toolbar asks for no more than a pixel past it.
+            var width = (int)Math.Round(RetailToolbar.RetailWidth * scale);
+            Assert.Equal((int)Math.Round(310 * scale), width);
+            Assert.InRange(toolbar.DesiredSize.Width * scale - width, -1, 1);
             panel.Resize(width, (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
             panel.Tick();
             // The ninth slot still ends inside the frame.

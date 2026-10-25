@@ -127,10 +127,10 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private readonly Border _meterSlot = new() { IsVisible = false };
     private readonly StackPanel _plaqueContent;
     /// <summary>
-    /// Retail's toolbar width, as the Dereth inventory's: 6 + 9 × 32 + 6. Set, not left to the parts, so it scales as a window does; the
+    /// Retail's toolbar window width, as the Dereth inventory's: its 300 DIP toolbar inside a 5 DIP border, 5 + 300 + 5. Set, not left to the parts, so it scales as a window does; the
     /// parts, each rounded up to whole pixels, would make it a few pixels wider at most scales.
     /// </summary>
-    public const double RetailWidth = 300;
+    public const double RetailWidth = 310;
     // The part above the rows, then the shortcut rows in order, touching as retail's do.
     private readonly StackPanel _sections = new();
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
@@ -196,11 +196,11 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _sections.Children.Add(Columns(Centred(_stance), middle, Centred(backpack)));
 
         // A transparent backing takes the press wherever no button or control does (a medallion marks its presses handled), the frame's edge
-        // included, so a press there starts the move. The sections reach 2 DIPs into the frame's 8 DIP sides, so the toolbar is retail's
-        // width, as the Dereth inventory is: 6 + 9 × 32 + 6 = 300.
+        // included, so a press there starts the move. The sections sit 3 DIPs inside the frame's 8 DIP sides, so the toolbar is retail's
+        // window width, as the Dereth inventory is: 11 + 9 × 32 + 11 = 310.
         var frame = new Border
         {
-            Background = Brushes.Transparent, Child = new DerethFrame(DerethFrameArt.Window) { Child = _sections, Padding = new Thickness(6, 8) }
+            Background = Brushes.Transparent, Child = new DerethFrame(DerethFrameArt.Window) { Child = _sections, Padding = new Thickness(11, 8) }
         };
         frame.PointerPressed += (_, e) =>
         {

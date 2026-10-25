@@ -143,7 +143,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     // The ids the vertical layout's windows had, so their saved places and sizes still apply.
     private static string WindowId(bool collapsed) => "inventory-vertical" + (collapsed ? "-compact" : string.Empty);
 
-    private const int VerticalWidth = 300, TallestVertical = 10_000;
+    private const int VerticalWidth = 310, TallestVertical = 10_000;
 
     /// <summary>
     /// Each view's default size and minimum. The minimum keeps the paperdoll, unless it is collapsed, and one row of the grid visible.
