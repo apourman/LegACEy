@@ -818,7 +818,7 @@ public sealed class RetailChatTests
         // The first frame is the window's own; the Send button draws its frame too.
         var frame = window.GetVisualDescendants().OfType<DerethFrame>().First();
         var scrollBar = window.GetVisualDescendants().OfType<ScrollBar>().First(bar => bar.Orientation == Orientation.Vertical);
-        Assert.Equal(1.0, Seen(scrollBar));
+        Assert.Equal(Awake, Seen(scrollBar));
 
         clock.Advance(0.125);
         window.Refresh();
@@ -847,7 +847,7 @@ public sealed class RetailChatTests
 
         panel.PointerMove(Width / 2, Height / 2);
         window.Refresh();
-        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(TabView(window, "All")));
         panel.PointerLeave();
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
@@ -857,14 +857,14 @@ public sealed class RetailChatTests
         Click(panel, InputBox(window));
         clock.Advance(1);
         window.Refresh();
-        Assert.Equal(1.0, Seen(InputBox(window)));
-        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(InputBox(window)));
+        Assert.Equal(Awake, Seen(TabView(window, "All")));
 
         Click(panel, ChipText(panel, "Local"));
         panel.PointerLeave();
         clock.Advance(1);
         window.Refresh();
-        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(TabView(window, "All")));
         Click(panel, ChipText(panel, "Local"));
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
@@ -902,7 +902,7 @@ public sealed class RetailChatTests
         panel.Tick();
         clock.Advance(5);
         window.Refresh(keepAwake: true);
-        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(TabView(window, "All")));
 
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
@@ -924,7 +924,7 @@ public sealed class RetailChatTests
         window.Refresh();
         clock.Advance(seconds - 1);
         window.Refresh();
-        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(TabView(window, "All")));
 
         clock.Advance(1 + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
@@ -946,12 +946,12 @@ public sealed class RetailChatTests
         Assert.Equal(0.0, Seen(LineOf(panel, "an old line")));
 
         // Still idle, the delay goes to 15: the window's idle moment is now 15 seconds in, 0.1 s before this frame, so the line and the
-        // chrome fade from it again (0.75 and 0.6), not stay gone as they were under 10.
+        // chrome fade from it again (0.75 and 0.6 of awake), not stay gone as they were under 10.
         window.IdleAfterSeconds = 15;
         clock.Advance(4.6);
         window.Refresh();
         Assert.Equal(0.75, Seen(LineOf(panel, "an old line")), 2);
-        Assert.Equal(0.6, Seen(TabView(window, "All")), 2);
+        Assert.Equal(0.6 * Awake, Seen(TabView(window, "All")), 2);
     });
 
     [Fact]
@@ -968,13 +968,16 @@ public sealed class RetailChatTests
 
         window.IdleAfterSeconds = null;
         window.Refresh();
-        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(TabView(window, "All")));
         clock.Advance(3600);
         window.Refresh();
-        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(TabView(window, "All")));
     });
 
     // ---- helpers ----
+
+    /// <summary>How much of an awake window's frame, tabs and input shows at the default active opacity.</summary>
+    private const double Awake = RetailChatWindows.DefaultActiveOpacity / 100.0;
 
     private const string Server = "server";
 

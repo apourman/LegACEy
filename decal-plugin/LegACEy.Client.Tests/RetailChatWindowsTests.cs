@@ -201,7 +201,7 @@ public sealed class RetailChatWindowsTests
         first.Chat.SetFadeSeconds(RetailChatWindows.NeverFades);
         clock.Advance(TimeSpan.FromHours(1));
         first.Tick();
-        Assert.All(first.Chat.Windows, window => Assert.Equal(1.0, Seen(Frame(window))));
+        Assert.All(first.Chat.Windows, window => Assert.Equal(Awake, Seen(Frame(window))));
         first.Dispose();
 
         // Never is kept for Alice, so her windows stay shown when they reopen; Bob has no choice saved, so he fades after 15 seconds.
@@ -209,7 +209,7 @@ public sealed class RetailChatWindowsTests
         second.Tick();
         clock.Advance(TimeSpan.FromHours(1));
         second.Tick();
-        Assert.Equal(1.0, Seen(Frame(second.Main)));
+        Assert.Equal(Awake, Seen(Frame(second.Main)));
         using var other = ChatDesk.Open(port, path, "Bob", positions, clock: () => clock.Now);
         other.Tick();
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
@@ -224,7 +224,7 @@ public sealed class RetailChatWindowsTests
         var positions = new MemoryWindowPositionStore();
         var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
         using var first = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
-        Assert.Equal(1.0, Seen(Frame(first.Main)));
+        Assert.Equal(Awake, Seen(Frame(first.Main)));
         first.Chat.SetFadeSeconds(RetailChatWindows.FadesInstantly);
         clock.Advance(TimeSpan.FromSeconds(0.3));
         first.Tick();
@@ -232,20 +232,24 @@ public sealed class RetailChatWindowsTests
     }));
 
     [Fact]
-    public void The_log_backdrop_is_active_when_awake_and_inactive_when_idle_and_is_kept_per_character() => RenderThread.Run(() => WithStore(path =>
+    public void The_whole_window_is_active_when_awake_and_inactive_when_idle_and_is_kept_per_character() => RenderThread.Run(() => WithStore(path =>
     {
         var clock = new DeskClock(Stamp);
         var positions = new MemoryWindowPositionStore();
         var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
         using var first = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
+        first.Drag(first.At(first.Main, TabView(first.Main, "Fellowship")), first.Place(first.Main, new System.Drawing.Point(600, 110)));
         first.Chat.SetActiveOpacity(80);
         first.Chat.SetInactiveOpacity(30);
         port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
         first.Tick();
-        Assert.Equal(0.8, Seen(Groove(first.Main)));
+        // The frame, tabs and input fade with the backdrop, in the main window and a torn-off one alike.
+        foreach (var window in first.Chat.Windows)
+            foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) }) Assert.Equal(0.8, Seen(part), 6);
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds));
         first.Tick();
-        Assert.Equal(0.3, Seen(Groove(first.Main)));
+        foreach (var window in first.Chat.Windows)
+            foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) }) Assert.Equal(0.3, Seen(part), 6);
         // With a backdrop left, the line outlasts its stay instead of fading.
         Assert.Equal(1.0, Seen(first.Main.GetVisualDescendants().OfType<Control>().First(part => part.Tag is DateTime)));
         first.Dispose();
@@ -352,8 +356,8 @@ public sealed class RetailChatWindowsTests
             clock.Advance(TimeSpan.FromSeconds(1));
             desk.Tick();
         }
-        Assert.Equal(1.0, Seen(StripPanel(torn)));
-        Assert.Equal(1.0, Seen(Frame(torn)));
+        Assert.Equal(Awake, Seen(StripPanel(torn)));
+        Assert.Equal(Awake, Seen(Frame(torn)));
         desk.Release();
 
         // Let go and left alone, it fades as any window does.
@@ -478,6 +482,9 @@ public sealed class RetailChatWindowsTests
         window.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == label);
 
     /// <summary>The window's visual opacity: its own and its ancestors', as the player sees it.</summary>
+    /// <summary>How much of an awake window shows at the default active opacity.</summary>
+    private const double Awake = RetailChatWindows.DefaultActiveOpacity / 100.0;
+
     private static double Seen(Visual part) => part.GetSelfAndVisualAncestors().OfType<Visual>().Aggregate(1.0, (seen, visual) => seen * visual.Opacity);
 
     private sealed class DeskClock
