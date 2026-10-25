@@ -222,6 +222,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _toolbarFailed;
     // The offset from the toolbar's corner to the pointer while its frame is dragged; null when it is not.
     private Size? _toolbarDragOffset;
+    // Where a drag of the toolbar's bottom edge, which shows and hides shortcut row 2, last showed or hid it: the screen Y.
+    private int? _toolbarRowDragY;
     private bool _toolbarSwitch;
     private bool _toolbarReleaseLogged;
     // The Dereth toolbar's surface id. It is not a managed window, so drops reach it by its surface.
@@ -2950,10 +2952,23 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool OnToolbarMoveEdge(Point point) =>
         _toolbarSurface is { } surface && _toolbarTakeover?.Holds == true && point.Y - surface.Location.Y < WindowManager.ResizeBand;
 
-    /// <summary>The toolbar's frame was pressed: it follows the pointer until the button goes up. Refused while retail's UI is locked.</summary>
+    /// <summary>Whether a screen point is on the toolbar's bottom edge, where a drag shows and hides shortcut row 2, as retail's does.</summary>
+    private bool OnToolbarRowEdge(Point point) =>
+        _toolbarSurface is { } surface && _toolbarTakeover?.Holds == true && _shortcutBar != null
+        && surface.Location.Y + surface.Bounds.Height - point.Y <= WindowManager.ResizeBand;
+
+    /// <summary>
+    /// The toolbar's frame was pressed: it follows the pointer until the button goes up, or on its bottom edge the drag shows and hides
+    /// shortcut row 2. Refused while retail's UI is locked.
+    /// </summary>
     private void BeginToolbarDrag()
     {
         if (_toolbarTakeover?.CanDrag != true || _toolbarSurface is not { } surface) return;
+        if (OnToolbarRowEdge(_pointer))
+        {
+            _toolbarRowDragY = _pointer.Y;
+            return;
+        }
         _toolbarDragOffset = new Size(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
     }
 
@@ -2979,6 +2994,31 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// The button went up: the Dereth toolbar stays where it was dropped, and the place is saved for this character with the LegACEy
     /// windows. A failure gives retail's toolbar back.
     /// </summary>
+    /// <summary>
+    /// The bottom edge is dragged: half a row up hides row 2, half a row down shows it, and the toolbar's top edge stays. The choice is
+    /// kept for the character, as Settings keeps it.
+    /// </summary>
+    private void DragToolbarRows(Point pointer)
+    {
+        if (_toolbarTakeover?.CanDrag != true || _toolbarSurface is not { } surface || _toolbarRowDragY is not int from)
+        {
+            _toolbarRowDragY = null;
+            return;
+        }
+        var row = (int)Math.Round(ItemCellSize.Standard.Icon * surface.Panel.Scale);
+        var show = _shortcutRow2 == null && pointer.Y - from > row / 2;
+        var hide = _shortcutRow2 != null && from - pointer.Y > row / 2;
+        if (!show && !hide) return;
+        var top = surface.Location;
+        try
+        {
+            SetShortcutRow2(show);
+            _toolbarTakeover.MoveTo(OnScreen(top, surface.Bounds.Size));
+        }
+        catch (Exception exception) { ToolbarFailed(exception); }
+        _toolbarRowDragY = from + (show ? row : -row);
+    }
+
     private void EndToolbarDrag()
     {
         _toolbarDragOffset = null;
@@ -4026,6 +4066,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     }
                     else if (_toolbarDragOffset != null)
                         DragToolbar(point);
+                    else if (_toolbarRowDragY != null)
+                        DragToolbarRows(point);
                     else if (_gameMessageDragOffset != null)
                         DragGameMessages(point);
                     else
@@ -4082,6 +4124,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     }
                     if (_toolbarDragOffset != null)
                         EndToolbarDrag();
+                    _toolbarRowDragY = null;
                     if (_gameMessageDragOffset != null)
                         EndGameMessageDrag();
                     eat = route.Eat;
@@ -4169,7 +4212,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The pointer goes to a capture, else to the topmost surface under it, as the router decides. Only the window that owns
         // it gets the move or resize cursor, so the retail bar and any other surface keep the game's cursor.
         var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
+        if (_toolbarRowDragY != null) return RetailCursor(DatCursorNS, IdcSizeNS);
         if (owner == ToolbarSurfaceId && OnToolbarMoveEdge(point)) return RetailCursor(DatCursorMove, IdcSizeAll);
+        if (owner == ToolbarSurfaceId && _toolbarTakeover?.CanDrag == true && OnToolbarRowEdge(point)) return RetailCursor(DatCursorNS, IdcSizeNS);
         if (owner == GameMessagesSurfaceId) return RetailCursor(DatCursorMove, IdcSizeAll);
         if (_windows == null) return IntPtr.Zero;
         if (owner != null && _windows.MoveEdgeAt(point) == owner) return RetailCursor(DatCursorMove, IdcSizeAll);
@@ -4306,6 +4351,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _hovered?.Panel.PointerLeave();
         _hovered = null;
         _toolbarDragOffset = null;
+        _toolbarRowDragY = null;
         _gameMessageDragOffset = null;
         _windows?.Release();
     }
