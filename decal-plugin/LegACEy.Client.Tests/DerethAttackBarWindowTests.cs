@@ -232,20 +232,36 @@ public sealed class DerethAttackBarWindowTests
     });
 
     [Fact]
-    public void A_wider_bar_is_longer_and_its_plaques_follow_the_right_edge_with_text_at_its_size() => RenderThread.Run(() =>
+    public void A_wider_bar_is_longer_and_its_plaques_follow_the_right_edge() => RenderThread.Run(() =>
     {
         var port = new FakeAttackBarPort();
         var view = new DerethAttackBarWindow(port, () => { });
-        using var panel = AvaloniaPanel.Create(() => view, 480, 98, 1);
+        using var panel = AvaloniaPanel.Create(() => view, 480, 58, 1);
 
         // The groove is 160 DIPs longer, so its middle is 80 further right.
-        Click(panel, GrooveLeft + (GrooveWidth + 160) / 2, 31);
+        Click(panel, GrooveLeft + (GrooveWidth + 160) / 2, GrooveY);
         Assert.Equal(0.5, port.SetPoint, 2);
-        // The plaques moved 160 right with the edge; the low one is lower in the taller window.
-        Click(panel, PlaqueX + 160, 72);
+        // The plaques moved 160 right with the edge.
+        Click(panel, PlaqueX + 160, PlaqueY[2]);
         Assert.Equal(AttackHeight.Low, port.Height);
-        // The gems spread: the third sits a further 2 × 160 / 3 DIPs right, and the row is lower.
-        Click(panel, GemX[2] + 2 * 160 / 3.0, GemY + 30);
+        // The gems spread: the third sits a further 2 × 160 / 3 DIPs right.
+        Click(panel, GemX[2] + 2 * 160 / 3.0, GemY);
+        Assert.True(port.ViewCombatTarget);
+    });
+
+    [Fact]
+    public void A_taller_bar_draws_everything_larger_instead_of_leaving_space() => RenderThread.Run(() =>
+    {
+        var port = new FakeAttackBarPort();
+        var view = new DerethAttackBarWindow(port, () => { });
+        using var panel = AvaloniaPanel.Create(() => view, 640, 116, 1);
+
+        // Twice the design size: every control sits at twice its design place.
+        Click(panel, 2 * FractionAt(0.5), 2 * GrooveY);
+        Assert.Equal(0.5, port.SetPoint, 2);
+        Click(panel, 2 * PlaqueX, 2 * PlaqueY[2]);
+        Assert.Equal(AttackHeight.Low, port.Height);
+        Click(panel, 2 * (GemX[2] + 20), 2 * GemY);
         Assert.True(port.ViewCombatTarget);
     });
 
@@ -275,7 +291,7 @@ public sealed class DerethAttackBarWindowTests
                 Render(Path.Combine(folder, $"{name}-{scale:0}x.png"), port, scale);
             }
         // Stretched: wider, taller, and both.
-        foreach (var (width, height) in new[] { (480, 58), (320, 98), (560, 120) })
+        foreach (var (width, height) in new[] { (480, 58), (320, 98), (560, 120), (640, 116) })
         {
             var port = new FakeAttackBarPort { SetPoint = 0.75, Charge = 0.45, Height = AttackHeight.Medium, AutoRepeatAttack = true, AutoTarget = true };
             var view = new DerethAttackBarWindow(port, () => { });
