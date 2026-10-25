@@ -2,8 +2,9 @@ name: Pull request checks
 
 # The checks for every pull request that need no retail DATs, MySQL or game data. The local gate (scripts/market/gate.sh) runs these
 # too, plus the test suites that need MySQL and the end-to-end stack. Deploys stay in deploy-main.yml (pushes to master).
-# They also run everything the releases run, in the release configuration (the server's Linux Release publish, the plugin's
-# Windows Release build in windows-plugin), so nothing first builds or tests at release time.
+# They also run everything the releases run, in the release configuration: the server's Linux Release publish on every pull request,
+# and the plugin's Windows Release build (windows-plugin) on the promote pull request into master and on runs started by hand, so nothing
+# first builds or tests at release time.
 on:
   pull_request:
     branches:
@@ -78,6 +79,7 @@ jobs:
 
   # The plugin release's build (release-decal-plugin.yml), the same script on the same runner image
   windows-plugin:
+    if: github.base_ref == 'master' || github.event_name == 'workflow_dispatch'
     runs-on: windows-2022
     timeout-minutes: 45
     steps:

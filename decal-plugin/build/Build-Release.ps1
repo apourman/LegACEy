@@ -3,8 +3,8 @@ param(
     [string]$WorkDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'legacey-plugin-release')
 )
 
-# Everything the plugin release runs, in the same configuration: the release workflow calls it, pull requests run it on
-# windows-2022, and it runs on any Windows machine with .NET 10, Python and Inno Setup 6 before a promote.
+# Everything the plugin release runs, in the same configuration: the release workflow calls it, the promote pull request into
+# master runs it on windows-2022, and it runs on any Windows machine with .NET 10, Python and Inno Setup 6.
 # The package (stub, plugins, runtime, setup.exe, SHA256SUMS.txt) lands in <WorkDirectory>\plugin-package.
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true

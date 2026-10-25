@@ -45,7 +45,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      # The same script runs on every pull request, so a release only builds what already passed there.
+      # The same script runs on the promote pull request, so a release only builds what already passed there.
       - name: Test, build, package and build the installer
         env:
           PLUGIN_VERSION: ${{ inputs.release_version }}

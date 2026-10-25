@@ -148,7 +148,7 @@ Every pull request into `master`, `next`, `marketplace` or a `marketplace-*` bra
 hand): the .NET solution build, the website's `npm ci`, type check and production build, `npm run test:bff` (the BFF's request tests, the
 unit tests and the component tests) and `scripts/market/openapi-drift.sh`, which rebuilds the OpenAPI document and the generated client
 and fails when either differs from the checkout. None of it needs DATs, MySQL or game data. The same workflow also runs what the
-releases run: the server's Linux Release publish and, on `windows-2022`, the plugin's
+releases run: the server's Linux Release publish and, on `windows-2022` for pull requests into `master` only, the plugin's
 [`Build-Release.ps1`](../../decal-plugin/build/Build-Release.ps1).
 
 Before opening the pull request, run the local gate from the repository root:
