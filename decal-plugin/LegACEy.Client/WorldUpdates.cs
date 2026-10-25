@@ -160,11 +160,16 @@ internal sealed class WorldUpdates
         Set(reported ? WorldState.On : WorldState.Relaunch);
     }
 
-    /// <summary>Whether <paramref name="next"/> has a held record <paramref name="old"/> lacks or holds different bytes for.</summary>
+    /// <summary>Whether a held record differs between <paramref name="old"/> and <paramref name="next"/>: added, changed, or dropped back to
+    /// retail.</summary>
     private static bool HeldChanged(WorldPatchIndex? old, WorldPatchIndex next) =>
-        next.Dats.Any(dat => next.Records(dat)!.Any(record => WorldPatch.HeldAtSwitchOn(dat, record.Key)
-            && (old?.Records(dat) is not { } before || !before.TryGetValue(record.Key, out var was)
-                || !old.Read(was).AsSpan().SequenceEqual(next.Read(record.Value)))));
+        next.Dats.Union(old?.Dats ?? []).Any(dat =>
+        {
+            var (before, after) = (old?.Records(dat), next.Records(dat));
+            return (before?.Keys ?? []).Union(after?.Keys ?? []).Any(id => WorldPatch.HeldAtSwitchOn(dat, id)
+                && (before == null || after == null || !before.TryGetValue(id, out var was) || !after.TryGetValue(id, out var now)
+                    || !old!.Read(was).AsSpan().SequenceEqual(next.Read(now))));
+        });
 
     /// <summary>https anywhere; plain http only to this machine or a private network, for local testing.</summary>
     public static bool Allowed(string address) =>

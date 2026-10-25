@@ -111,8 +111,6 @@ public sealed class WorldUpdatesTests : IDisposable
         Assert.Equal(983, updates.Pending!.Version);
     }
 
-    private static readonly WorldPatchRecord FontAtlas = new("client_portal.dat", 0x06005ECF, 2, 3, new byte[] { 1, 2 });
-
     public static TheoryData<string, uint, bool> NewReleaseRecords => new()
     {
         { "client_portal.dat", 0x0200F001, false }, // a new model
@@ -138,18 +136,21 @@ public sealed class WorldUpdatesTests : IDisposable
         Assert.Equal(relaunch, updates.PortalNeedsRelaunch);
     }
 
-    [Fact]
-    public async Task AHeldRecordTheLastWorldAlreadyChangedTheSameWayNeedsNoRelaunch()
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task AHeldRecordTheLastWorldChangedNeedsARelaunchOnlyWhenTheNewWorldDropsIt(bool kept, bool relaunch)
     {
-        await Visit(983, FontAtlas);
-        var patch = Patch(984, FontAtlas);
+        var atlas = new WorldPatchRecord("client_portal.dat", 0x06005ECF, 2, 3, new byte[] { 1, 2 });
+        await Visit(983, atlas);
+        var patch = kept ? Patch(984, atlas) : Patch(984);
         var updates = Updates(() => Manifest(984, patch), patch);
         updates.AtStartup();
 
         await updates.Heard(Note(984));
         updates.SwitchedOn(reported: true);
 
-        Assert.False(updates.PortalNeedsRelaunch);
+        Assert.Equal(relaunch, updates.PortalNeedsRelaunch);
     }
 
     [Fact]

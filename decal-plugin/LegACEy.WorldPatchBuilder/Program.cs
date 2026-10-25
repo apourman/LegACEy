@@ -51,10 +51,11 @@ static int Build(string retail, string edited, string output, string url)
             if (old != null && old.AsSpan().SequenceEqual(bytes)) continue;
             if (old == null) added++;
             else changed++;
-            if (file.Id >> 24 == 0x06) (textures, textureBytes) = (textures + 1, textureBytes + bytes.Length);
+            if (file.Id >> 24 == 0x06 && name != Cell) (textures, textureBytes) = (textures + 1, textureBytes + bytes.Length);
             if (old != null && WorldPatch.HeldAtSwitchOn(name, file.Id))
                 Console.Error.WriteLine($"warning: {name} {file.Id:X8} ({bytes.Length} bytes): the game already holds it when a world switches on, so "
-                    + "players see the new one only after a relaunch, or never for a mapper.");
+                    + (file.Id >> 24 is 0x22 or 0x25 or 0x26 or 0x27 ? "players may never see the new one: mappers are held from plugin start."
+                        : "players see the new one only after a relaunch."));
             records.Add(new WorldPatchRecord(name, file.Id, file.Iteration, (ushort)file.Version, bytes));
         }
         var removed = before.Tree.Count(file => !kept.Contains(file.Id));
