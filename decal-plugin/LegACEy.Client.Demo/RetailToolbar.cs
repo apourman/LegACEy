@@ -190,8 +190,12 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _sections.Children.Add(Columns(Centred(_stance), middle, Centred(backpack)));
 
         // A transparent backing takes the press wherever no button or control does (a medallion marks its presses handled), the frame's edge
-        // included, so a press there starts the move. The frame holds the sections with no padding, so the toolbar is retail's width.
-        var frame = new Border { Background = Brushes.Transparent, Child = new DerethFrame(DerethFrameArt.Window) { Child = _sections } };
+        // included, so a press there starts the move. The sections reach 2 DIPs into the frame's 8 DIP sides, so the toolbar is retail's
+        // width, as the Dereth inventory is: 6 + 9 × 32 + 6 = 300.
+        var frame = new Border
+        {
+            Background = Brushes.Transparent, Child = new DerethFrame(DerethFrameArt.Window) { Child = _sections, Padding = new Thickness(6, 8) }
+        };
         frame.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(frame).Properties.IsLeftButtonPressed) _startMove?.Invoke();

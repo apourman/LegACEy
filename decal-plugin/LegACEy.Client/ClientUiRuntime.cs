@@ -2923,7 +2923,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // added inside it changed it. A shown window's layout pass catches it up; the toolbar's is hidden until its first draw.
         Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toolbar);
         toolbar.Measure(Avalonia.Size.Infinity);
-        surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
+        // Its width rounds as a window's does, so at the same scale it stays as wide as the inventory, both retail's 300 DIPs.
+        surface.Panel.Resize((int)Math.Round(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
         var size = surface.Bounds.Size;
         var lower = before.Top + before.Height / 2 > GameDevice.ViewportSize(_device).Height / 2;
         var kept = OnScreen(new Point(before.X, lower ? before.Bottom - size.Height : before.Y), size);

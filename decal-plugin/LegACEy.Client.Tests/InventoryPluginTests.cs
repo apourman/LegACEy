@@ -36,12 +36,12 @@ public sealed class InventoryPluginTests
     public void Switching_layout_hides_one_window_and_opens_the_other_at_its_own_saved_size() => RenderThread.Run(() =>
     {
         var positions = new MemoryWindowPositionStore();
-        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(305, 600)));
+        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(300, 600)));
         positions.Save("Server", "Character", Horizontal, (new Point(120, 120), new Size(700, 500)));
         using var client = new FakeInventoryClient(positions);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        Assert.Equal(new Size(305, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(300, 600), client.Windows.Get(Vertical)!.Size);
 
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
         Assert.Null(client.Windows.Get(Vertical));
@@ -51,7 +51,7 @@ public sealed class InventoryPluginTests
         // Hiding kept the vertical window's size; it comes back at that size.
         InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
         Assert.Null(client.Windows.Get(Horizontal));
-        Assert.Equal(new Size(305, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(300, 600), client.Windows.Get(Vertical)!.Size);
         Assert.Equal(VerticalSlotsOn, client.Settings);
     });
 

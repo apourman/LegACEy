@@ -204,6 +204,8 @@ public sealed class RetailToolbarTests
         Assert.InRange(Left(toolbar.StanceButton) - Left(row1.SlotAt(0)), -1, 1);
         Assert.InRange(Right(toolbar.ButtonFor(RetailPanel.Inventory)) - Right(row2.SlotAt(ShortcutBar.SlotCount - 1)), -1, 1);
         Assert.True(row2.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y > row1.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y);
+        // Retail's toolbar width, which the Dereth inventory shares, so the two line up stacked.
+        Assert.Equal(300, toolbar.DesiredSize.Width);
     });
 
     [Fact]

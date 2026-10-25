@@ -734,7 +734,7 @@ public sealed class InventoryWindowTests
             InventoryWindow? window = null;
             var vertical = layout == InventoryLayout.Vertical;
             Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(layout, showSlots), Drag),
-                width ?? (vertical ? 305 : 360), height ?? (vertical ? 818 : 530));
+                width ?? (vertical ? 300 : 360), height ?? (vertical ? 818 : 530));
             Host.ApplyTheme(new DerethClientTheme());
             _window = window!;
             InventoryDriver.Tick(Host);

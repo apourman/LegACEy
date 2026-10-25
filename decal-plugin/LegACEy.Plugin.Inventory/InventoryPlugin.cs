@@ -143,7 +143,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     private static string WindowId(InventoryView view) => "inventory-" + view.Layout.ToString().ToLowerInvariant() + (view.Collapsed ? "-compact" : string.Empty);
 
-    private const int VerticalWidth = 305, TallestVertical = 10_000;
+    private const int VerticalWidth = 300, TallestVertical = 10_000;
 
     /// <summary>
     /// Each view's default size and minimum. The minimum keeps the paperdoll, unless it is collapsed, and one row of the grid visible,
