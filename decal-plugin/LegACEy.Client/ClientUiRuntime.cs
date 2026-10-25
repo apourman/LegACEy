@@ -361,6 +361,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private WorldUpdates? _world;
     private DatOverlay? _datOverlay;
     private RetailDatReport? _datReport;
+    // ponytail: portal-overlay spike diagnostic (DatCacheProbe); remove with it. Beside acclient.exe: while this file exists at startup,
+    // the client's object caches are logged as the overlay switches on.
+    private const string DatCacheProbeFile = "legacey-cache-probe";
+    private bool _probeDatCache;
     private RetailEnterGame? _enterGame;
     private DateTime _lastOverlaySummary = DateTime.UtcNow;
     private static readonly TimeSpan OverlaySummaryEvery = TimeSpan.FromMinutes(5);
@@ -2267,6 +2271,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var game = IOPath.GetDirectoryName(process.MainModule!.FileName)!;
             var world = new WorldUpdates(new WorldCache(game), WorldCache.Server(WorldCache.CommandLine()));
             _datOverlay.Use(world.AtStartup());
+            _probeDatCache = File.Exists(IOPath.Combine(game, DatCacheProbeFile));
+            ProbeDatCache("plugin start");
             _world = world;
             _datReport = RetailDatReport.Create(NativeUi.ReadMemory, Log);
             _enterGame = RetailEnterGame.Create(NativeUi.ReadMemory, () => world.HoldsEnter, () =>
@@ -2303,6 +2309,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (world.State == WorldState.Switching && world.Pending is { } pending)
         {
             overlay.Use(pending);
+            ProbeDatCache("character select");
             world.SwitchedOn(_datReport?.Resend() == true);
         }
         if (overlay.Patch != world.ActivePatch && world.State != WorldState.Switching) overlay.Use(world.ActivePatch);
@@ -2314,6 +2321,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         if (!_loggedIn) PlaceUpdateToast();
         if (DateTime.UtcNow - _lastOverlaySummary >= OverlaySummaryEvery) LogOverlaySummary();
+    }
+
+    /// <summary>Logs what the client's object caches hold as the overlay switches on, when the game started with a <c>legacey-cache-probe</c> file beside <c>acclient.exe</c>.</summary>
+    // ponytail: portal-overlay spike diagnostic; remove with DatCacheProbe, its two calls and DatCacheProbeFile.
+    private void ProbeDatCache(string moment)
+    {
+        if (_probeDatCache) DatCacheProbe.Log(moment, NativeUi.ReadMemory, Log);
     }
 
     private void LogOverlaySummary()
