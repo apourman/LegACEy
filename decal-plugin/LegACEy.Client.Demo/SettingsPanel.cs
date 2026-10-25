@@ -111,10 +111,10 @@ public sealed class ClientSettings
     /// <summary>The chat's idle fade delay in seconds, for this character; <see cref="RetailChatWindows.NeverFades"/> (0) never fades. Null hides its row.</summary>
     public OptionChoice<int>? ChatFade { get => _chatFade; set => Moved(ref _chatFade, value); }
 
-    /// <summary>The chat log backdrop's opacity in percent while the chat is awake, for this character. Null hides its row.</summary>
+    /// <summary>The chat window's opacity in percent while the chat is awake, for this character. Null hides its row.</summary>
     public OptionChoice<int>? ChatActiveOpacity { get => _chatActiveOpacity; set => Moved(ref _chatActiveOpacity, value); }
 
-    /// <summary>The chat log backdrop's opacity in percent once the chat is idle, for this character. Null hides its row.</summary>
+    /// <summary>The chat window's opacity in percent once the chat is idle, for this character. Null hides its row.</summary>
     public OptionChoice<int>? ChatInactiveOpacity { get => _chatInactiveOpacity; set => Moved(ref _chatInactiveOpacity, value); }
 
     /// <summary>The colour chat draws names in, for this character, as an index into <see cref="RetailChatWindows.NameColours"/>. Null hides its row.</summary>

@@ -144,8 +144,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 5), Child = _tabRow };
 
         // The log: a dark groove with a scroll bar, and the jump pill over its bottom edge while the player is scrolled up.
-        // The groove's fill fades between the active and inactive opacities, and its edge fades with the chrome; the lines sit over it, inset by
-        // the edge's border and padding, and fade by their own age.
+        // The groove fades with the rest of the window; the lines sit over it, inset by the edge's border and padding, and fade by their own age.
         // Its opacity starts at the default active opacity, so the first frame, before Refresh, looks as the default does.
         _groove = new Border { Background = DerethPalette.Brush(Color.FromArgb(0xFF, 0x07, 0x07, 0x05)), CornerRadius = new CornerRadius(3), Opacity = RetailChatWindows.DefaultActiveOpacity / 100.0 };
         _grooveEdge = new Border { BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3) };
@@ -227,7 +226,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The frame is a sibling of the content, not its parent, so it fades without the lines fading with it. The root is hit-testable
         // all over, so the pointer counts as over the window wherever it is in the frame.
         // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
-        _chrome.AddRange(new Control[] { _frame, tabBar, _grooveEdge, inputRow });
+        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, _grooveEdge, inputRow });
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, _scaled } };
         // A tab press that moves out of the strip is a drag; a press released on the tab is a click. Both are read from the window's own
         // events, so a press that moves outside the tab (where the tab itself gets no moves) still reaches the window.
@@ -415,12 +414,12 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             _idle = _fade.Idle;
             _linesSettled = false;
         }
-        var chrome = _fade.ChromeOpacity(now);
-        foreach (var part in _chrome) SetOpacity(part, chrome);
-        // The log's backdrop goes from the active opacity to the inactive one as the chrome fades.
-        SetOpacity(_groove, (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * chrome) / 100.0);
+        // The whole window, frame and backdrop alike, goes from the active opacity to the inactive one as it fades, as retail's does; only
+        // the lines keep their own. Held by the host (moved or resized) it shows whole, so even at 0% it can be found.
+        var opacity = keepAwake ? 1 : (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
+        foreach (var part in _chrome) SetOpacity(part, opacity);
         _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
-        if (_scrollBar != null) SetOpacity(_scrollBar, chrome);
+        if (_scrollBar != null) SetOpacity(_scrollBar, opacity);
         if (!_linesSettled) _linesSettled = ApplyLines(now);
     }
 
@@ -509,11 +508,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
     }
 
-    /// <summary>The log's backdrop opacity in percent while the window is awake. A change applies on the next frame.</summary>
+    /// <summary>The window's opacity in percent while it is awake, frame and backdrop alike; the lines stay solid. A change applies on the next frame.</summary>
     public int ActiveOpacity { get; set; } = RetailChatWindows.DefaultActiveOpacity;
 
     /// <summary>
-    /// The log's backdrop opacity in percent once the window is idle; above 0 the lines stay shown over it rather than fading. A change applies
+    /// The window's opacity in percent once it is idle, frame and backdrop alike; above 0 the lines stay shown over it rather than fading. A change applies
     /// on the next frame.
     /// </summary>
     public int InactiveOpacity
