@@ -141,14 +141,14 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _tabRow.Children.Add(tabSpace);
         Grid.SetColumn(_tabEnd, 1);
         _tabRow.Children.Add(_tabEnd);
-        var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 5), Child = _tabRow };
+        var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 3), Child = _tabRow };
 
         // The log: a dark groove with a scroll bar, and the jump pill over its bottom edge while the player is scrolled up.
         // The groove fades with the rest of the window; the lines sit over it, inset by the edge's border and padding, and fade by their own age.
         // Its opacity starts at the default active opacity, so the first frame, before Refresh, looks as the default does.
         _groove = new Border { Background = DerethPalette.Brush(Color.FromArgb(0xFF, 0x07, 0x07, 0x05)), CornerRadius = new CornerRadius(3), Opacity = RetailChatWindows.DefaultActiveOpacity / 100.0 };
         _grooveEdge = new Border { BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3) };
-        _scroll = new ScrollViewer { Content = _lines, Margin = new Thickness(7, 4), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        _scroll = new ScrollViewer { Content = _lines, Margin = new Thickness(4, 2), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         _scroll.ScrollChanged += (_, _) => { if (AtEnd()) HidePill(); };
         // The log selects as one text: a drag runs from line to line. Tunnel handlers, ahead of each line's own selection.
         _lines.AddHandler(PointerPressedEvent, OnLogPressed, RoutingStrategies.Tunnel);
@@ -158,7 +158,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _pill.IsVisible = false;
         _pill.Margin = new Thickness(0, 0, 0, 6);
         _pill.PointerPressed += (_, e) => { JumpToEnd(); e.Handled = true; };
-        var logArea = new Grid { Children = { _groove, _grooveEdge, _scroll, _pill }, Margin = new Thickness(0, 0, 0, 5) };
+        var logArea = new Grid { Children = { _groove, _grooveEdge, _scroll, _pill }, Margin = new Thickness(0, 0, 0, 3) };
 
         // The input row: the chip opens the talk-target menu; the box takes text; Send sends it.
         _chipHost.PointerPressed += (_, e) => { if (e.GetCurrentPoint(_chipHost).Properties.IsLeftButtonPressed) ToggleMenu(); };
@@ -205,7 +205,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The frame's edge is inside its padding, so the content keeps the frame's inset that the window had when the frame wrapped it.
         var inset = _frame.Padding;
         var content = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
-        _scaled.Margin = new Thickness(inset.Left + 9, inset.Top + 7, inset.Right + 9, inset.Bottom + 9);
+        _scaled.Margin = new Thickness(inset.Left + 5, inset.Top + 4, inset.Right + 5, inset.Bottom + 5);
         _scaled.Child = content;
         content.Children.Add(tabBar);
         Grid.SetRow(logArea, 1);
@@ -217,7 +217,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         Grid.SetRowSpan(_menu, 2);
         _menu.VerticalAlignment = VerticalAlignment.Bottom;
         _menu.HorizontalAlignment = HorizontalAlignment.Left;
-        _menu.Margin = new Thickness(0, 0, 0, 26);
+        _menu.Margin = new Thickness(0, 0, 0, 24);
         content.Children.Add(_menu);
         // The tab dialog covers the whole window while it is open, centred.
         Grid.SetRow(_editor, 0);
