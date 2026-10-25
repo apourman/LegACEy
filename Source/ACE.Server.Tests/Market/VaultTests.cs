@@ -445,6 +445,48 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(1, VaultStore.List(account).Count(r => r.ItemGuid == guid));
         }
 
+        [TestMethod]
+        public void UseOnTargetAfterAWalk_KeyDepositedDuringTheWalk_IsNotUsed()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            var key = VaultTestWorld.NewItem(KeyWcid);
+            key.Bonded = BondedStatus.Normal; // the any-lock key is bonded and attuned in the world data, which the Vault refuses
+            key.Attuned = AttunedStatus.Normal;
+            key.Structure = 3;
+            key.MaxStructure = 3;
+            VaultTestWorld.Give(player, key);
+            var guid = key.Guid.ClientGUID;
+
+            // the use-with-target callback runs once the turn or walk to the chest ends; the unlock itself is an action on the player
+            var afterMove = typeof(Player).GetMethod("UseOnTargetAfterMove", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var actions = (ACE.Server.Entity.Actions.ActionQueue)typeof(Player).GetField("actionQueue", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(player);
+            void UseAfterWalk(WorldObject chest) => VaultTestWorld.OnWorldThread(() => { afterMove.Invoke(player, new object[] { key, chest, true }); actions.RunActions(); });
+
+            var held = LockedChest();
+            UseAfterWalk(held);
+            Assert.IsFalse(held.IsLocked, "a key still in the pack unlocks the chest");
+            Assert.AreEqual((ushort)2, key.Structure);
+
+            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, guid).Outcome);
+
+            var deposited = LockedChest();
+            UseAfterWalk(deposited);
+            Assert.IsTrue(deposited.IsLocked, "a key the Vault took during the walk doesn't unlock it");
+            Assert.AreEqual((ushort)2, key.Structure, "and keeps the uses the Vault saved");
+        }
+
+        private const uint KeyWcid = 9181; // keysonicscrewdriver, opens any lock
+        private const uint ChestWcid = 143; // chest
+
+        private static Chest LockedChest()
+        {
+            var chest = (Chest)VaultTestWorld.NewItem(ChestWcid);
+            chest.IsLocked = true;
+            chest.LockCode = "vaulttest";
+            return chest;
+        }
+
         // ---- one operation at a time, trade window
 
         [TestMethod]
