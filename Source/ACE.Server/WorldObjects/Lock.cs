@@ -122,6 +122,13 @@ namespace ACE.Server.WorldObjects
 
             chain.AddAction(player, () =>
             {
+                // this runs a tick after the use: an instant Vault deposit may have taken the key or lockpick since, keeping all its uses
+                if (player.FindObject(unlocker.Guid, Player.SearchLocations.MyInventory | Player.SearchLocations.MyEquippedItems) != unlocker)
+                {
+                    player.SendUseDoneEvent();
+                    return;
+                }
+
                 if (unlocker.WeenieType == WeenieType.Lockpick &&
                     player.Skills[Skill.Lockpick].AdvancementClass != SkillAdvancementClass.Trained &&
                     player.Skills[Skill.Lockpick].AdvancementClass != SkillAdvancementClass.Specialized)
