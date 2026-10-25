@@ -26,9 +26,9 @@ public sealed class RetailVitalArt
     public IBrush Fill { get; }
     public IBrush Track { get; }
 
-    private RetailVitalArt(string fill, string track) => (Fill, Track) = (Rows(fill), Rows(track));
+    private RetailVitalArt(string fill, string track) => (Fill, Track) = (VerticalGradient(fill), VerticalGradient(track));
 
-    private static IBrush Rows(string rows)
+    private static IBrush VerticalGradient(string rows)
     {
         var colours = rows.Split(' ');
         var brush = new LinearGradientBrush
@@ -48,8 +48,8 @@ public sealed class RetailVitalArt
 /// </summary>
 public sealed class RetailVitalsFrame : Decorator
 {
-    /// <summary>The edge's width in DIPs.</summary>
-    public const double EdgeWidth = 5;
+    // The edge's width in DIPs.
+    private const double EdgeWidth = 5;
     private static readonly IPen Dark = new Pen(new SolidColorBrush(Color.Parse("#67553B")), 1);
     private static readonly IPen Bronze = new Pen(new SolidColorBrush(Color.Parse("#907854")), 1);
 

@@ -381,12 +381,13 @@ public sealed class DerethVitalBar : Control
         _trailBrush = DerethPalette.Brush(Mix(light, Colors.White, 0.6).WithAlpha(0x80));
     }
 
-    /// <summary>A retail bar: retail's track and beaded fill in a rounded tube, with no gold caps, highlight or quarter marks.</summary>
-    public DerethVitalBar(RetailVitalArt art)
+    /// <summary>
+    /// A retail bar: retail's track and beaded fill in a rounded tube, with no gold caps, highlight or quarter marks. It fills the height
+    /// it is given.
+    /// </summary>
+    public DerethVitalBar(RetailVitalArt art) : this(default, default, default, ticks: false)
     {
-        Height = BarHeight;
-        _glow = new Pen(_glowBrush, 2);
-        _edge = new Pen(_edgeBrush, 1);
+        Height = double.NaN;
         _fill = art.Fill;
         _track = art.Track;
         _trailBrush = DerethPalette.Brush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));

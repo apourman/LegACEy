@@ -202,7 +202,7 @@ public sealed class DerethVitalsWindow : UserControl
     private static Row RetailLine(Vital vital)
     {
         var art = vital switch { Vital.Health => RetailVitalArt.Health, Vital.Stamina => RetailVitalArt.Stamina, _ => RetailVitalArt.Mana };
-        var row = new Row { Bar = new DerethVitalBar(art) { Height = double.NaN }, Number = new OutlinedText(RetailNumberSize) };
+        var row = new Row { Bar = new DerethVitalBar(art), Number = new OutlinedText(RetailNumberSize) };
         row.Line = new Grid { Background = Brushes.Transparent, Children = { row.Bar, row.Number } };
         return row;
     }
