@@ -1224,8 +1224,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void FrameCore()
     {
-        // Retail's yellow game messages are ours only while our toast can show them; otherwise retail's spew box shows them.
-        if (_gameMessages != null) _gameMessages.Taking = !_failed && NativeUi.Ready && _inGame && CanOpenWindows;
+        // Retail's yellow game messages are ours whenever our bands can be drawn, from character select and the portal space at login on;
+        // otherwise retail's spew box shows them.
+        if (_gameMessages != null) _gameMessages.Taking = !_failed && NativeUi.Ready && CharacterSelectToastHost() && _postUiDrawHook!.HasRun;
         // Once the whole UI has failed, a give-back of retail's toolbar that failed is retried each frame until it lands; logged once per streak.
         if (_failed && _toolbarTakeover != null)
         {
@@ -1335,11 +1336,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             TickFeatureWindows();
             _phaseTimes.Add("windows", start);
             PlaceUpdateToast();
-            ShowGameMessages();
             if (_dragIconSurface != null)
                 _dragIconSurface.Location = new Point(_pointer.X - 16, _pointer.Y - 16);
         });
 
+        // Before the windows too: the portal space at login has its messages.
+        ShowGameMessages();
         // Every window's state is up to date: one Avalonia step lays out, paints and captures them all, then each uploads.
         // Guard's work, without a delegate allocated every frame.
         if (_failed) return;
@@ -1359,7 +1361,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var surface in _featureSurfaces.Values) surface.Held = held;
         // At character select the toast shows the server's world, before any window can.
         if (_updateToastSurface != null) _updateToastSurface.Held = held && _loggedIn;
-        if (_gameMessageSurface != null) _gameMessageSurface.Held = held;
         if (_dragIconSurface != null) _dragIconSurface.Held = held;
 
         var start = PhaseTimes.Start();
@@ -1517,10 +1518,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
         if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
+        try { _gameMessageSurface?.DrawNow(); }
+        catch (Exception exception) { GameMessagesFailed(exception); }
         if (windows || !_loggedIn)
         {
-            try { _gameMessageSurface?.DrawNow(); }
-            catch (Exception exception) { GameMessagesFailed(exception); }
             try { _updateToastSurface?.DrawNow(); }
             catch (Exception exception) { UpdateToastFailed(exception); }
         }
@@ -2477,7 +2478,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     // Retail's yellow game messages ("You can't move that!") as Dereth soft bands at the top centre, where retail's stood. They are their own
     // surface, as the update toast is, drawn under it, and not an input surface: the pointer goes through them to the game, as through
-    // retail's text. A logoff drops them.
+    // retail's text. Unlike the windows they show before world entry too, through the portal space at login. A logoff drops them.
     private const int GameMessageDrop = 48;
     private RetailGameMessages? _gameMessages;
     private DerethMessageBands? _gameMessageBands;
