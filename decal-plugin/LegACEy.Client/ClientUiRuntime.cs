@@ -131,6 +131,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Beside the DLL: while this file exists, retail's vitals windows stay retail's. Without it the Dereth vitals window replaces them.
     private const string RetailVitalsSwitchFile = "retail-vitals-native";
     private const string DatCacheProbeFile = "legacey-cache-probe";
+    private const string DatCacheReloadFile = "legacey-cache-reload";
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
     // Beside the DLL: while this file exists, retail's attack panel stays retail's. Without it the Dereth attack bar replaces it in melee and missile.
@@ -363,6 +364,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private DatOverlay? _datOverlay;
     private RetailDatReport? _datReport;
     private bool _probeDatCache;
+    private IReadOnlyCollection<uint> _reloadDatCache = Array.Empty<uint>();
     private RetailEnterGame? _enterGame;
     private DateTime _lastOverlaySummary = DateTime.UtcNow;
     private static readonly TimeSpan OverlaySummaryEvery = TimeSpan.FromMinutes(5);
@@ -2270,6 +2272,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var world = new WorldUpdates(new WorldCache(game), WorldCache.Server(WorldCache.CommandLine()));
             _datOverlay.Use(world.AtStartup());
             _probeDatCache = File.Exists(IOPath.Combine(game, DatCacheProbeFile));
+            _reloadDatCache = ReloadIds(IOPath.Combine(game, DatCacheReloadFile));
             ProbeDatCache("plugin start");
             _world = world;
             _datReport = RetailDatReport.Create(NativeUi.ReadMemory, Log);
@@ -2321,11 +2324,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (DateTime.UtcNow - _lastOverlaySummary >= OverlaySummaryEvery) LogOverlaySummary();
     }
 
-    /// <summary>Logs what the client's object caches hold as the overlay switches on, when the game started with a <c>legacey-cache-probe</c> file beside <c>acclient.exe</c>.</summary>
+    /// <summary>Logs what the client's object caches hold as the overlay switches on, when the game started with a <c>legacey-cache-probe</c> file beside <c>acclient.exe</c>, and makes the ids a <c>legacey-cache-reload</c> file there lists read again.</summary>
     private void ProbeDatCache(string moment)
     {
         if (_probeDatCache) DatCacheProbe.Log(moment, NativeUi.ReadMemory, Log);
+        DatCacheProbe.Reload(_reloadDatCache, NativeUi.ReadMemory, Log);
     }
+
+    /// <summary>The hex ids listed in the <c>legacey-cache-reload</c> file, one per line; none without the file.</summary>
+    private static IReadOnlyCollection<uint> ReloadIds(string path) =>
+        File.Exists(path)
+            ? File.ReadAllLines(path).Select(line => line.Trim()).Where(line => line.Length > 0)
+                .Select(line => Convert.ToUInt32(line.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? line[2..] : line, 16)).ToHashSet()
+            : Array.Empty<uint>();
 
     private void LogOverlaySummary()
     {
