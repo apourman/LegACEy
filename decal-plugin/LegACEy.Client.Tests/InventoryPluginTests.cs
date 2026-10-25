@@ -101,7 +101,7 @@ public sealed class InventoryPluginTests
 
         var window = client.Panel(Vertical);
         // The close box is the header's one button that is neither a layout nor the equipment toggle (the doll's expand button is not in the header).
-        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag == null && button.Name is not ("EquipmentToggle" or "ExpandDoll")));
+        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethHeaderButton>().Single(button => button.Tag == null && button.Name != "EquipmentToggle"));
 
         Assert.Null(client.Windows.Get(Vertical));
         Assert.Equal(1, client.Retail.CloseCalls);

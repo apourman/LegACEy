@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Layout;
@@ -369,6 +370,51 @@ public sealed class DerethButton : Button
         button.Classes.Contains(":pressed") ? DerethState.Pressed : button.Classes.Contains(":pointerover") ? DerethState.Hover : DerethState.Normal;
 }
 
+/// <summary>
+/// A small square header button holding a glyph, drawn as vectors: a thin gold rim on the button art's red fill, so it stays sharp at
+/// any size, where the button sheet's 8 DIP corners would fill a small button and blur.
+/// </summary>
+public sealed class DerethHeaderButton : Button
+{
+    private static readonly IBrush[] Fills = { DerethPalette.Brush(Color.Parse("#4A0606")), DerethPalette.Brush(Color.Parse("#6E0A08")), DerethPalette.Brush(Color.Parse("#280000")) };
+    private static readonly IBrush[] Rims = { DerethPalette.GoldDarkBrush, DerethPalette.GoldBrush, DerethPalette.GoldDarkBrush };
+    private Border? _face;
+
+    static DerethHeaderButton()
+    {
+        IsEnabledProperty.Changed.AddClassHandler<DerethHeaderButton>((button, _) => button.Opacity = button.IsEnabled ? 1 : 0.4);
+    }
+
+    public DerethHeaderButton(Control glyph)
+    {
+        Width = Height = DerethWindow.HeaderButtonSize;
+        VerticalAlignment = VerticalAlignment.Center;
+        Content = glyph;
+        Template = new FuncControlTemplate<Button>((_, scope) =>
+        {
+            var presenter = new ContentPresenter
+            {
+                Name = "PART_ContentPresenter",
+                [!ContentPresenter.ContentProperty] = new TemplateBinding(ContentControl.ContentProperty),
+                HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center
+            };
+            scope.Register(presenter.Name, presenter);
+            _face = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3), Child = presenter };
+            Show();
+            return _face;
+        });
+        Classes.CollectionChanged += (_, _) => Show();
+    }
+
+    private void Show()
+    {
+        if (_face == null) return;
+        var state = (int)DerethButton.StateOf(this);
+        _face.Background = Fills[state];
+        _face.BorderBrush = Rims[state];
+    }
+}
+
 /// <summary>A window with the Dereth frame, a header of icon, title and close box, the title rule and content.</summary>
 public sealed class DerethWindow : UserControl
 {
@@ -420,9 +466,11 @@ public sealed class DerethWindow : UserControl
         };
         Grid.SetColumn(_name, 1);
         if (!centreTitle) header.Children.Add(_name);
-        var glyph = new DerethSprite(DerethSpriteArt.Close) { Width = HeaderGlyphSize, Height = HeaderGlyphSize };
-        var close = new DerethButton { Width = HeaderButtonSize, Height = HeaderButtonSize, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
-        glyph.Follow(close);
+        var close = new DerethHeaderButton(new Path
+        {
+            Data = Geometry.Parse("M0,0 L8,8 M8,0 L0,8"), Width = 8, Height = 8, StrokeThickness = 1.5, Stroke = DerethPalette.CreamBrush,
+            StrokeLineCap = PenLineCap.Round, UseLayoutRounding = false
+        });
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         if (headerActions != null)
         {

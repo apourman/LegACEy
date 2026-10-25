@@ -44,14 +44,14 @@ internal static class InventoryDriver
 
     /// <summary>Presses the header button that collapses or shows the equipment and paperdoll section.</summary>
     public static void PressEquipment(AvaloniaPanel host) =>
-        Press(host, host.Content.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Name == "EquipmentToggle"));
+        Press(host, host.Content.GetVisualDescendants().OfType<DerethHeaderButton>().Single(button => button.Name == "EquipmentToggle"));
 
     /// <summary>The Slots toggle under the doll.</summary>
     public static Border SlotsToggle(AvaloniaPanel host) => host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "SlotsToggle");
 
     /// <summary>The header button that switches to a layout.</summary>
-    public static DerethButton LayoutToggle(AvaloniaPanel host, InventoryLayout layout) =>
-        host.Content.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag is InventoryLayout tagged && tagged == layout);
+    public static DerethHeaderButton LayoutToggle(AvaloniaPanel host, InventoryLayout layout) =>
+        host.Content.GetVisualDescendants().OfType<DerethHeaderButton>().Single(button => button.Tag is InventoryLayout tagged && tagged == layout);
 
     /// <summary>Every slot the window draws, each identified by its <see cref="InventorySlotId"/> tag.</summary>
     public static DerethSlot[] Slots(AvaloniaPanel host) =>

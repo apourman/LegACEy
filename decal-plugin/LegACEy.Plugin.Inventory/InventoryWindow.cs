@@ -1108,7 +1108,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
             Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
         };
-        var button = new DerethButton { Width = DerethWindow.HeaderButtonSize, Height = DerethWindow.HeaderButtonSize, Name = "EquipmentToggle", Content = icon };
+        var button = new DerethHeaderButton(icon) { Name = "EquipmentToggle" };
         ToolTip.SetTip(button, _collapsed ? "Show equipment" : "Hide equipment");
         button.Click += (_, _) => SettingsChanged?.Invoke(new InventorySettings(_layout, _showSlots, !_collapsed));
         return button;
@@ -1126,7 +1126,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Stroke = active ? DerethPalette.TealBrush : MutedBrush,
             Fill = active ? DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)) : null,
         };
-        var button = new DerethButton { Width = DerethWindow.HeaderButtonSize, Height = DerethWindow.HeaderButtonSize, Tag = layout, Content = icon };
+        var button = new DerethHeaderButton(icon) { Tag = layout };
         button.Click += (_, _) => RequestLayout(layout);
         return button;
     }
