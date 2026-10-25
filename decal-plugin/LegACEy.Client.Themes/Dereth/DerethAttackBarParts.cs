@@ -12,7 +12,7 @@ public readonly record struct DerethAttackFace(bool Accuracy, double SetPoint, d
 
 /// <summary>
 /// Where the attack bar's parts sit for a size in DIPs. At the design size, 320 by 58, it is the mockup's layout. A taller window draws the
-/// whole bar larger, text and controls with it, by <see cref="Scale"/>; the parts are placed in the unscaled <see cref="Logical"/> size. Width
+/// whole bar larger, text and controls with it, by <see cref="Scale"/>; the parts are placed in the unscaled <see cref="Size"/>. Width
 /// beyond that lengthens the bar, carrying its right label, the divider and the plaques with the right edge, and spreads the option gems. Height
 /// beyond it, in a window too narrow to scale up further, thickens the bar and spreads the rows.
 /// </summary>
@@ -31,7 +31,7 @@ public sealed class DerethAttackLayout
         GrooveHit = new Rect(Groove.X - 4, Groove.Y - 7, Groove.Width + 8, Groove.Height + 12);
     }
 
-    /// <summary>How much larger than its design the bar draws: 1 at the design height, up to the window's height over 58.</summary>
+    /// <summary>How much larger than its design the bar draws: 1 at the design height, growing with the height as far as the width allows.</summary>
     public double Scale { get; }
     /// <summary>The size the parts are placed in, before <see cref="Scale"/>; every rectangle and point below is in it.</summary>
     public Size Size { get; }

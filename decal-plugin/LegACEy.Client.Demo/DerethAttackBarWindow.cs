@@ -125,17 +125,16 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
         Put(_plate, new Rect(size));
         Put(_corners, new Rect(size));
         _plate.OrnamentX = layout.OrnamentX * layout.Scale;
-        Put(_groove, layout.GrooveHit, layout.Scale);
+        Put(_groove, layout.GrooveHit * layout.Scale);
         for (var i = 0; i < 3; i++)
         {
-            Put(_plaques[i], layout.Plaque(i), layout.Scale);
-            Put(_toggles[i], layout.ToggleHit(i), layout.Scale);
+            Put(_plaques[i], layout.Plaque(i) * layout.Scale);
+            Put(_toggles[i], layout.ToggleHit(i) * layout.Scale);
         }
     }
 
-    private static void Put(Control control, Rect rect, double scale = 1)
+    private static void Put(Control control, Rect rect)
     {
-        rect = new Rect(rect.X * scale, rect.Y * scale, rect.Width * scale, rect.Height * scale);
         Canvas.SetLeft(control, rect.X);
         Canvas.SetTop(control, rect.Y);
         control.Width = rect.Width;
