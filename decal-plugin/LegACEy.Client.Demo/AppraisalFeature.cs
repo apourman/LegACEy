@@ -257,7 +257,7 @@ public sealed class AppraisalFeature
         // An open window already shows the content. A hidden one comes back as it was, with the content just swapped in.
         if (!_host.IsWindowOpen(WindowId))
         {
-            var definition = new WindowDefinition(WindowId, "Appraisal", AppraisalWindow.Width, view.Height, DerethWindow.TitleBarHeight,
+            var definition = new WindowDefinition(WindowId, "Appraisal", AppraisalWindow.Width, view.Height, DerethWindow.IconTitleBarHeight,
                 new DerethClientTheme(), AppraisalWindow.Sizing);
             var opened = _host.OpenWindow(definition, DefaultLocation, close =>
             {
@@ -317,7 +317,7 @@ public sealed class AppraisalFeature
             // Each open starts from the first view: closing the window forgets how the player turned it.
             window.ResetView();
             var definition = new WindowDefinition(InspectWindow.WindowId, "Inspect", InspectWindow.Width, InspectWindow.Height,
-                DerethWindow.TitleBarHeight, new DerethClientTheme(), InspectWindow.Sizing);
+                DerethWindow.IconTitleBarHeight, new DerethClientTheme(), InspectWindow.Sizing);
             var opened = _host.OpenWindow(definition, InspectLocation, close =>
             {
                 window.Close = close;

@@ -25,46 +25,11 @@ public sealed class InventoryPluginTests
 {
     // The window's id, kept from when it was the vertical of two layouts.
     private const string Full = "inventory-vertical";
-    private const string Compact = Full + "-compact";
 
-    // The plugin's settings value: the Slots toggle is 2, the collapsed section 4.
+    // The plugin's settings value: the Slots toggle is 2. 4 was the collapsed equipment section, which is gone.
     private const int SlotsOff = 0;
     private const int SlotsOn = 2;
-    private const int Collapsed = 4;
-
-    [Fact]
-    public void Collapsing_the_equipment_opens_the_compact_window_without_the_paperdoll_and_showing_it_comes_back() => RenderThread.Run(() =>
-    {
-        var positions = new MemoryWindowPositionStore();
-        positions.Save("Server", "Character", Full, (new Point(150, 120), null));
-        using var client = new FakeInventoryClient(positions);
-        new InventoryPlugin().Start(client);
-        client.Retail!.Toggle();
-        Assert.NotNull(InventoryDriver.SlotOrNull(client.Panel(Full), PaperdollSlot.Head));
-
-        // The collapsed window opens where the full one was, and the full one comes back where the collapsed one was left.
-        var full = client.Windows.Get(Full)!.Location;
-        InventoryDriver.PressEquipment(client.Panel(Full));
-        Assert.Null(client.Windows.Get(Full));
-        Assert.Equal(full, client.Windows.Get(Full + "-compact")!.Location);
-        var moved = new Point(full.X + 30, full.Y + 20);
-        client.Windows.Press(new Point(full.X + 100, full.Y + 20));
-        client.Windows.Move(new Point(moved.X + 100, moved.Y + 20));
-        client.Windows.Release();
-        var compact = client.Panel(Full + "-compact");
-        Assert.NotNull(client.Windows.Get(Full + "-compact"));
-        Assert.Null(InventoryDriver.SlotOrNull(compact, PaperdollSlot.Head));
-        Assert.NotEmpty(InventoryDriver.Slots(compact));
-        Assert.True(InventorySettings.FromInt(client.Settings).Collapsed);
-
-        // Closed and opened again by retail, it opens collapsed; the button brings the full window back.
-        client.Retail!.Toggle();
-        client.Retail!.Toggle();
-        Assert.NotNull(client.Windows.Get(Full + "-compact"));
-        InventoryDriver.PressEquipment(compact);
-        Assert.Equal(moved, client.Windows.Get(Full)!.Location);
-        Assert.False(InventorySettings.FromInt(client.Settings).Collapsed);
-    });
+    private const int OldCollapsed = 4;
 
     [Fact]
     public void Retail_opening_its_panel_shows_the_layout_window_and_the_close_box_closes_retail() => RenderThread.Run(() =>
@@ -77,41 +42,14 @@ public sealed class InventoryPluginTests
         Assert.NotNull(client.Windows.Get(Full));
 
         var window = client.Panel(Full);
-        // The close box is the header's one button that is neither a layout nor the equipment toggle (the doll's expand button is not in the header).
-        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag == null && button.Name is not ("EquipmentToggle" or "ExpandDoll")));
+        // The close box is the header's one button (the doll's expand button is not in the header).
+        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethHeaderButton>().Single(button => button.Name != "ExpandDoll"));
 
         Assert.Null(client.Windows.Get(Full));
         Assert.Equal(1, client.Retail.CloseCalls);
         Assert.False(client.Retail.Open);
         // The window stands in for retail's panel, so it has no menu entry of its own.
         Assert.Empty(client.MenuEntries);
-    });
-
-    [Fact]
-    public void Collapsing_opens_the_compact_window_even_when_the_client_cannot_save_the_choice() => RenderThread.Run(() =>
-    {
-        using var client = new FakeInventoryClient(new UnwritablePositionStore());
-        new InventoryPlugin().Start(client);
-        client.Retail!.Toggle();
-
-        InventoryDriver.PressEquipment(client.Panel(Full));
-
-        Assert.Null(client.Windows.Get(Full));
-        Assert.NotNull(client.Windows.Get(Compact));
-    });
-
-    [Fact]
-    public void Collapsing_neither_closes_retail_nor_hides_the_panel_from_the_window() => RenderThread.Run(() =>
-    {
-        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
-        new InventoryPlugin().Start(client);
-        client.Retail!.Retail(true);
-
-        InventoryDriver.PressEquipment(client.Panel(Full));
-
-        Assert.NotNull(client.Windows.Get(Compact));
-        Assert.Equal(0, client.Retail.CloseCalls);
-        Assert.True(client.Retail.Open);
     });
 
     [Fact]
@@ -154,12 +92,14 @@ public sealed class InventoryPluginTests
         client.Retail!.Toggle();
         Assert.Null(client.Windows.Get(Full));
 
-        // Another character logs in with its section collapsed: the next open follows that character, not the cached one.
+        // Another character logs in with its Slots toggle off, saved when the equipment section could be collapsed: the next open
+        // follows that character, not the cached one, and shows the whole window.
         client.Character = "Other";
-        store.Save("Server", "Other", "settings:Inventory", (new Point(Collapsed, 0), null));
+        store.Save("Server", "Other", "settings:Inventory", (new Point(OldCollapsed | SlotsOff, 0), null));
         client.Retail!.Toggle();
-        Assert.Null(client.Windows.Get(Full));
-        Assert.NotNull(client.Windows.Get(Compact));
+        var window = client.Panel(Full);
+        Assert.Null(InventoryDriver.SlotOrNull(window, PaperdollSlot.Head));
+        Assert.NotNull(InventoryDriver.SlotOrNull(window, PaperdollSlot.Neck));
     });
 
     [Fact]
@@ -168,11 +108,11 @@ public sealed class InventoryPluginTests
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        InventoryDriver.PressEquipment(client.Panel(Full));
+        client.Retail!.Toggle();
 
-        // The port opens a pack while the full window is hidden; back on screen, it shows that pack.
+        // The port opens a pack while the window is hidden; back on screen, it shows that pack.
         client.Port.Push(InventorySample.Snapshot(openContainer: InventorySample.Potions));
-        InventoryDriver.PressEquipment(client.Panel(Compact));
+        client.Retail!.Toggle();
         var cells = InventoryDriver.Slots(client.Panel(Full)).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Cell).ToArray();
         Assert.Equal(24, cells.Length);
         Assert.All(cells, cell => Assert.Equal(InventorySample.Potions, InventoryDriver.Id(cell).Container));
@@ -186,7 +126,7 @@ public sealed class InventoryPluginTests
         client.SaveSettings(SlotsOff);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        var expand = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(client.Panel(Full).Content).OfType<DerethButton>().Single(b => b.Name == "ExpandDoll");
+        var expand = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(client.Panel(Full).Content).OfType<DerethHeaderButton>().Single(b => b.Name == "ExpandDoll");
         Assert.True(expand.IsVisible);
 
         expand.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
@@ -385,7 +325,7 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
-    public void A_long_character_name_shrinks_the_title_to_fit_down_to_twelve() => RenderThread.Run(() =>
+    public void A_long_character_name_shrinks_the_title_to_fit_down_to_eleven() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         client.Port.Push(InventorySample.Snapshot(characterName: "Sir Reginald Ashbourne the Unyielding"));
@@ -395,7 +335,7 @@ public sealed class InventoryPluginTests
         InventoryDriver.Tick(panel);
 
         var title = Assert.Single(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of Sir Reginald Ashbourne the Unyielding");
-        Assert.InRange(title.FontSize, 12, 15.5);
+        Assert.InRange(title.FontSize, 11, 12.5);
     });
 
     private static void AssertFitsWithOneGridRow(AvaloniaPanel panel)

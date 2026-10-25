@@ -160,7 +160,7 @@ public sealed class MarketShellTests
     public void Slash_focuses_the_search_from_whatever_has_the_focus() => RenderThread.Run(() =>
     {
         using var market = new MarketFixture(980);
-        var button = market.Window.GetVisualDescendants().OfType<DerethButton>().First();
+        var button = market.Window.GetVisualDescendants().OfType<DerethHeaderButton>().First();
         button.Focus();
         Assert.False(market.Panel.SearchHasFocus);
 

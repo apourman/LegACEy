@@ -369,23 +369,115 @@ public sealed class DerethButton : Button
         button.Classes.Contains(":pressed") ? DerethState.Pressed : button.Classes.Contains(":pointerover") ? DerethState.Hover : DerethState.Normal;
 }
 
-/// <summary>A window with the Dereth frame, a header of icon, title and close box, the title rule and content.</summary>
+/// <summary>
+/// A vector glyph scaled to fit <see cref="Size"/> and centred on the control by its own drawn bounds, so a glyph whose shape is off
+/// centre in its path data, or a control a pixel wider than tall, still draws it in the middle.
+/// </summary>
+public sealed class DerethPathGlyph : Control
+{
+    private readonly Geometry _data;
+    private readonly double _size;
+
+    public DerethPathGlyph(string data, double size = DerethWindow.HeaderGlyphSize)
+    {
+        _data = Geometry.Parse(data);
+        _size = size;
+    }
+
+    public IBrush? Stroke { get; init; }
+    public IBrush? Fill { get; init; }
+    public double StrokeThickness { get; init; } = 1;
+
+    public override void Render(DrawingContext context)
+    {
+        var shape = _data.Bounds;
+        var scale = _size / Math.Max(shape.Width, shape.Height);
+        var centre = new Rect(Bounds.Size).Center;
+        using (context.PushTransform(Matrix.CreateTranslation(-shape.Center.X, -shape.Center.Y) * Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation(centre.X, centre.Y)))
+            // The pen is scaled with the shape, so it is divided back to its thickness on screen.
+            context.DrawGeometry(Fill, Stroke == null ? null : new Pen(Stroke, StrokeThickness / scale, lineCap: PenLineCap.Round), _data);
+    }
+}
+
+/// <summary>
+/// A small square header button holding a glyph, drawn as vectors: a thin gold rim on the button art's red fill, so it stays sharp at
+/// any size, where the button sheet's 8 DIP corners would fill a small button and blur.
+/// </summary>
+public sealed class DerethHeaderButton : Button
+{
+    private static readonly IBrush[] Fills = { DerethPalette.Brush(Color.Parse("#4A0606")), DerethPalette.Brush(Color.Parse("#6E0A08")), DerethPalette.Brush(Color.Parse("#280000")) };
+    private static readonly IBrush[] Rims = { DerethPalette.GoldDarkBrush, DerethPalette.GoldBrush, DerethPalette.GoldDarkBrush };
+    private Border? _face;
+
+    public DerethHeaderButton(Control glyph)
+    {
+        Width = Height = DerethWindow.HeaderButtonSize;
+        VerticalAlignment = VerticalAlignment.Center;
+        Content = glyph;
+        Template = new FuncControlTemplate<Button>((_, scope) =>
+        {
+            var presenter = new ContentPresenter
+            {
+                Name = "PART_ContentPresenter",
+                [!ContentPresenter.ContentProperty] = new TemplateBinding(ContentControl.ContentProperty),
+                // The glyph fills the face and centres itself, so layout rounding never moves it off the middle.
+                HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch
+            };
+            scope.Register(presenter.Name, presenter);
+            _face = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3), Child = presenter };
+            Show();
+            return _face;
+        });
+        Classes.CollectionChanged += (_, _) => Show();
+    }
+
+    private void Show()
+    {
+        if (_face == null) return;
+        var state = (int)DerethButton.StateOf(this);
+        _face.Background = Fills[state];
+        _face.BorderBrush = Rims[state];
+    }
+}
+
+/// <summary>
+/// A window with the Dereth frame, a header of icon, title, actions and close box (or the title on a row of its own under the header),
+/// the title rule and content.
+/// </summary>
 public sealed class DerethWindow : UserControl
 {
+    /// <summary>The header of a window without an icon: the title and the header buttons.</summary>
+    public const int HeaderHeight = 28;
+
+    /// <summary>The header of a window with an icon: as tall as a game icon, which a layout never squeezes.</summary>
+    public const int IconHeaderHeight = 32;
+
     /// <summary>
-    /// The strip from a Dereth window's top that drags it: the 8 px frame edge and the 40 px header. A window passes it as its
+    /// The strip from a Dereth window's top that drags it: the 8 px frame edge and the header. A window passes it as its
     /// title-bar height.
     /// </summary>
-    public const int TitleBarHeight = 48;
+    public const int TitleBarHeight = 8 + HeaderHeight;
+
+    /// <summary>The title-bar height of a window with an icon in its header.</summary>
+    public const int IconTitleBarHeight = 8 + IconHeaderHeight;
 
     /// <summary>The title's own row under the header, in a window that centres its title.</summary>
-    public const int TitleRowHeight = 36;
+    public const int TitleRowHeight = 24;
 
-    /// <summary>The title-bar height of a window that centres its title: the header, the 5 px rule under it and the title row.</summary>
-    public const int CentredTitleBarHeight = TitleBarHeight + 5 + TitleRowHeight;
+    /// <summary>The header of a window that centres its title: it holds only the header buttons, so it is just taller than they are.</summary>
+    public const int CentredHeaderHeight = 24;
+
+    /// <summary>The title-bar height of a window that centres its title: the frame edge, the header, the 5 px rule under it and the title row.</summary>
+    public const int CentredTitleBarHeight = 8 + CentredHeaderHeight + 5 + TitleRowHeight;
 
     /// <summary>The gap between header buttons in a window that centres its title: its actions use it too, so every button is evenly spaced.</summary>
     public const int ActionGap = 4;
+
+    /// <summary>The side of every header button, the close box included: small, so the header's controls take little of the window.</summary>
+    public const int HeaderButtonSize = 18;
+
+    /// <summary>The side of a header button's glyph, inside the button's 1 DIP rim.</summary>
+    public const int HeaderGlyphSize = 10;
 
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
     /// <param name="stretchActions">The header actions take the header's free width, and the title only its own.</param>
@@ -393,15 +485,20 @@ public sealed class DerethWindow : UserControl
     /// The title takes a row of its own under the header, centred across the window as retail centres its panel titles, so a long title
     /// has the full width; the header keeps the icon, the actions and the close box.
     /// </param>
+    /// <param name="iconHeader">
+    /// The header is <see cref="IconHeaderHeight"/> tall, for a window that shows an icon, or may show one later; otherwise
+    /// <see cref="HeaderHeight"/>.
+    /// </param>
     public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null, bool stretchActions = false,
-        bool centreTitle = false)
+        bool centreTitle = false, bool iconHeader = false)
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
         var columns = headerActions == null ? "Auto,*,Auto" : stretchActions ? "Auto,Auto,*,Auto" : "Auto,*,Auto,Auto";
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = 40 };
-        // The emblem's frame fits round its icon at the icon size: a layout never squeezes an icon. It is always there, and
-        // takes no space while it has no icon, so a window that changes its icon keeps the same header.
-        _emblem = new DerethFrame(DerethFrameArt.Button) { VerticalAlignment = VerticalAlignment.Center };
+        var height = centreTitle ? CentredHeaderHeight : iconHeader ? IconHeaderHeight : HeaderHeight;
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = height };
+        // The icon is bare, at its own size: a layout never squeezes an icon, and a frame round it would make the header taller.
+        // It is always there, and takes no space while it has no icon, so a window that changes its icon keeps the same header.
+        _emblem = new Decorator { VerticalAlignment = VerticalAlignment.Center };
         header.Children.Add(_emblem);
         SetIcon(icon);
         _name = new DerethTitleText
@@ -411,9 +508,8 @@ public sealed class DerethWindow : UserControl
         };
         Grid.SetColumn(_name, 1);
         if (!centreTitle) header.Children.Add(_name);
-        var glyph = new DerethSprite(DerethSpriteArt.Close) { Width = 12, Height = 12 };
-        var close = new DerethButton { Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
-        glyph.Follow(close);
+        // The X is smaller than the other glyphs: at their size its two strokes read heavier than their outlines.
+        var close = new DerethHeaderButton(new DerethPathGlyph("M0,0 L8,8 M8,0 L0,8", 8) { Stroke = DerethPalette.CreamBrush, StrokeThickness = 1.5 });
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         if (headerActions != null)
         {
@@ -431,8 +527,9 @@ public sealed class DerethWindow : UserControl
             var strip = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
             Grid.SetRow(strip, 1);
             body.Children.Add(strip);
-            // Centred by its capitals: Palatino's tall ascent would leave them low in the row.
-            var titleRow = new Border { Height = TitleRowHeight, Child = DerethPalette.CentreInk(_name) };
+            // Centred by its capitals: Palatino's tall ascent would leave them low in the row. A title is mostly lower case, whose ink sits
+            // below the capitals' middle, so capitals centred between the rules look high: the row's 2 DIP top padding moves it down 1.
+            var titleRow = new Border { Height = TitleRowHeight, Padding = new Thickness(0, 2, 0, 0), Child = DerethPalette.CentreInk(_name) };
             Grid.SetRow(titleRow, 2);
             body.Children.Add(titleRow);
         }
@@ -445,7 +542,7 @@ public sealed class DerethWindow : UserControl
         Content = new DerethFrame(DerethFrameArt.Window) { Child = body };
     }
 
-    private readonly DerethFrame _emblem;
+    private readonly Decorator _emblem;
     private readonly TextBlock _name;
 
     /// <summary>The title in the header.</summary>
@@ -466,11 +563,11 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A window title: 16 DIPs, stepping down to 12 until it fits its width, as a long character name needs; past that it ends in an ellipsis.
+/// A window title: 13 DIPs, stepping down to 11 until it fits its width, as a long character name needs; past that it ends in an ellipsis.
 /// </summary>
 internal sealed class DerethTitleText : TextBlock
 {
-    private const double Largest = 16, Smallest = 12;
+    private const double Largest = 13, Smallest = 11;
 
     protected override Type StyleKeyOverride => typeof(TextBlock);
 

@@ -29,7 +29,7 @@ public sealed class AppraisalWindow
     /// <summary>The smallest the player can resize the window to: the header, the summary and a few rows.</summary>
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(260, 160));
     // The Dereth frame and header, the title rule and the body's bottom margin, around the body.
-    private const int Chrome = DerethWindow.TitleBarHeight + 5 + 6 + 8;
+    private const int Chrome = DerethWindow.IconTitleBarHeight + 5 + 6 + 8;
     // The frame and the window's side margins, and the body's padding, around the text.
     private const int BodyInset = 40;
 
@@ -81,13 +81,10 @@ public sealed class AppraisalWindow
         var layout = Layout(content, inscribe);
         var scroll = Scroll(layout.Body);
         var foot = new ContentControl { Content = layout.Foot };
-        var glyph = new Avalonia.Controls.Shapes.Path
-        {
-            Data = Geometry.Parse(FigureGlyph), Width = 14, Height = 14, StrokeThickness = 1.2, UseLayoutRounding = false, Stroke = DerethPalette.MutedBrush,
-        };
-        var button = new DerethButton { Name = "InspectButton", Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
+        var glyph = new DerethPathGlyph(FigureGlyph) { Stroke = DerethPalette.MutedBrush };
+        var button = new DerethHeaderButton(glyph) { Name = "InspectButton" };
         ToolTip.SetTip(button, "Inspect");
-        var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot), button);
+        var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot), button, iconHeader: true);
         // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels.
         var height = measure == null
             ? layout.Height

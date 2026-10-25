@@ -92,11 +92,9 @@ internal sealed class InventoryPaperdoll : Canvas
         Children.Add(SlotsToggle);
 
         // In the doll area's bottom-right corner, over the character.
-        var expand = new Avalonia.Controls.Shapes.Path
-        {
-            Data = Geometry.Parse(ExpandGlyph), Width = 12, Height = 12, StrokeThickness = 1.2, UseLayoutRounding = false, Stroke = DerethPalette.CreamBrush,
-        };
-        ExpandButton = new DerethButton { Name = "ExpandDoll", Width = 20, Height = 20, Content = expand, IsVisible = false };
+        var expand = new DerethPathGlyph(ExpandGlyph) { Stroke = DerethPalette.CreamBrush, StrokeThickness = 1.2 };
+        // As tall as the corner row it sits in.
+        ExpandButton = new DerethHeaderButton(expand) { Name = "ExpandDoll", Width = CornerRowHeight, Height = CornerRowHeight, IsVisible = false };
         ToolTip.SetTip(ExpandButton, "Inspect in a larger window");
         Children.Add(ExpandButton);
     }
@@ -144,7 +142,7 @@ internal sealed class InventoryPaperdoll : Canvas
     private const string ExpandGlyph = "M1,4.5 V1 H4.5 M7.5,1 H11 V4.5 M11,7.5 V11 H7.5 M4.5,11 H1 V7.5";
 
     /// <summary>Opens the character in the Inspect window. Shown only while the 3D character is.</summary>
-    public DerethButton ExpandButton { get; }
+    public DerethHeaderButton ExpandButton { get; }
 
     /// <summary>The doll area: empty while the armour slots show, and the 3D character once a doll is put in it.</summary>
     public Border DollArea { get; }

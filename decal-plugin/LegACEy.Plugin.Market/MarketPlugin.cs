@@ -46,7 +46,7 @@ public sealed class MarketPlugin : ILegACEyPlugin
         client.WhenServerActionsChange(() => { if (!client.SupportsAction(MarketProtocol.Account)) sales.Seen(); });
         client.RegisterStationWindow(Station, WindowId, Title, (int)WindowSize.Width, (int)WindowSize.Height, null,
             close => CreateWindow(client.ServerChannel, client.Art, client.Inventory, client.Tell, close, sales), new DerethClientTheme(), new WindowResizing(MinimumSize),
-            DerethWindow.TitleBarHeight);
+            DerethWindow.IconTitleBarHeight);
     }
 
     /// <summary>

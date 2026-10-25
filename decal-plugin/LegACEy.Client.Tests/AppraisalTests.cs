@@ -152,7 +152,7 @@ public sealed class AppraisalTests
             appraisals.Receive(new ServerAppraisal(id) { Strings = { [1] = name } }.Build());
         }
         Appraise(Potion, "Saro");
-        var button = host.LastWindow!.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton");
+        var button = host.LastWindow!.GetLogicalDescendants().OfType<DerethHeaderButton>().Single(b => b.Name == "InspectButton");
 
         button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         var inspect = host.LastWindow!;
@@ -175,7 +175,7 @@ public sealed class AppraisalTests
         {
             appraisals.Request(id);
             appraisals.Receive(new ServerAppraisal(id) { Strings = { [1] = "Saro" } }.Build());
-            return host.LastWindow!.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton").IsVisible;
+            return host.LastWindow!.GetLogicalDescendants().OfType<DerethHeaderButton>().Single(b => b.Name == "InspectButton").IsVisible;
         }
 
         Assert.False(Shown(Potion));

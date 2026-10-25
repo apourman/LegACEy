@@ -21,7 +21,7 @@ public sealed class MarketShellWindow : UserControl, IDisposable, IWindowShortcu
     {
         _panel = panel ?? throw new ArgumentNullException(nameof(panel));
         // the dark variant of the base theme, so a control the Market doesn't draw itself (a menu, a combo's list) is never light
-        var frame = new DerethWindow(MarketPlugin.Title, Seal(), panel, panel.TopBar, stretchActions: true);
+        var frame = new DerethWindow(MarketPlugin.Title, Seal(), panel, panel.TopBar, stretchActions: true, iconHeader: true);
         frame.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Content = new ThemeVariantScope { RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Dark, Child = frame };
         SizeChanged += (_, e) => _panel.SetMode(MarketLayout.ModeFor(e.NewSize.Width));
@@ -35,8 +35,8 @@ public sealed class MarketShellWindow : UserControl, IDisposable, IWindowShortcu
     {
         var disc = new Avalonia.Controls.Border
         {
-            Width = 34, Height = 34, CornerRadius = new Avalonia.CornerRadius(17), BorderThickness = new Avalonia.Thickness(1.5),
-            BorderBrush = MarketInk.GoldRimBrush, Child = new MarketGlyph(MarketIcon.Scales, DerethPalette.Gold, 19)
+            Width = 24, Height = 24, CornerRadius = new Avalonia.CornerRadius(12), BorderThickness = new Avalonia.Thickness(1),
+            BorderBrush = MarketInk.GoldRimBrush, Child = new MarketGlyph(MarketIcon.Scales, DerethPalette.Gold, 14)
             {
                 HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center
             },

@@ -29,11 +29,11 @@ public sealed class MarketShellPanel : UserControl, IDisposable
     private readonly ActivityScreen _activity;
     private readonly MarketSearch _search = new("Search the market");
     // The search field sits in the top bar, or in its own full-width row under it in a narrow window.
-    private readonly Border _topSearchHost = new() { Height = 32, MaxWidth = 480, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Border _topSearchHost = new() { Height = 26, MaxWidth = 480, VerticalAlignment = VerticalAlignment.Center };
     private readonly Border _narrowSearchHost = new() { Height = 34, Margin = new Thickness(10, 8, 10, 0), IsVisible = false };
     private readonly MarketButton _searchIcon = new()
     {
-        Width = 34, Height = 34, CornerRadius = new CornerRadius(17), Content = new MarketGlyph(MarketIcon.Search, DerethPalette.Gold), IsVisible = false
+        Width = 26, Height = 26, CornerRadius = new CornerRadius(13), Content = new MarketGlyph(MarketIcon.Search, DerethPalette.Gold), IsVisible = false
     };
     private readonly TextBlock _balance = MarketParts.Text("—", DerethPalette.CreamBrush, 14);
     private readonly TextBlock _vaultSpace = MarketParts.Text(string.Empty, DerethPalette.CreamBrush, 14);
@@ -98,7 +98,7 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         _buyDialog = new BuyDialog(browse, icons.For);
         _portraitFrame = new Border
         {
-            Width = 26, Height = 26, CornerRadius = new CornerRadius(13), BorderThickness = new Thickness(1), BorderBrush = MarketInk.GoldRimBrush,
+            Width = 22, Height = 22, CornerRadius = new CornerRadius(11), BorderThickness = new Thickness(1), BorderBrush = MarketInk.GoldRimBrush,
             Child = _portrait,
             Background = new RadialGradientBrush
             {
