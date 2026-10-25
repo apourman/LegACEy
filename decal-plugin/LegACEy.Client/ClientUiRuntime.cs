@@ -363,7 +363,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailDatReport? _datReport;
     private RetailEnterGame? _enterGame;
     private DateTime _lastOverlaySummary = DateTime.UtcNow;
-    private static readonly TimeSpan OverlaySummaryEvery = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan OverlaySummaryEvery = TimeSpan.FromMinutes(1);
     // The world update toast last shown, so another shows only when the state or percent changes; cleared by an Enter press, which raises
     // the toast again (and shows Checking, which otherwise stays quiet).
     private (WorldState State, int Percent)? _worldShown;
@@ -2311,6 +2311,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         if (!_loggedIn) PlaceUpdateToast();
         if (DateTime.UtcNow - _lastOverlaySummary >= OverlaySummaryEvery) LogOverlaySummary();
+        foreach (var asked in overlay.TakeAsked()) Log($"Dat overlay asked: {asked}");
     }
 
     private void LogOverlaySummary()

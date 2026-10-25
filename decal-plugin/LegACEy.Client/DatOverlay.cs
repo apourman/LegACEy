@@ -65,6 +65,9 @@ internal sealed class DatOverlay : IDisposable
     // failures. The hook never logs; the game thread reads these.
     private long _calls, _served, _answered, _ticks, _worst, _failures;
     private volatile string? _failure;
+    // Diagnostic (portal-space hang, 24 Oct): the first ask for each id in a landblock the patch touches, written by the game thread.
+    private readonly ConcurrentDictionary<(string, uint), byte> _asked = new();
+    private readonly ConcurrentQueue<string> _askedLog = new();
 
     private DatOverlay(Action<string> log)
     {
@@ -128,6 +131,7 @@ internal sealed class DatOverlay : IDisposable
         var found = false;
         try { found = Dat(controller) is { } dat && patch.Records(dat)?.TryGetValue(id, out record) == true; }
         catch (Exception exception) { Fail(id, exception); }
+        Note(controller, id, flags, found, patch);
         if (found)
         {
             try
@@ -181,6 +185,24 @@ internal sealed class DatOverlay : IDisposable
         if (name.Length == 0) return null;
         _dats[controller] = name;
         return name;
+    }
+
+    private void Note(IntPtr controller, uint id, uint flags, bool found, WorldPatchIndex patch)
+    {
+        try
+        {
+            if (_asked.Count > 2000 || Dat(controller) is not { } dat || patch.Records(dat) is not { } records) return;
+            if (!found && !records.ContainsKey((id & 0xFFFF0000) | 0xFFFF) && !records.ContainsKey((id & 0xFFFF0000) | 0xFFFE)) return;
+            if (_asked.TryAdd((dat, id), 0))
+                _askedLog.Enqueue($"{dat} 0x{id:X8} flags 0x{flags:X} {(found ? "from the patch" : "NOT in the patch")} thread {Environment.CurrentManagedThreadId}");
+        }
+        catch (Exception) { }
+    }
+
+    /// <summary>Diagnostic: the asks noted since the last call.</summary>
+    public IEnumerable<string> TakeAsked()
+    {
+        while (_askedLog.TryDequeue(out var line)) yield return line;
     }
 
     private void Time(long start)
