@@ -115,13 +115,15 @@ internal sealed class InventoryPaperdoll : Canvas
         var height = Scale(RetailHeight);
         DollArea.Width = (ArmourRight - ArmourLeft) * Cells.Pitch + Cells.Cell + 2 * DollClearance + _spare;
         DollArea.Height = height;
-        // The doll stands below the aetheria row and above the corner row.
-        var rowBottom = Scale(AetheriaY) + Cells.Cell + AetheriaGap;
-        DollArea.Padding = new Thickness(0, rowBottom, 0, CornerRowHeight + 2 * CornerInset);
         SetLeft(DollArea, ArmourLeft * Cells.Pitch + SideGap + 1 - DollClearance);
         // The first aetheria reaches over the doll area's top-right corner, so that corner is cut away round it, a gap clear of its
         // cell, and the cell sits in the window's own space beside the doll.
+        var rowBottom = Scale(AetheriaY) + Cells.Cell + AetheriaGap;
         var notchLeft = 3 * Cells.Pitch + 2 * SideGap + _spare + 1 - AetheriaGap - GetLeft(DollArea);
+        // The doll takes the full height above the corner row, its head beside the aetheria row: it stays left of the notch and
+        // as far in from the left, so it stays centred. The figure is far narrower than tall, so only the height limits its size.
+        var side = DollArea.Width - notchLeft;
+        DollArea.Padding = new Thickness(side, CornerInset, side, CornerRowHeight + 2 * CornerInset);
         DollArea.Clip = new CombinedGeometry(GeometryCombineMode.Exclude,
             new RectangleGeometry(new Rect(0, 0, DollArea.Width, height)), new RectangleGeometry(new Rect(notchLeft, 0, DollArea.Width - notchLeft, rowBottom)));
         SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
