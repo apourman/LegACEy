@@ -115,7 +115,7 @@ internal sealed class WorldCache
         try
         {
             if (on) File.WriteAllText(mark, server);
-            else File.Delete(mark);
+            else if (File.Exists(mark)) File.Delete(mark);
         }
         catch (Exception exception) { ClientUiRuntime.Log($"Could not {(on ? "mark" : "clear")} the startup world's check: {exception.Message}"); }
     }
