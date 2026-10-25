@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 
 namespace LegACEy.Client.DecalPlugin;
 
@@ -12,7 +11,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// table (id → object), and an object with a reference count of 1 is held only by the cache, on the free list. Every read goes through
 /// <c>ReadProcessMemory</c>, so a table a loader thread is changing gives a wrong count, never a crash.
 /// </summary>
-// ponytail: portal-overlay spike diagnostic, on only when the game starts with a legacey-cache-probe or legacey-cache-reload file beside acclient.exe; remove when the spike's spec replaces it.
+// ponytail: portal-overlay spike diagnostic, on only when the game starts with a legacey-cache-probe file beside acclient.exe; remove when the spike's spec replaces it.
 internal static class DatCacheProbe
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build) for names; our objdump read of installed acclient.exe";
@@ -36,24 +35,6 @@ internal static class DatCacheProbe
         new NativeUiEntry("DBOCache release (reads DBObj id and references)", 0x00416C80,
             NativeUiCatalogue.Bytes("56 57 8B 7C 24 0C 8B 77 28"), Source, "DBObj +0x24 references, +0x28 id"),
     };
-
-    private const uint CacheGlobal = 0x00837BAC, ReloadObjectAddress = 0x00413D20, RemoveObjAddress = 0x00416E40;
-
-    internal static readonly IReadOnlyList<NativeUiEntry> ReloadEntries = new[]
-    {
-        new NativeUiEntry("DBCache::ReloadObject", ReloadObjectAddress,
-            NativeUiCatalogue.Bytes("8B 44 24 08 83 EC 08 53 55 56 57 8B F9 8B 4C 24 1C 50 51 8D 4C 24 18"), Source,
-            "ThisCall (DBCache* at 0x00837BAC, id, type) -> bool, ret 8; reads the object again from the dats into the same DBObj"),
-        new NativeUiEntry("DBOCache::RemoveObj", RemoveObjAddress,
-            NativeUiCatalogue.Bytes("56 8B F1 8B 4C 24 08 33 D2 8B C1 F7 76 70 8B 46 68 57 33 FF"), Source,
-            "ThisCall (DBOCache*, id) -> bool, ret 4; drops the object from the cache (freed when nothing else holds it)"),
-    };
-
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate byte ReloadObjectFn(IntPtr cache, uint id, uint type);
-
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate byte RemoveObjFn(IntPtr cache, uint id);
 
     // Id high bytes of the portal records a world's art touches; these caches get their full id list.
     private static readonly Dictionary<uint, string> ArtTypes = new()
@@ -89,37 +70,6 @@ internal static class DatCacheProbe
             log(string.Join(Environment.NewLine, lines));
         }
         catch (Exception exception) { log($"The dat cache probe at {moment} stopped: {exception.Message}"); }
-    }
-
-    /// <summary>
-    /// For each of <paramref name="ids"/> the client holds, makes its next use read the dats (and so the overlay) again: an object only the
-    /// cache holds is dropped from it, one in use is read again in place with the client's own <c>DBCache::ReloadObject</c>, so whatever
-    /// holds it sees the new record. Logs each one. Called on the game thread.
-    /// </summary>
-    public static void Reload(IReadOnlyCollection<uint> ids, Func<uint, int, byte[]> readMemory, Action<string> log)
-    {
-        if (ids.Count == 0) return;
-        try
-        {
-            if (!NativeUiCatalogue.Validate(readMemory, log, Entries.Concat(ReloadEntries), "The dat cache reload is off: the running client does not match its entries.")) return;
-            uint Read(uint address) => BitConverter.ToUInt32(readMemory(address, 4), 0);
-            var reload = Marshal.GetDelegateForFunctionPointer<ReloadObjectFn>(new IntPtr(ReloadObjectAddress));
-            var remove = Marshal.GetDelegateForFunctionPointer<RemoveObjFn>(new IntPtr(RemoveObjAddress));
-            var cacheRoot = new IntPtr(unchecked((int)Read(CacheGlobal)));
-            var found = new HashSet<uint>();
-            foreach (var (type, cache) in Nodes(Read, Read(RegistryBuckets), Read(RegistryCount)).ToList())
-                foreach (var (id, obj) in Nodes(Read, Read(cache + CacheBuckets), Read(cache + CacheCount)).Where(node => ids.Contains(node.Key)).ToList())
-                {
-                    found.Add(id);
-                    var references = Read(obj + ObjectReferences);
-                    var done = references <= 1
-                        ? remove(new IntPtr(unchecked((int)cache)), id) != 0
-                        : reload(cacheRoot, id, type) != 0;
-                    log($"Dat cache reload: 0x{id:X8} (type 0x{type:X2}, {references} references) {(references <= 1 ? "dropped" : "read again")}: {(done ? "ok" : "failed")}.");
-                }
-            foreach (var id in ids.Where(id => !found.Contains(id))) log($"Dat cache reload: 0x{id:X8} isn't held.");
-        }
-        catch (Exception exception) { log($"The dat cache reload stopped: {exception.Message}"); }
     }
 
     /// <summary>A client hash table's nodes as (key, value); stops after <see cref="MaxNodes"/>, in case a table changed under the walk.</summary>
