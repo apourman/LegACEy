@@ -155,9 +155,9 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     private static (int Width, int Height, WindowResizing Sizing) Shape(InventoryView view) => (view.Layout, view.Collapsed) switch
     {
-        (InventoryLayout.Horizontal, false) => (671, 425, new WindowResizing(new Size(631, 355))),
-        (InventoryLayout.Horizontal, true) => (420, 345, new WindowResizing(new Size(340, 245))),
-        (_, false) => (VerticalWidth, 802, new WindowResizing(new Size(VerticalWidth, 433), new Size(VerticalWidth, TallestVertical))),
-        _ => (VerticalWidth, 284, new WindowResizing(new Size(VerticalWidth, 212), new Size(VerticalWidth, TallestVertical))),
+        (InventoryLayout.Horizontal, false) => (671, 417, new WindowResizing(new Size(631, 347))),
+        (InventoryLayout.Horizontal, true) => (420, 337, new WindowResizing(new Size(340, 237))),
+        (_, false) => (VerticalWidth, 794, new WindowResizing(new Size(VerticalWidth, 425), new Size(VerticalWidth, TallestVertical))),
+        _ => (VerticalWidth, 276, new WindowResizing(new Size(VerticalWidth, 204), new Size(VerticalWidth, TallestVertical))),
     };
 }

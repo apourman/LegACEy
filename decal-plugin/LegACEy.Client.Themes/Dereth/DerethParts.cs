@@ -379,7 +379,7 @@ public sealed class DerethWindow : UserControl
     public const int TitleBarHeight = 48;
 
     /// <summary>The title's own row under the header, in a window that centres its title.</summary>
-    public const int TitleRowHeight = 36;
+    public const int TitleRowHeight = 28;
 
     /// <summary>The header of a window that centres its title: it holds only the header buttons, so it is just taller than they are.</summary>
     public const int CentredHeaderHeight = 24;
