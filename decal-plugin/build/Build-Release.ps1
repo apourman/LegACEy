@@ -1,6 +1,8 @@
 param(
     [string]$Version = '0.0.0',
-    [string]$WorkDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'legacey-plugin-release')
+    [string]$WorkDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'legacey-plugin-release'),
+    # The release workflow skips the tests: they already passed on the promote pull request.
+    [switch]$SkipTests
 )
 
 # Everything the plugin release runs, in the same configuration: the release workflow calls it, the promote pull request into
@@ -17,8 +19,10 @@ Push-Location (Join-Path $PSScriptRoot '../..')
 try {
     $tag = "decal-plugin-v$Version"
 
-    python -m unittest discover -s decal-plugin/build -p 'test_*.py'
-    dotnet test decal-plugin/LegACEy.Client.Tests/LegACEy.Client.Tests.csproj --configuration Release
+    if (!$SkipTests) {
+        python -m unittest discover -s decal-plugin/build -p 'test_*.py'
+        dotnet test decal-plugin/LegACEy.Client.Tests/LegACEy.Client.Tests.csproj --configuration Release
+    }
 
     ./decal-plugin/build/Get-BuildReferences.ps1 -Destination (Join-Path $WorkDirectory 'plugin-build-references')
     $references = Join-Path $WorkDirectory 'plugin-build-references/references'
@@ -29,7 +33,7 @@ try {
         --configuration Release --runtime win-x86 --self-contained `
         --output (Join-Path $output 'runtime') "-p:Version=$Version"
 
-    dotnet run --project decal-plugin/LegACEy.Client.HookSmoke --configuration Release
+    if (!$SkipTests) { dotnet run --project decal-plugin/LegACEy.Client.HookSmoke --configuration Release }
 
     ./decal-plugin/build/New-ReleasePackage.ps1 -BuildOutput $output -Destination $destination -Tag $tag
 

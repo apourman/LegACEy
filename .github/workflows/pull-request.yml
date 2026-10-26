@@ -4,7 +4,8 @@ name: Pull request checks
 # too, plus the test suites that need MySQL and the end-to-end stack. Deploys stay in deploy-main.yml (pushes to master).
 # They also run everything the releases run, in the release configuration: the server's Linux Release publish on every pull request,
 # and the plugin's Windows Release build (windows-plugin) on the promote pull request into master and on runs started by hand, so nothing
-# first builds or tests at release time.
+# first builds or tests at release time. Release-please pull requests only bump versions and changelogs of code that already passed
+# here, so both jobs skip on them (a skipped job still satisfies the required checks) and those merges stay instant.
 on:
   pull_request:
     branches:
@@ -23,6 +24,7 @@ concurrency:
 
 jobs:
   checks:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -79,7 +81,7 @@ jobs:
 
   # The plugin release's build (release-decal-plugin.yml), the same script on the same runner image
   windows-plugin:
-    if: github.base_ref == 'master' || github.event_name == 'workflow_dispatch'
+    if: (github.base_ref == 'master' && !startsWith(github.head_ref, 'release-please--')) || github.event_name == 'workflow_dispatch'
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
