@@ -845,7 +845,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _packList.Children.Clear();
         // A side pack's tile carries its position in the side-pack list: a drop of a pack reorders by that position.
         _packList.Children.Add(PackColumnSlot(snapshot, snapshot.MainPack, -1, open));
-        _packList.Children.Add(new DerethRule { Margin = new Thickness(0, 2), Opacity = 0.7 });
         for (var position = 0; position < snapshot.SidePacks.Count; position++)
             _packList.Children.Add(PackColumnSlot(snapshot, snapshot.SidePacks[position], position, open));
     }
