@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.14.1](https://github.com/apourman/LegACEy/compare/v0.14.0...v0.14.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* check the release build before promoting ([#174](https://github.com/apourman/LegACEy/issues/174)) ([8f00a58](https://github.com/apourman/LegACEy/commit/8f00a583c0dfd4b332180fc86bc821fafd5b9996))
+* keys and kits deposited mid-walk aren't used ([#167](https://github.com/apourman/LegACEy/issues/167)) ([cba2008](https://github.com/apourman/LegACEy/commit/cba200837b6d5b49fd64b2cebd7419efff3f8e94))
+* Vault deposit after a stack split ([#165](https://github.com/apourman/LegACEy/issues/165)) ([d3894dd](https://github.com/apourman/LegACEy/commit/d3894ddb3f37a03ac1681552904c39a242f3788c))
+* Vault deposit after logout keeps the item with its depositor ([#166](https://github.com/apourman/LegACEy/issues/166)) ([a94a4df](https://github.com/apourman/LegACEy/commit/a94a4df5bb2a49f7fbe608bef7243b1b4eeccd38))
+
 ## [0.14.0](https://github.com/apourman/LegACEy/compare/v0.13.1...v0.14.0) (2026-10-25)
 
 
