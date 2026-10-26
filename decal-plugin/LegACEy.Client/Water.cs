@@ -42,14 +42,13 @@ internal sealed unsafe class Water : IDisposable
 
     private readonly IntPtr _device;
     private readonly StormFog _camera;
-    private readonly PortalDat _portal;
     private readonly Action<string> _log;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     // Landblock (x << 8 | y) to its water triangles; null for a landblock with none.
     private readonly Dictionary<int, WaterPoint[]?> _blocks = new();
     private readonly HashSet<int> _loading = new();
     private readonly ConcurrentQueue<(int Key, WaterPoint[]? Points)> _arrived = new();
-    private Task<GroundDat?>? _ground;
+    private readonly Task<GroundDat?> _ground;
     private int _centre = -1;
     // The landblock the last 'Water:' log line was for, so each move into a landblock is logged once its water is in.
     private int _logged = -1;
@@ -60,11 +59,11 @@ internal sealed unsafe class Water : IDisposable
     private IntPtr _vertexShader, _tintShader, _lightShader;
     private bool? _shaded;
 
-    public Water(IntPtr device, StormFog camera, PortalDat portal, Action<string> log)
+    public Water(IntPtr device, StormFog camera, Task<GroundDat?> ground, Action<string> log)
     {
         _device = device;
         _camera = camera;
-        _portal = portal;
+        _ground = ground;
         _log = log;
     }
 
@@ -288,15 +287,6 @@ internal sealed unsafe class Water : IDisposable
         _centre = centre;
         foreach (var far in _blocks.Keys.Where(key => Math.Max(Math.Abs((key >> 8) - x), Math.Abs((key & 0xFF) - y)) > Radius + 1).ToArray())
             _blocks.Remove(far);
-        _ground ??= Task.Run(() =>
-        {
-            try { return new GroundDat(_portal); }
-            catch (Exception exception)
-            {
-                _log($"Water is left as retail draws it: the ground's DATs did not open: {exception.Message}");
-                return null;
-            }
-        });
         for (var dx = -Radius; dx <= Radius; dx++)
             for (var dy = -Radius; dy <= Radius; dy++)
             {
@@ -444,8 +434,6 @@ internal sealed unsafe class Water : IDisposable
         Release(_waves);
         _waves = IntPtr.Zero;
         ReleaseShaders();
-        _ground?.ContinueWith(ground => ground.Result?.Dispose(), TaskScheduler.Default);
-        _ground = null;
     }
 
     private readonly struct WaterVertex(Vector3 position, uint color, float u0, float v0, float u1, float v1, float wet, float open)

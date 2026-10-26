@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Numerics;
+using System.Threading.Tasks;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using static LegACEy.Client.DecalPlugin.D3D9;
@@ -45,12 +46,12 @@ internal sealed unsafe class Weather : IDisposable
     private readonly IntPtr _device;
     private readonly StormFog _camera;
     private readonly Action<string> _log;
-    private readonly PortalDat _portal;
-    private GroundDat? _ground;
-    private bool _groundFailed;
+    private readonly Task<GroundDat?> _ground;
+    // Each indoor cell's view outside and each landblock's buildings (by the cell id's top word), read once while the player is near.
     private readonly Dictionary<uint, bool> _seenOutside = new();
-    // Each landblock's buildings (by the cell id's top word), read once.
     private readonly Dictionary<uint, IReadOnlyList<GroundBuilding>> _buildings = new();
+    // The landblock the two caches were last trimmed to.
+    private uint _trimmedAt = uint.MaxValue;
     // Why the weather last showed or not, logged as it changes.
     private string? _shown;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -66,11 +67,11 @@ internal sealed unsafe class Weather : IDisposable
     private IntPtr _vertexShader, _pixelShader, _dropBuffer;
     private bool? _shaded;
 
-    public Weather(IntPtr device, StormFog camera, PortalDat portal, Action<string> log)
+    public Weather(IntPtr device, StormFog camera, Task<GroundDat?> ground, Action<string> log)
     {
         _device = device;
         _camera = camera;
-        _portal = portal;
+        _ground = ground;
         _log = log;
         _drops = new Drop[MostDrops];
         for (var i = 0; i < _drops.Length; i++)
@@ -93,6 +94,7 @@ internal sealed unsafe class Weather : IDisposable
     {
         if (Current is not { } now) { Shown(null); return; }
         if (PlayerCell == 0) { Shown("hidden: the player is in no cell (portal space)"); return; }
+        Trim(PlayerCell >> 16);
         if (!SeesOutside(PlayerCell) || (!DrawsIndoors && (PlayerCell & 0xFFFF) >= 0x100)) { Shown($"hidden: no view outside from cell 0x{PlayerCell:X8}"); return; }
         if (_camera.Eye is not { } eye) { Shown("hidden: the camera is not measured yet"); return; }
         var fall = now.Kind switch { WeatherKind.Blizzard => Blizzard, WeatherKind.Thunderstorm => Thunderstorm, _ => Snow };
@@ -167,17 +169,22 @@ internal sealed unsafe class Weather : IDisposable
     private static bool Inside(Vector3 point, (Vector3 Min, Vector3 Max) box) =>
         point.X >= box.Min.X && point.Y >= box.Min.Y && point.Z >= box.Min.Z && point.X <= box.Max.X && point.Y <= box.Max.Y && point.Z <= box.Max.Z;
 
-    /// <summary>The ground's DATs, opened on first use; null, logged once, when they cannot be.</summary>
-    private GroundDat? Ground()
+    /// <summary>
+    /// The shared ground's DATs; null when they did not open. The first indoor cell waits on the game thread for them to open, as it did
+    /// when the weather opened its own.
+    /// </summary>
+    private GroundDat? Ground() => _ground.Result;
+
+    /// <summary>Forgets the cells and buildings of landblocks more than one away, once per landblock entered, so the caches hold the 3 × 3 around the player.</summary>
+    private void Trim(uint landblock)
     {
-        if (_ground != null || _groundFailed) return _ground;
-        try { return _ground = new GroundDat(_portal); }
-        catch (Exception exception)
-        {
-            _groundFailed = true;
-            _log($"Weather: hidden indoors, as the cell DAT did not open: {exception.Message}");
-            return null;
-        }
+        if (landblock == _trimmedAt) return;
+        _trimmedAt = landblock;
+        bool Far(uint other) => Math.Max(Math.Abs((int)(other >> 8) - (int)(landblock >> 8)), Math.Abs((int)(other & 0xFF) - (int)(landblock & 0xFF))) > 1;
+        foreach (var key in _buildings.Keys)
+            if (Far(key)) _buildings.Remove(key);
+        foreach (var cell in _seenOutside.Keys)
+            if (Far(cell >> 16)) _seenOutside.Remove(cell);
     }
 
     private T Read<T>(Func<T> read, T fallback)
@@ -482,7 +489,6 @@ internal sealed unsafe class Weather : IDisposable
         Release(_dot);
         _dot = IntPtr.Zero;
         ReleaseShaders();
-        _ground?.Dispose();
     }
 
     private readonly record struct Drop(Vector3 Start, float Speed, float Phase, float Scale);

@@ -280,7 +280,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Point? _radarPlace;
     private RetailHeldWindows? _radarTakeover;
     private RetailRadarWindow? _radar;
-    private Task<GroundDat?>? _radarDatLoad;
+    // The ground's DATs, opened once off the UI thread and shared by the radar, weather and water; kept until the plugin unloads, as the
+    // world effects outlive a UI rebuild.
+    private Task<GroundDat?>? _ground;
     private GroundTiles? _radarTiles;
     private Task<IndoorDat?>? _radarIndoorLoad;
     private IndoorPlanCache? _radarPlans;
@@ -499,6 +501,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
             _worldEffects = null;
+            if (_ground is { } ground) DisposeWhenLoaded(ground);
+            _ground = null;
             // With both hooks gone, nothing else frees the last frame's spare state blocks before the game's next device reset.
             D3D9.ReleaseSpareStates();
             TearDown();
@@ -973,7 +977,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         EnsurePostUiDrawHook();
         try
         {
-            _worldEffects ??= WorldEffects.Create(_device, _portal, NativeUi.ReadMemory, Log);
+            _worldEffects ??= WorldEffects.Create(_device, Ground(), NativeUi.ReadMemory, Log);
             if (_worldEffects != null) _worldEffects.WaterStrength = _water.Strength;
             ShowRemembered();
         }
@@ -3604,8 +3608,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
             if (_radarTakeover != null && (!canDraw || _radarFailed || !switchOn))
                 ReleaseRetailRadar();
-            // Switched off, the ground's DATs go too once no radar reads them; switching on loads them again.
-            if (!switchOn && _radar == null && _radarDatLoad != null) DisposeRadarGround();
+            // Switched off, the indoor plans' DATs go too once no radar reads them; switching on loads them again.
+            if (!switchOn && _radar == null && (_radarTiles != null || _radarIndoorLoad != null)) DisposeRadarGround();
             if (!canDraw || !switchOn || _radarFailed) return;
             if (_radarTakeover == null && !HoldRetailRadar()) return;
             _radarTakeover!.Tick(GameDevice.ViewportSize(_device));
@@ -3631,27 +3635,31 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _radarPlace = retail == IntPtr.Zero ? null : NativeUi.GetBounds(retail).Location;
         _radarTakeover = new RetailHeldWindows(RetailHudCatalogue.RadarWindows);
         // The ground's DATs open off the UI thread; the radar draws dots on dark until its first tiles are built.
-        _radarDatLoad ??= LoadRadarGround(_portal);
+        Ground();
         _radarIndoorLoad ??= LoadRadarIndoors(_portal.Path);
         Log("Retail's radar held.");
         return true;
     }
 
-    private static Task<GroundDat?> LoadRadarGround(PortalDat portal) => Task.Run(() =>
+    private Task<GroundDat?> Ground()
     {
-        try { return new GroundDat(portal); }
-        catch (Exception exception)
+        var portal = _portal!;
+        return _ground ??= Task.Run(() =>
         {
-            Log($"Dereth radar has no ground; it draws dots on dark: {exception.Message}");
-            return null;
-        }
-    });
+            try { return new GroundDat(portal); }
+            catch (Exception exception)
+            {
+                Log($"The ground's DATs did not open; the radar draws dots on dark, water is left as retail draws it and weather is hidden indoors: {exception.Message}");
+                return (GroundDat?)null;
+            }
+        });
+    }
 
     // The ground's tiles, once its DATs have opened; null before that or without them.
     private GroundTiles? RadarGround()
     {
         if (_radarTiles != null) return _radarTiles;
-        if (_radarDatLoad is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
+        if (_ground is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
         return _radarTiles = new GroundTiles(dat, Log);
     }
 
@@ -3743,15 +3751,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Drops the ground's and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone. A load still running is
-    /// disposed when it lands; the plans' DAT is disposed once their reads in flight have finished.
+    /// Drops the radar's tiles and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone; the shared ground
+    /// stays. A load still running is disposed when it lands; the plans' DAT is disposed once their reads in flight have finished.
     /// </summary>
     private void DisposeRadarGround()
     {
-        if (_radarDatLoad is { } load) DisposeWhenLoaded(load);
         if (_radarPlans != null) _radarPlans.Dispose();
         else if (_radarIndoorLoad is { } indoors) DisposeWhenLoaded(indoors);
-        _radarDatLoad = null;
         _radarTiles = null;
         _radarIndoorLoad = null;
         _radarPlans = null;
