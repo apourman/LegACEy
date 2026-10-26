@@ -58,7 +58,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private readonly DerethSlotGrid _grid = new() { ColumnAlignment = HorizontalAlignment.Left };
     private readonly TextBlock _contentsName = Label(string.Empty, TextBrush, 13);
     private readonly TextBlock _contentsCount = Label(string.Empty, MutedBrush, 13);
-    // The pack list: the main pack, a rule and the side packs, in a column right of the grid.
+    // The pack list: the main pack and the side packs, in a column right of the grid.
     private readonly StackPanel _packList = new() { Spacing = 4 };
     private readonly ContentControl _burdenMeter = new();
     private readonly TextBlock _burdenText = Label(string.Empty, TextBrush, 12);
@@ -412,8 +412,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 _picked = slot.Container;
                 Render(_port.Snapshot);
             }
-            // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit). A focus
-            // is an item, so a click selects it. Either clears a picked set, as a plain click on an item does.
+            // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit). A side
+            // pack or a focus is an item, so a click selects it. Each clears a picked set, as a plain click on an item does.
             if (TargetOf(slot) is var target and not 0)
             {
                 _selection.Clear();
@@ -655,16 +655,14 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return slot.Container != 0 && (slot.Container == s.MainPack.Id || s.SidePacks.Any(pack => pack.Id == slot.Container)) ? slot.Container : 0;
     }
 
-    /// <summary>The object a slot stands for when it is selected or targeted: its item, the character for the main pack, or a focus.</summary>
-    private uint TargetOf(InventorySlotId slot) =>
-        slot.Place != SlotPlace.Pack ? slot.ItemId
-        : slot.Container != 0 && (slot.Container == _port.Snapshot.MainPack.Id || IsFocus(_port.Snapshot, slot.Container)) ? slot.Container : 0;
+    /// <summary>The object a slot stands for when it is selected or targeted: its item, or a pack (the main pack is the character).</summary>
+    private static uint TargetOf(InventorySlotId slot) => slot.Place != SlotPlace.Pack ? slot.ItemId : slot.Container;
 
     /// <summary>Whether a side-pack slot holds a focus: it takes the slot but holds nothing.</summary>
     private static bool IsFocus(InventorySnapshot s, uint id) => PackOf(s, id)?.Capacity == 0;
 
-    /// <summary>A pack tile is outlined while its pack is open, and a focus while it is retail's selection.</summary>
-    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => id == open.Id || (id == s.Selected && IsFocus(s, id));
+    /// <summary>A pack tile is outlined while its pack is open; a focus that is retail's selection takes the outline from it.</summary>
+    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => IsFocus(s, s.Selected) ? id == s.Selected : id == open.Id;
 
     private GameImage? DragImage(uint id)
     {
@@ -845,7 +843,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _packList.Children.Clear();
         // A side pack's tile carries its position in the side-pack list: a drop of a pack reorders by that position.
         _packList.Children.Add(PackColumnSlot(snapshot, snapshot.MainPack, -1, open));
-        _packList.Children.Add(new DerethRule { Margin = new Thickness(0, 2), Opacity = 0.7 });
         for (var position = 0; position < snapshot.SidePacks.Count; position++)
             _packList.Children.Add(PackColumnSlot(snapshot, snapshot.SidePacks[position], position, open));
     }
@@ -972,8 +969,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         pack.Children.Add(At(ContentsLine(), 0));
         pack.Children.Add(At(_grid, 1));
 
-        // The pack column stands on the right, as retail's does, the window's full height: burden at its head, then the main pack, a
-        // rule and the side packs, which scroll.
+        // The pack column stands on the right, as retail's does, the window's full height: burden at its head, then the main pack and
+        // the side packs, which scroll.
         var packs = new ScrollViewer
         {
             Content = _packList, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,

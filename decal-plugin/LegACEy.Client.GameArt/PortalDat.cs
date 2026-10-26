@@ -28,6 +28,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     private readonly Dictionary<uint, GameImage?> _images = new();
     private IReadOnlyDictionary<uint, SpellInfo>? _spells;
     private CharacterNames? _characterNames;
+    private CharacterTables? _characterTables;
 
     public PortalDat(string path)
     {
@@ -96,6 +97,36 @@ public sealed class PortalDat : IDisposable, IGameArtSource
             var titles = ReadTitleNames(log);
             _characterNames = new CharacterNames(creatureTypes, titles);
             return _characterNames;
+        }
+    }
+
+    /// <summary>
+    /// The skill, experience and icon tables the character window reads, read once. A table that is missing or cannot be read is left empty
+    /// and logged once: the window then shows what it can.
+    /// </summary>
+    public CharacterTables ReadCharacterTables(Action<string>? log = null)
+    {
+        lock (_stream)
+        {
+            if (_characterTables != null) return _characterTables;
+            T Read<T>(uint id, string what, Func<byte[], T> parse, T empty)
+            {
+                try
+                {
+                    var file = ReadFile(id);
+                    if (file != null) return parse(file);
+                    log?.Invoke($"The {what} is missing from the portal.");
+                }
+                catch (Exception exception) { log?.Invoke($"The {what} could not be read from the portal: {exception.Message}"); }
+                return empty;
+            }
+            var none = CharacterTables.None;
+            _characterTables = new CharacterTables(
+                Read(CharacterTables.SkillTableId, "skill table", CharacterTables.ParseSkills, new Dictionary<uint, SkillDefinition>()),
+                Read(CharacterTables.XpTableId, "experience table", CharacterTables.ParseXp, none.Experience),
+                Read(CharacterTables.AttributeIconMapper, "attribute icons", CharacterTables.ParseDidMapper, new Dictionary<uint, uint>()),
+                Read(CharacterTables.VitalIconMapper, "vital icons", CharacterTables.ParseDidMapper, new Dictionary<uint, uint>()));
+            return _characterTables;
         }
     }
 

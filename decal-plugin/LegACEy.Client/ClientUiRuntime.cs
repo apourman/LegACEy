@@ -134,6 +134,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailRadarSwitchFile = "retail-radar-native";
     // Beside the DLL: while this file exists, retail's attack panel stays retail's. Without it the Dereth attack bar replaces it in melee and missile.
     private const string RetailAttackSwitchFile = "retail-attack-native";
+    // Beside the DLL: while this file exists, retail's character panel stays retail's. Without it the Dereth character window replaces it.
+    private const string RetailCharacterSwitchFile = "retail-character-native";
     // Present: retail's yellow game messages stay retail's; absent: LegACEy's bands show them.
     private const string RetailGameMessagesSwitchFile = "retail-game-messages-native";
     // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
@@ -307,6 +309,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private DateTime _lastRetailPanelSwitchCheck;
     private bool _retailAppraisalSwitch;
     private DateTime _lastAppraisalSwitchCheck;
+    // The Dereth character window and the server's account of the character it shows.
+    private CharacterFeature? _character;
+    private bool _retailCharacterSwitch;
+    private DateTime _lastCharacterSwitchCheck;
     // The Appraisal card was switched: once the switch is read, a turn to retail hands the open appraisal over to retail's panel.
     private bool _appraisalSwitched;
     private RetailExamine? _retailExamine;
@@ -421,6 +427,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     _appraisal, Log, examinationPort.VerifyRoot);
             }
             else Log("Retail's examination panel is left to retail: the native UI or its addresses are not ready.");
+            // The sheet reads the server's messages from the start; retail's character panel is taken over only with its addresses checked.
+            _character = new CharacterFeature(this,
+                NativeUi.Ready && RetailPanelCatalogueValid()
+                    ? new NativeRetailPanelPort(NativeUi.CharacterPanel, NativeRetailPanelPort.CharacterPanelId)
+                    : null,
+                () => _portal?.ReadCharacterTables(Log) ?? CharacterTables.None, () => _portal?.ReadCharacterNames(Log).Titles ?? new Dictionary<uint, string>(),
+                () => _channelTransport, _settingsStore, () => (SessionServer(), SessionCharacter()), Log);
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
@@ -657,6 +670,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The appraisal response is a game event like any other, so it is read whether or not the LegACEy server channel is up.
         var appraisal = GameChannelTransport.GameEventPayload(type, raw, AppraisalResponse.IdentifyEvent);
         if (appraisal != null) Guard(() => _appraisal.Receive(appraisal));
+        // The character window's sheet: the login description, then the raises, experience and titles that follow.
+        try { _character?.Sheet.Receive(type, raw); }
+        catch (Exception exception) { Log($"Could not read the character from the server: {exception}"); }
         // The selection plaque's health and mana, which retail asks the server for itself when the selection changes.
         _selectionMeters.Receive(type, raw);
         try { _lookCache.Receive(type, raw); }
@@ -897,6 +913,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inventory.Clear();
         _lookCache.Clear();
         Guard(() => _appraisal.Clear());
+        Guard(() => _character?.Sheet.Clear());
         Guard(() => _busyCursor?.Show(false));
         if (_worldEffects != null)
         {
@@ -1101,6 +1118,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default, InventoryWindowId),
         Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }, AppraisalFeature.WindowId),
+        Choice("Character", RetailCharacterSwitchFile, () => _lastCharacterSwitchCheck = default, CharacterWindow.WindowId),
         Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default, ToolbarSurfaceId),
         Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default, ChatWindowId),
         Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default, DerethVitalsWindow.StackedId, DerethVitalsWindow.SideBySideId),
@@ -1309,7 +1327,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _busyCursor?.Show(_inGame && _appraisal.Waiting);
             if (_worldEffects != null)
             {
-                _worldEffects.Selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
+                // Never outline the player: opening the main pack selects them.
+                var selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
+                _worldEffects.Selected = selected != 0 && selected != (uint)Bridge.Fact(BridgeFact.CharacterId) ? selected : 0;
             }
             _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
@@ -1755,7 +1775,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void TickRetailPanels(bool loggingIn = false)
     {
-        if (_retailPanels.Count == 0 && _examination == null)
+        if (_retailPanels.Count == 0 && _examination == null && _character == null)
         {
             // Nothing to hand over to: a switch made now must not fire later.
             _appraisalSwitched = false;
@@ -1768,6 +1788,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             takeover.Tick(enabled, canShow: !loggingIn);
         var appraisalOn = SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch);
         _examination?.Tick(canOpen && appraisalOn, canShow: !loggingIn);
+        _character?.Tick(canOpen && SwitchOn(RetailCharacterSwitchFile, ref _lastCharacterSwitchCheck, ref _retailCharacterSwitch), canShow: !loggingIn);
         // Turned to retail: the item in our window opens in retail's panel, now given back. The other way, the takeover already parks an
         // open retail panel and examines the selection in our window.
         if (_appraisalSwitched)
@@ -1787,6 +1808,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var takeover in _retailPanels.ToArray())
             takeover.EndSession();
         _examination?.EndSession();
+        _character?.EndSession();
     }
 
     /// <summary>A LegACEy window's content by its id, for the drop routing that the window manager's hit test drives.</summary>

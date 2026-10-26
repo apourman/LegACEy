@@ -85,6 +85,9 @@ public unsafe struct BridgeCalls
     /// <summary>(id, UTF-8 tag text, length, out eaten): raises CoreManager.ChatNameClicked as a click on a chat link in retail does;
     /// eaten is 1 when a plugin ate it.</summary>
     public delegate* unmanaged[Stdcall]<int, byte*, int, int*, int> ChatClick;
+    /// <summary>(kind, id, out base, out buffed): an attribute (kind 0, 1 Strength to 6 Self), a vital's maximum (kind 1, Decal's 2 health,
+    /// 4 stamina, 6 mana) or a skill (kind 2, its id), as CharacterFilter reports it without and with buffs.</summary>
+    public delegate* unmanaged[Stdcall]<int, int, int*, int*, int> Stat;
 }
 
 /// <summary>The integer facts <see cref="BridgeCalls.Fact"/> answers.</summary>
@@ -124,7 +127,11 @@ public enum BridgeText
     CharacterName,
     ServerName,
     /// <summary>The folder holding the stub DLL: the log, settings and Plugins\ live there.</summary>
-    PluginDirectory
+    PluginDirectory,
+    /// <summary>CharacterFilter.Race: the heritage, such as "Viamontian".</summary>
+    Race,
+    /// <summary>CharacterFilter.Gender.</summary>
+    Gender
 }
 
 /// <summary>

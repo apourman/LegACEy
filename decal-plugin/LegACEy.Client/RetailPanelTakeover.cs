@@ -140,6 +140,9 @@ internal sealed class RetailPanelTakeover : IDisposable
 
     private Point ParkedAt => _parkedAt ?? Parked;
 
+    /// <summary>Where retail laid the held panel out before it was parked, or null when nothing is held: where our window first opens.</summary>
+    public Point? HeldPlace => Holds ? _original : null;
+
     /// <summary>True while the takeover holds the panel: parked, and not failed. Open and Close reach retail only then.</summary>
     public bool Holds => _parked && !_failed && !_disposed;
 
@@ -256,6 +259,7 @@ internal static class RetailPanelCatalogue
         Shared("UIElement::GetCurrentPosition"),
         Shared("UIElement::SetSaveLocation"),
         Shared("UIElement::MoveTo"),
+        Shared("RootElementId::CharacterPanel"),
         Shared("RootElementId::Examination"),
         Shared("RootElementId::ExaminationInscription"),
         new NativeUiEntry("gmPanelUI::RecvNotice_SetPanelVisibility", RecvNoticeSetPanelVisibility, NativeUiCatalogue.Bytes(
