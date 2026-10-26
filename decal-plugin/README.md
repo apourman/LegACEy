@@ -103,7 +103,9 @@ that removal path. With several clients sharing the directory, whichever client
 checks first takes the file; the `[pid N]` prefix shows which one.
 
 Every 30 s in game, `legacey-avalonia.log` gets a set of `UI performance` lines; times are median/95th percentile/worst in
-milliseconds. `sample` covers the whole UI frame and the post-UI draw, with memory and GC counts. `gc` gives what was allocated and how
+milliseconds. `sample` covers the whole UI frame and the post-UI draw, with memory and GC counts and the free address space with its
+largest block (`freeAddressMB`, `largestFreeMB`: what runs out first in the 32-bit client). One extra set, marked `after portal space`,
+follows 5 s after each teleport and the login. `gc` gives what was allocated and how
 long the GC paused the game since the last line, memory load, and the last full and background pauses. `phases` times each part of
 the frame (game state, each retail takeover, panels, windows) with the KB it allocated, and what the game thread allocated between frames.
 `avalonia` is Avalonia's one step per frame for every window (its jobs, layout, render tick and each window's capture) and `upload` the
