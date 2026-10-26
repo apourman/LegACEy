@@ -31,29 +31,30 @@ public static class RetailAppraisalLayout
         var covers = content.Covers.Length > 0 ? Text("Covers " + content.Covers) : null;
         foreach (var section in content.Sections)
         {
-            if (covers != null && section.Heading is not ("Tinkering" or "Set & Ratings" or "Combat" or "Armor"))
+            if (covers != null && section.Heading is not (AppraisalHeading.Tinkering or AppraisalHeading.SetAndRatings or AppraisalHeading.Combat
+                or AppraisalHeading.Armor))
             {
                 groups.Add(new[] { covers });
                 covers = null;
             }
             switch (section.Heading)
             {
-                case "Armor" when covers != null:
+                case AppraisalHeading.Armor when covers != null:
                     groups.Add(section.Rows.SelectMany(ItemLines).Append(covers));
                     covers = null;
                     break;
-                case "Spells":
+                case AppraisalHeading.Spells:
                     groups.Add(section.Rows.Select(row => Text("Spells: " + row.Text)));
                     break;
-                case "Properties":
+                case AppraisalHeading.Properties:
                     groups.Add(PropertyLines(section.Rows, content.RetailProperties ?? Array.Empty<string>()));
                     break;
                 // Spellcraft and mana, then each spell under retail's heading.
-                case "Magic":
+                case AppraisalHeading.Magic:
                     groups.Add(section.Rows.Where(row => row is not AppraisalSpellRow).SelectMany(ItemLines));
                     groups.Add(SpellLines("Spell Descriptions:", section.Rows));
                     break;
-                case "Enchantments":
+                case AppraisalHeading.Enchantments:
                     groups.Add(SpellLines("Enchantments:", section.Rows));
                     break;
                 default:
@@ -117,12 +118,12 @@ public static class RetailAppraisalLayout
         IEnumerable<AppraisalRow> Rows(string heading) => content.Sections.FirstOrDefault(section => section.Heading == heading)?.Rows ?? Array.Empty<AppraisalRow>();
         var groups = new[]
         {
-            new RetailAppraisalGroup(Rows("Attributes").Concat(Rows("Vitals")).Select(CreatureLine).ToList()),
-            new RetailAppraisalGroup(Rows("Armor").Select(CreatureLine).ToList(), BlankLinesBefore: 2),
-            new RetailAppraisalGroup(Rows("Ratings").Select(CreatureLine).ToList()),
-            new RetailAppraisalGroup(Rows("Allegiance").Select(CreatureLine).ToList()),
+            new RetailAppraisalGroup(Rows(AppraisalHeading.Attributes).Concat(Rows(AppraisalHeading.Vitals)).Select(CreatureLine).ToList()),
+            new RetailAppraisalGroup(Rows(AppraisalHeading.Armor).Select(CreatureLine).ToList(), BlankLinesBefore: 2),
+            new RetailAppraisalGroup(Rows(AppraisalHeading.Ratings).Select(CreatureLine).ToList()),
+            new RetailAppraisalGroup(Rows(AppraisalHeading.Allegiance).Select(CreatureLine).ToList()),
             // The header box shows the PK status.
-            new RetailAppraisalGroup(Rows("Character").Where(row => row.Label != "PK Status").Select(CreatureLine).ToList()),
+            new RetailAppraisalGroup(Rows(AppraisalHeading.Character).Where(row => row.Label != "PK Status").Select(CreatureLine).ToList()),
         };
         return groups.Where(group => group.Lines.Count > 0).ToList();
     }

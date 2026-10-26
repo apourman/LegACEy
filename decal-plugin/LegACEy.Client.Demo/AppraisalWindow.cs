@@ -261,7 +261,7 @@ public sealed class AppraisalWindow
         }
         var caption = new TextBlock
         {
-            Text = header.LevelCaption, Foreground = DerethPalette.TextBrush, FontFamily = DerethPalette.Title, FontSize = 11.5,
+            Text = header.Character ? "Character Level" : "Level", Foreground = DerethPalette.TextBrush, FontFamily = DerethPalette.Title, FontSize = 11.5,
             TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
         };
         var level = new TextBlock
@@ -439,7 +439,16 @@ public sealed class AppraisalWindow
             return field.Panel;
         }
         field = null;
-        if (retail) return Parchment(ParchmentText(inscription.Text), Signature(inscription.Scribe));
+        // A long inscription scrolls inside the box, as the field does.
+        if (retail)
+        {
+            var text = new ScrollViewer
+            {
+                Content = ParchmentText(inscription.Text), HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            };
+            return Parchment(text, Signature(inscription.Scribe));
+        }
         var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         panel.Children.Add(new TextBlock
         {

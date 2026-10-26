@@ -34,10 +34,34 @@ public sealed record AppraisalMeterRow(string Name, int Current, int Maximum, st
 public sealed record AppraisalSection(string Heading, IReadOnlyList<AppraisalRow> Rows);
 
 /// <summary>
-/// A creature's boxed header in the retail layout: its centred lines (gender and heritage, title and PK status for a character; its type
-/// for a creature), and the level cell beside them, its caption over the level. <see cref="Character"/> marks a player.
+/// The section headings: the sections layout shows them, and the retail layout (<see cref="RetailAppraisalLayout"/>) finds its groups by
+/// them. An item's run from Tinkering to Enchantments; a creature's from Allegiance to Character.
 /// </summary>
-public sealed record AppraisalCreatureHeader(IReadOnlyList<string> Lines, string LevelCaption, string Level, bool Character = false);
+public static class AppraisalHeading
+{
+    public const string Tinkering = "Tinkering",
+        SetAndRatings = "Set & Ratings",
+        Combat = "Combat",
+        Armor = "Armor",
+        Spells = "Spells",
+        Properties = "Properties",
+        Use = "Use",
+        Requirements = "Requirements",
+        Other = "Other",
+        Magic = "Magic",
+        Enchantments = "Enchantments",
+        Allegiance = "Allegiance",
+        Vitals = "Vitals",
+        Attributes = "Attributes",
+        Ratings = "Ratings",
+        Character = "Character";
+}
+
+/// <summary>
+/// A creature's boxed header in the retail layout: its centred lines (gender and heritage, title and PK status for a character; its type
+/// for a creature), and its level, in a cell beside them. <see cref="Character"/> marks a player, whose cell says Character Level.
+/// </summary>
+public sealed record AppraisalCreatureHeader(IReadOnlyList<string> Lines, string Level, bool Character = false);
 
 /// <summary>
 /// What the appraisal window shows for one object: the header, the summary figures, the sections and the long description. The window
@@ -118,17 +142,17 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// </summary>
     private static readonly SectionRule[] SectionRules =
     {
-        new("Tinkering", (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.Tinkering)),
-        new("Set & Ratings", (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.SetAndRatings)),
-        new("Combat", (response, _) => CombatRows(response)),
-        new("Armor", (response, _) => ArmorRows(response)),
-        new("Spells", (response, spells) => SpellNameRows(response, spells)),
-        new("Properties", (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.Properties)),
-        new("Use", (response, _) => TextRows(response.Strings, UseString)),
-        new("Requirements", (response, _) => RequirementRows(response)),
-        new("Other", (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.Other)),
-        new("Magic", (response, spells) => MagicRows(response, spells)),
-        new("Enchantments", (response, spells) => SpellRows(response, spells, enchantments: true)),
+        new(AppraisalHeading.Tinkering, (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.Tinkering)),
+        new(AppraisalHeading.SetAndRatings, (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.SetAndRatings)),
+        new(AppraisalHeading.Combat, (response, _) => CombatRows(response)),
+        new(AppraisalHeading.Armor, (response, _) => ArmorRows(response)),
+        new(AppraisalHeading.Spells, (response, spells) => SpellNameRows(response, spells)),
+        new(AppraisalHeading.Properties, (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.Properties)),
+        new(AppraisalHeading.Use, (response, _) => TextRows(response.Strings, UseString)),
+        new(AppraisalHeading.Requirements, (response, _) => RequirementRows(response)),
+        new(AppraisalHeading.Other, (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.Other)),
+        new(AppraisalHeading.Magic, (response, spells) => MagicRows(response, spells)),
+        new(AppraisalHeading.Enchantments, (response, spells) => SpellRows(response, spells, enchantments: true)),
     };
 
     /// <summary>
@@ -634,12 +658,12 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         {
             var kind = Int(response, CreatureTypeInt);
             var type = kind > 0 && names.CreatureTypes.TryGetValue((uint)kind, out var typeName) ? typeName : null;
-            return new AppraisalCreatureHeader(new[] { type }.OfType<string>().ToList(), "Level", level);
+            return new AppraisalCreatureHeader(type == null ? Array.Empty<string>() : new[] { type }, level);
         }
         var gender = Int(response, GenderInt) switch { 1 => "Male", 2 => "Female", _ => null };
         var lines = new[] { Join(" ", gender, Named(HeritageNames, Int(response, HeritageGroupInt))), TitleOf(response, names),
             PkStatusText(Int(response, PlayerKillerStatusInt)) };
-        return new AppraisalCreatureHeader(lines.OfType<string>().Where(line => line.Length > 0).ToList(), "Character Level", level, Character: true);
+        return new AppraisalCreatureHeader(lines.OfType<string>().Where(line => line.Length > 0).ToList(), level, Character: true);
     }
 
     /// <summary>A character's title, muted under the type line. A creature has none.</summary>
@@ -658,12 +682,12 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     {
         var creature = response.Creature!;
         var character = IsCharacter(response);
-        if (character) yield return Section("Allegiance", AllegianceRows(response));
-        yield return Section("Vitals", VitalRows(creature));
-        yield return Section("Attributes", AttributeRows(creature));
-        if (character) yield return Section("Armor", ArmorLevelRows(response.Levels));
-        yield return Section("Ratings", RatingRows(response));
-        if (character) yield return Section("Character", CharacterRows(response));
+        if (character) yield return Section(AppraisalHeading.Allegiance, AllegianceRows(response));
+        yield return Section(AppraisalHeading.Vitals, VitalRows(creature));
+        yield return Section(AppraisalHeading.Attributes, AttributeRows(creature));
+        if (character) yield return Section(AppraisalHeading.Armor, ArmorLevelRows(response.Levels));
+        yield return Section(AppraisalHeading.Ratings, RatingRows(response));
+        if (character) yield return Section(AppraisalHeading.Character, CharacterRows(response));
     }
 
     private static AppraisalSection Section(string heading, IEnumerable<AppraisalRow> rows) => new(heading, rows.ToList());

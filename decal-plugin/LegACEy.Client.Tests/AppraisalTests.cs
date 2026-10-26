@@ -591,7 +591,7 @@ public sealed class AppraisalTests
         var groups = RetailAppraisalLayout.Groups(content);
 
         Assert.Equal(new[] { "Male Penumbraen", "Vanquisher of the Olthoi", "Non-Player Killer" }, content.Creature!.Lines);
-        Assert.Equal(("Character Level", "126"), (content.Creature.LevelCaption, content.Creature.Level));
+        Assert.Equal(("126", true), (content.Creature.Level, content.Creature.Character));
         Assert.Equal(new[] { "Strength", "Endurance", "Coordination", "Quickness", "Focus", "Self", "Health", "Stamina", "Mana" },
             groups[0].Lines.Select(line => line.Label));
         Assert.Equal(new RetailAppraisalLine("Strength", "200", AppraisalTone.Raised), groups[0].Lines[0]);
@@ -674,16 +674,6 @@ public sealed class AppraisalTests
         InscriptionField(host).Text = "for Ilsa";
         Leave(InscriptionField(host));
         Assert.Equal((Potion, "for Ilsa"), Assert.Single(game.Inscriptions));
-        InscriptionField(host).Text = "testomg";
-        using var panel = AvaloniaPanel.Create(() => host.LastWindow!, AppraisalWindow.Width, 300);
-        panel.Tick();
-        var path = Environment.GetEnvironmentVariable("LEGACEY_APPRAISAL_RENDER");
-        if (path != null)
-        {
-            using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(AppraisalWindow.Width, 300));
-            bitmap.Render(host.LastWindow!);
-            bitmap.Save(path);
-        }
     });
 
     [Fact]
