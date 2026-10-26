@@ -1462,7 +1462,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _sampleCell = cell;
         var arrival = now >= _arrivalSampleAt;
         if (!arrival && now - _lastMeasurementLog < TimeSpan.FromSeconds(30)) return;
-        _arrivalSampleAt = DateTime.MaxValue;
+        if (arrival) _arrivalSampleAt = DateTime.MaxValue;
         _lastMeasurementLog = now;
         try
         {
