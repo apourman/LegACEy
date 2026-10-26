@@ -137,6 +137,7 @@ public sealed class InventoryWindowTests
         port.Push(InventorySample.Snapshot(focus: true, selected: InventorySample.Focus));
         InventoryDriver.Tick(host.Host);
         Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
+        Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Character).Selected);
     });
 
     [Fact]

@@ -664,7 +664,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private static bool IsFocus(InventorySnapshot s, uint id) => PackOf(s, id)?.Capacity == 0;
 
     /// <summary>A pack tile is outlined while its pack is open, and a focus while it is retail's selection.</summary>
-    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => id == open.Id || (id == s.Selected && IsFocus(s, id));
+    // A selected focus takes the outline from the open pack: one tile in the column is outlined.
+    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => IsFocus(s, s.Selected) ? id == s.Selected : id == open.Id;
 
     private GameImage? DragImage(uint id)
     {
