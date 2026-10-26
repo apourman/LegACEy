@@ -3182,6 +3182,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void ReleaseRetailToolbar()
     {
         _inventory.Split = null;
+        // The next toolbar (Custom again, after Native) starts from the saved place, not from where retail's stands. Cleared first, so
+        // the refit as the rows close, which shrinks the toolbar and moves its top down, is not saved as its place.
+        _toolbarPlaceLoaded = false;
         CloseShortcutBar();
         if (_toolbarTakeover != null)
         {
@@ -3195,8 +3198,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             _toolbarTakeover = null;
             _toolbarPlace = null;
-            // The next toolbar (Custom again, after Native) starts from the saved place, not from where retail's stands.
-            _toolbarPlaceLoaded = false;
             _toolbarReleaseLogged = false;
         }
         _toolbarSurface?.Dispose();
