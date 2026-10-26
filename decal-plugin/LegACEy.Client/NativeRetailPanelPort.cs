@@ -3,7 +3,10 @@ using System.Runtime.InteropServices;
 
 namespace LegACEy.Client.DecalPlugin;
 
-/// <summary>The inventory panel's port over the installed client. The shared parts are in <see cref="NativePanelPort"/>.</summary>
+/// <summary>
+/// The port over the installed client for one of gmPanelUI's panels: the inventory, or the character panel (Attributes, Skills, Titles).
+/// The shared parts are in <see cref="NativePanelPort"/>.
+/// </summary>
 internal sealed class NativeRetailPanelPort : NativePanelPort
 {
     // RecvNotice_SetPanelVisibility is called on gmPanelUI+0x5F8, the notice sub-object (pinned at the constructor's store).
@@ -11,6 +14,18 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
     // The inventory panel's id in gmPanelUI's panel table: 7, from the element property 0x10000029 of InventoryPanel_Field
     // (the InventoryButton in layout 0x21000016 carries the same id).
     private const uint InventoryPanelId = 7;
+    // The character panel's number in gmPanelUI's panel table (RetailPanel.Skills).
+    internal const uint CharacterPanelId = 11;
+
+    private readonly uint _elementId;
+    private readonly uint _panelId;
+
+    /// <summary>The inventory's port; the character panel passes its own element and panel number.</summary>
+    public NativeRetailPanelPort(uint elementId = NativeUi.InventoryPanel, uint panelId = InventoryPanelId)
+    {
+        _elementId = elementId;
+        _panelId = panelId;
+    }
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void RecvNoticeFn(IntPtr noticeHandler, uint panelId, uint visible);
@@ -18,7 +33,7 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
     private static readonly RecvNoticeFn RecvNotice = (RecvNoticeFn)Marshal.GetDelegateForFunctionPointer(
         new IntPtr(RetailPanelCatalogue.RecvNoticeSetPanelVisibility), typeof(RecvNoticeFn));
 
-    protected override IntPtr Element => NativeUi.GetElement(NativeUi.InventoryPanel);
+    protected override IntPtr Element => NativeUi.GetElement(_elementId);
 
     // The place, save bit and move are the panel frame's, which draws the frame the inventory sits in: moving only the inventory element
     // left that frame on screen, empty. Places are relative to the parent, so the frame's is its place on screen.
@@ -30,7 +45,7 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
     protected override IntPtr Frame()
     {
         var element = Element;
-        if (element == IntPtr.Zero) throw new InvalidOperationException("The retail inventory panel is absent.");
+        if (element == IntPtr.Zero) throw new InvalidOperationException("The retail panel is absent.");
         var frame = Parent(Parent(element));
         return frame != IntPtr.Zero ? frame : element;
     }
@@ -45,7 +60,7 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
         if (element == IntPtr.Zero) return;
         var panel = PanelManagerOf(element);
         if (panel != IntPtr.Zero)
-            SetPanelVisibility(panel, InventoryPanelId, false);
+            SetPanelVisibility(panel, _panelId, false);
         else
             NativeUi.SetVisible(element, false);
     }

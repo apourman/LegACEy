@@ -159,8 +159,10 @@ public sealed unsafe class Plugin : FilterBase
     private void OnServerDispatch(object? sender, NetworkMessageEventArgs e)
     {
         // Game events (0xF7B0) carry the server channel; DDD_EndDDD (0xF7EA) ends character select's DDD exchange, after any world note;
-        // the others are objects' looks, for the paperdoll (the client's LookCache).
-        if (e.Message.Type is not (0xF7B0 or 0xF7EA or 0xF625 or 0xF745 or 0xF747 or 0xF749 or 0xF74A or 0xF7DB)) return;
+        // 0xF625 to 0xF7DB are objects' looks, for the paperdoll (the client's LookCache); 0x02CD to 0x02E7 are the private int, int64,
+        // skill, attribute and vital updates, for the character window (CharacterSheet).
+        if (e.Message.Type is not (0xF7B0 or 0xF7EA or 0xF625 or 0xF745 or 0xF747 or 0xF749 or 0xF74A or 0xF7DB
+            or 0x02CD or 0x02CF or 0x02DD or 0x02E3 or 0x02E7)) return;
         try
         {
             var raw = e.Message.RawData;

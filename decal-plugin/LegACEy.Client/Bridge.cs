@@ -269,6 +269,14 @@ public static unsafe class Bridge
         return eaten != 0;
     }
 
+    /// <summary>An attribute, vital or skill as Decal reports it: kind 0 attribute, 1 vital (Decal's ids), 2 skill.</summary>
+    internal static (int Base, int Buffed) Stat(int kind, uint id)
+    {
+        int @base, buffed;
+        Check(_calls.Stat(kind, (int)id, &@base, &buffed), nameof(Stat));
+        return (@base, buffed);
+    }
+
     internal static void UseItem(uint id, int state) => Check(_calls.UseItem((int)id, state), nameof(UseItem));
     internal static void SelectItem(uint id) => Check(_calls.SelectItem((int)id), nameof(SelectItem));
     internal static void RequestId(uint id) => Check(_calls.RequestId((int)id), nameof(RequestId));

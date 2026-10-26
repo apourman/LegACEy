@@ -133,6 +133,17 @@ takes its panel over again. Settings → Windows switches both (Inventory and Ap
 window. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
+The Dereth character window replaces retail's character panel (its key and toolbar button open it) with the same three tabs. Attributes
+and Skills share a plaque with the name, heritage, title, player-killer status, experience and level, and a plate at the bottom with the
+credits and experience to spend. Click a row and its next rank's cost drops down under it with Raise and +10; click it again to fold it
+away. An untrained skill drops down Train with its credit cost; the first press asks, the
+second spends the credits. Every group (Attributes, Vitals, and the Specialized, Trained, Untrained and Unusable skills) folds from its
+band, remembered per character.
+Titles lists every title the character holds and sets the display title. Values come from Decal, buffs included: green when raised, red
+when lowered, with base and bonus in the tooltip. Ranks, costs and credits come from the server's own messages and portal.dat's skill and
+experience tables, and raises go out as retail's own actions, so it works on any server. `retail-character-native` beside the main DLL
+gives retail's panel back; Settings → Windows → Character switches it.
+
 The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. It is laid out as retail's is:
 retail's own stance and backpack art at the ends, the window buttons over Use, the selection plaque and Examine, and the two shortcut rows
 below, inside the same frame and retail's width: nine touching 32 px slots. A click on a shortcut selects and uses its item, and the slot stays lit while its item is selected. A long target name wraps to two lines. Press and drag the
