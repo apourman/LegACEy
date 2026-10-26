@@ -203,6 +203,7 @@ public sealed class CharacterWindowTests
                      ("attributes", 0, (StatKind.Attribute, 2u), new CharacterGroup[0]),
                      ("skills", 1, (StatKind.Skill, 38u), new CharacterGroup[0]),
                      ("skills-folded", 1, (StatKind.Skill, 24u), new[] { CharacterGroup.Untrained, CharacterGroup.Unusable }),
+                     ("attributes-folded", 0, (StatKind.Vital, 3u), new[] { CharacterGroup.Attributes }),
                      ("titles", 2, (StatKind.Skill, 0u), new CharacterGroup[0])
                  })
         {

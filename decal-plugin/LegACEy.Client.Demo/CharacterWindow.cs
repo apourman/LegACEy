@@ -32,7 +32,7 @@ public interface ICharacterGame
 
 /// <summary>
 /// The Dereth character window, retail's Attributes, Skills and Titles tabs in retail's order: a plaque with the name, level and
-/// experience, the list, and a plate at the bottom that raises or trains the selected row. The skill groups fold, and the folds are
+/// experience, the list, and a plate at the bottom that raises or trains the selected row. Every group (attributes, vitals and each skill group) folds, and the folds are
 /// remembered. One instance serves the session; <see cref="Refresh"/> redraws what changed.
 /// </summary>
 public sealed class CharacterWindow
@@ -49,6 +49,8 @@ public sealed class CharacterWindow
     private static readonly IBrush LineBrush = DerethPalette.Brush(DerethPalette.Line);
     private static readonly Dictionary<CharacterGroup, Color> GroupColours = new()
     {
+        [CharacterGroup.Attributes] = DerethPalette.Gold,
+        [CharacterGroup.Vitals] = Color.FromRgb(176, 48, 42),
         [CharacterGroup.Specialized] = Color.FromRgb(140, 96, 220),
         [CharacterGroup.Trained] = Color.FromRgb(63, 160, 170),
         [CharacterGroup.Untrained] = Color.FromRgb(200, 150, 60),
@@ -56,6 +58,8 @@ public sealed class CharacterWindow
     };
     private static readonly Dictionary<CharacterGroup, string> GroupNames = new()
     {
+        [CharacterGroup.Attributes] = "Attributes",
+        [CharacterGroup.Vitals] = "Vitals",
         [CharacterGroup.Specialized] = "Specialized Skills",
         [CharacterGroup.Trained] = "Trained Skills",
         [CharacterGroup.Untrained] = "Untrained Skills",
@@ -194,7 +198,7 @@ public sealed class CharacterWindow
         Refresh();
     }
 
-    /// <summary>Folds or unfolds a skill group, as a click on its band does.</summary>
+    /// <summary>Folds or unfolds a group, as a click on its band does.</summary>
     public void ToggleFold(CharacterGroup group)
     {
         if (!_folded.Remove(group)) _folded.Add(group);
@@ -294,20 +298,13 @@ public sealed class CharacterWindow
     {
         _drawnRows = _rows;
         _list.Children.Clear();
-        if (_tab == 0)
-        {
-            foreach (var row in _rows)
-            {
-                if (row.Kind == StatKind.Vital && row.Id == 1) _list.Children.Add(new Border { Height = 8 });
-                _list.Children.Add(Row(row, AttributeRowHeight));
-            }
-            return;
-        }
+        // Every group folds from its band: the attributes and vitals as the skill groups do.
+        var height = _tab == 0 ? AttributeRowHeight : SkillRowHeight;
         foreach (var group in _rows.GroupBy(row => row.Group))
         {
             _list.Children.Add(Band(group.Key, group.Count()));
             if (_folded.Contains(group.Key)) continue;
-            foreach (var row in group) _list.Children.Add(Row(row, SkillRowHeight));
+            foreach (var row in group) _list.Children.Add(Row(row, height));
         }
     }
 
@@ -338,7 +335,7 @@ public sealed class CharacterWindow
             },
             BorderBrush = DerethPalette.Brush(colour.WithAlpha(0x99)), BorderThickness = new Thickness(0, 0, 0, 1)
         };
-        ToolTip.SetTip(band, folded ? "Show these skills" : "Hide these skills");
+        ToolTip.SetTip(band, folded ? "Show this group" : "Hide this group");
         band.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(band).Properties.IsLeftButtonPressed) return;
