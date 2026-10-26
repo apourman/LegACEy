@@ -724,10 +724,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         _masked = false;
     }
 
-    // Default-pool textures must be gone before the device resets, or the reset fails.
+    // Default-pool textures and state blocks must be gone before the device resets, or the reset fails.
     private int OnReset(IntPtr device, IntPtr parameters)
     {
         if (device == _device) ReleaseTextures();
+        ReleaseSpareStates();
         return _resetHook.OriginalFunction(device, parameters);
     }
 

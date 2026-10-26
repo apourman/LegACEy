@@ -499,6 +499,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
             _worldEffects = null;
+            // With both hooks gone, nothing else frees the last frame's spare state blocks before the game's next device reset.
+            D3D9.ReleaseSpareStates();
             TearDown();
             _serverChannel?.Dispose();
             _serverChannel = null;
@@ -1580,7 +1582,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         var start = Stopwatch.GetTimestamp();
         try { DrawAfterRetailUiCore(); }
-        finally { _postUiDrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds); }
+        finally
+        {
+            D3D9.ReleaseSpareStates();
+            _postUiDrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        }
     }
 
     private void DrawAfterRetailUiCore()
