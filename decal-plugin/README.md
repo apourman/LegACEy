@@ -332,7 +332,7 @@ release PRs, versions, tags, and changelogs. Its shared configuration is in
    [VERSION](VERSION) and changelog, then release-please creates a draft release
    tagged `decal-plugin-v<version>`.
 3. The [plugin publishing workflow](../.github/workflows/release-decal-plugin.yml)
-   builds and tests that exact release commit, attaches the DLL, runtime ZIP and
+   builds that exact release commit, attaches the DLL, runtime ZIP and
    setup.exe, then publishes the draft.
 
 The publishing workflow's build is
@@ -340,7 +340,9 @@ The publishing workflow's build is
 build, the trimmed win-x86 runtime, the hook check, the package and setup.exe.
 The promote pull request (`next` into `master`) runs the same script on
 `windows-2022`, so a Windows-only or Release-only failure turns it red instead of
-breaking the release; the fix then lands on `next` before the promote merges. To run it by hand on Windows (.NET 10,
+breaking the release; the fix then lands on `next` before the promote merges.
+That is the one test run: the release-please pull request skips the checks, and the
+release passes `-SkipTests`, leaving out the tests and the hook check. To run it by hand on Windows (.NET 10,
 Python and Inno Setup 6), from PowerShell 7:
 
 ```powershell

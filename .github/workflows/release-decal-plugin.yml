@@ -45,11 +45,11 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      # The same script runs on the promote pull request, so a release only builds what already passed there.
-      - name: Test, build, package and build the installer
+      # The same script runs with its tests on the promote pull request, so a release only builds what already passed there.
+      - name: Build, package and build the installer
         env:
           PLUGIN_VERSION: ${{ inputs.release_version }}
-        run: ./decal-plugin/build/Build-Release.ps1 -Version $env:PLUGIN_VERSION -WorkDirectory "$env:RUNNER_TEMP/plugin-release"
+        run: ./decal-plugin/build/Build-Release.ps1 -Version $env:PLUGIN_VERSION -SkipTests -WorkDirectory "$env:RUNNER_TEMP/plugin-release"
 
       - name: Record package provenance
         env:
