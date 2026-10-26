@@ -47,6 +47,7 @@ internal static unsafe class DecalCalls
         calls->DescriptionFlags = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(DescriptionFlags));
         calls->Chat = (delegate* unmanaged[Stdcall]<byte*, int, int, int>)Pointer(new ChatCall(Chat));
         calls->ChatClick = (delegate* unmanaged[Stdcall]<int, byte*, int, int*, int>)Pointer(new ChatClickCall(ChatClick));
+        calls->Stat = (delegate* unmanaged[Stdcall]<int, int, int*, int*, int>)Pointer(new StatCall(Stat));
         return calls;
     }
 
@@ -142,6 +143,8 @@ internal static unsafe class DecalCalls
             BridgeText.CharacterName => CoreManager.Current.CharacterFilter.Name,
             BridgeText.ServerName => CoreManager.Current.CharacterFilter.Server,
             BridgeText.PluginDirectory => Plugin.Directory,
+            BridgeText.Race => CoreManager.Current.CharacterFilter.Race,
+            BridgeText.Gender => CoreManager.Current.CharacterFilter.Gender,
             _ => throw new ArgumentOutOfRangeException(nameof(text), text, "Unknown bridge text.")
         };
         Utf8(value, buffer, capacity, length);
@@ -264,6 +267,29 @@ internal static unsafe class DecalCalls
         *eaten = (bool)arguments[2] ? 1 : 0;
     });
 
+    private static int Stat(int kind, int id, int* @base, int* buffed) => Act(() =>
+    {
+        var character = CoreManager.Current.CharacterFilter;
+        switch (kind)
+        {
+            case 0:
+                var attribute = character.Attributes[(CharFilterAttributeType)id];
+                *@base = attribute.Base;
+                *buffed = attribute.Buffed;
+                break;
+            case 1:
+                var vital = character.Vitals[(CharFilterVitalType)id];
+                *@base = vital.Base;
+                *buffed = vital.Buffed;
+                break;
+            default:
+                var skill = character.Skills[(CharFilterSkillType)id];
+                *@base = skill.Base;
+                *buffed = skill.Buffed;
+                break;
+        }
+    });
+
     // ponytail: a closure per call, some every frame; plain try/catch per call if the allocations ever show up.
     private static int Act(Action action)
     {
@@ -282,6 +308,7 @@ internal static unsafe class DecalCalls
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ItemCall(int id, BridgeItem* row, int* found);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ChatCall(byte* text, int length, int colour);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ChatClickCall(int id, byte* text, int length, int* eaten);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int StatCall(int kind, int id, int* @base, int* buffed);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Call1(int a);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Call2(int a, int b);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Call4(int a, int b, int c, int d);
