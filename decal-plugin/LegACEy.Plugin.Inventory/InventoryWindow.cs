@@ -410,11 +410,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         {
             _columnClicked = slot.Container;
             // A focus takes a pack slot but holds nothing, so it does not open.
-            if (slot.Container != 0 && !IsFocus(_port.Snapshot, slot.Container))
-            {
-                _picked = slot.Container;
-                Render(_port.Snapshot);
-            }
+            if (slot.Container != 0 && !IsFocus(_port.Snapshot, slot.Container)) _picked = slot.Container;
+            // Drawn now: the outline moves with the click even when retail's selection does not change (a focus clicked again).
+            Render(_port.Snapshot);
             // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit). A focus
             // is an item, so a click selects it. Either clears a picked set, as a plain click on an item does.
             if (TargetOf(slot) is var target and not 0)

@@ -144,6 +144,12 @@ public sealed class InventoryWindowTests
         InventoryDriver.Tick(host.Host);
         Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Sack).Selected);
         Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
+
+        // The focus is still retail's selection, so clicking it again changes nothing there; the outline comes back to it all the same.
+        InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Focus));
+        InventoryDriver.Tick(host.Host);
+        Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
+        Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Sack).Selected);
     });
 
     [Fact]
