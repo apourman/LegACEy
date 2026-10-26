@@ -417,11 +417,12 @@ public sealed class AppraisalWindow
     {
         if (inscription.Mode == InscriptionMode.Editable)
         {
-            field = new InscriptionField(inscription.Text, text => inscribe(itemId, text), retail, inscription.Scribe);
+            var signer = inscription.Scribe.Length > 0 ? inscription.Scribe : inscription.Writer;
+            field = new InscriptionField(inscription.Text, text => inscribe(itemId, text), retail, signer);
             return field.Panel;
         }
         field = null;
-        if (retail) return Parchment(ParchmentText(inscription.Text), inscription.Scribe);
+        if (retail) return Parchment(ParchmentText(inscription.Text), Signature(inscription.Scribe));
         var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         panel.Children.Add(new TextBlock
         {
@@ -437,7 +438,9 @@ public sealed class AppraisalWindow
     /// a send is remembered only so that leaving the field after Enter does not send the same text again, and the refreshed appraisal
     /// (the response to the silent ID) brings the field its new saved text, through <see cref="Rebase"/>. Escape puts back the saved text. A
     /// save that the game does not send keeps the typed text, so the next Enter tries again. Empty text erases the inscription. The
-    /// placeholder shows while it is empty. Once the window has replaced the field (<see cref="Detach"/>), it no longer saves.
+    /// placeholder shows while it is empty. Once the window has replaced the field (<see cref="Detach"/>), it no longer saves. The parchment
+    /// field works as retail's: Enter starts a new line, so only leaving the field saves, and the signer's name shows in its corner from the
+    /// moment the character enters it.
     /// </summary>
     private sealed class InscriptionField
     {
@@ -448,8 +451,8 @@ public sealed class AppraisalWindow
         private bool _detached;
 
         /// <param name="parchment">Draws the field as retail's parchment box, with "&lt;Inscribe here&gt;" centred while it is empty and
-        /// <paramref name="scribe"/> signed at the bottom right.</param>
-        public InscriptionField(string saved, Func<string, bool> save, bool parchment = false, string scribe = "")
+        /// unfocused, and <paramref name="signer"/> signed at the bottom right while it is focused or written on.</param>
+        public InscriptionField(string saved, Func<string, bool> save, bool parchment = false, string signer = "")
         {
             _saved = saved;
             _save = save;
@@ -459,6 +462,7 @@ public sealed class AppraisalWindow
                     Text = saved, MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Title, FontSize = 13,
                     Foreground = ParchmentInkBrush, CaretBrush = ParchmentInkBrush, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
                     Padding = new Thickness(0), MinHeight = 0, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top,
+                    AcceptsReturn = true, NewLine = "\n",
                 }
                 : new TextBox
                 {
@@ -468,7 +472,7 @@ public sealed class AppraisalWindow
                 };
             _input.KeyDown += (_, e) =>
             {
-                if (e.Key == Key.Enter) { Save(); e.Handled = true; }
+                if (e.Key == Key.Enter && !parchment) { Save(); e.Handled = true; }
                 else if (e.Key == Key.Escape) { _input.Text = _saved; _sent = null; e.Handled = true; }
             };
             _input.LostFocus += (_, _) => Save();
@@ -479,12 +483,19 @@ public sealed class AppraisalWindow
                 placeholder.HorizontalAlignment = HorizontalAlignment.Center;
                 placeholder.VerticalAlignment = VerticalAlignment.Center;
                 placeholder.IsHitTestVisible = false;
-                placeholder.IsVisible = string.IsNullOrEmpty(saved);
+                var signature = Signature(signer);
+                void Show()
+                {
+                    var empty = string.IsNullOrEmpty(_input.Text);
+                    placeholder.IsVisible = empty && !_input.IsFocused;
+                    if (signature != null) signature.IsVisible = !empty || _input.IsFocused;
+                }
                 _input.PropertyChanged += (_, e) =>
                 {
-                    if (e.Property == TextBox.TextProperty) placeholder.IsVisible = string.IsNullOrEmpty(_input.Text);
+                    if (e.Property == TextBox.TextProperty || e.Property == InputElement.IsFocusedProperty) Show();
                 };
-                Panel = Parchment(new Grid { Children = { _input, placeholder } }, scribe);
+                Show();
+                Panel = Parchment(new Grid { Children = { _input, placeholder } }, signature);
                 return;
             }
             var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2, Children = { _input } };
@@ -517,15 +528,14 @@ public sealed class AppraisalWindow
     }
 
     /// <summary>
-    /// Retail's parchment inscription box at the window's foot: the text from its top left in dark ink, and the scribe signed at its
-    /// bottom right ("--Name") once someone has written on it.
+    /// Retail's parchment inscription box at the window's foot: the text from its top left in dark ink, and the signature at its bottom
+    /// right.
     /// </summary>
-    private static Control Parchment(Control text, string scribe)
+    private static Control Parchment(Control text, TextBlock? signature)
     {
         var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Children = { text } };
-        if (scribe.Length > 0)
+        if (signature != null)
         {
-            var signature = ParchmentText("--" + scribe);
             signature.HorizontalAlignment = HorizontalAlignment.Right;
             Grid.SetRow(signature, 1);
             grid.Children.Add(signature);
@@ -541,6 +551,9 @@ public sealed class AppraisalWindow
             },
         };
     }
+
+    /// <summary>A name signed as retail signs an inscription, "--Name"; none without a name.</summary>
+    private static TextBlock? Signature(string name) => name.Length > 0 ? ParchmentText("--" + name) : null;
 
     private static TextBlock ParchmentText(string text) => new()
     {

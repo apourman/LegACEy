@@ -648,7 +648,8 @@ public sealed class AppraisalTests
     {
         var retail = false;
         var host = new FakeAppraisalHost();
-        var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame(), retailLayout: () => retail);
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game, retailLayout: () => retail);
         appraisals.Request(Potion);
         appraisals.Receive(InscribedPotion(Potion, "testomg", "Aerbax"));
         Assert.Equal("Inscribe here", InscriptionField(host).Watermark);
@@ -664,6 +665,15 @@ public sealed class AppraisalTests
         Assert.False(Shown("<Inscribe here>"));
         InscriptionField(host).Text = string.Empty;
         Assert.True(Shown("<Inscribe here>"));
+        Assert.False(Shown("--Aerbax"));
+        // As retail's, Enter is a line break and only leaving the field saves.
+        InscriptionField(host).Text = "testomg";
+        Assert.True(InscriptionField(host).AcceptsReturn);
+        Press(InscriptionField(host), Key.Enter);
+        Assert.Empty(game.Inscriptions);
+        InscriptionField(host).Text = "for Ilsa";
+        Leave(InscriptionField(host));
+        Assert.Equal((Potion, "for Ilsa"), Assert.Single(game.Inscriptions));
         InscriptionField(host).Text = "testomg";
         using var panel = AvaloniaPanel.Create(() => host.LastWindow!, AppraisalWindow.Width, 300);
         panel.Tick();
@@ -1074,7 +1084,7 @@ public sealed class AppraisalTests
         var content = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells, "Aerbax", carried: true,
             descriptionFlags: AppraisalInscription.InscribableFlag);
 
-        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "", ""), content.Inscription);
+        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "", "", "Aerbax"), content.Inscription);
     }
 
     [Fact]
@@ -1179,7 +1189,7 @@ public sealed class AppraisalTests
 
         // The silent ID's answer carries what was saved and the scribe.
         appraisals.Receive(InscribedPotion(Potion, "Remember.", "Aerbax", inscribable: true));
-        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "Remember.", "Aerbax"), appraisals.Shown!.Inscription);
+        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "Remember.", "Aerbax", "Aerbax"), appraisals.Shown!.Inscription);
         Assert.Equal("Remember.", InscriptionField(host).Text);
 
         // A refused save: the answer still has the old text, and the field shows it.
