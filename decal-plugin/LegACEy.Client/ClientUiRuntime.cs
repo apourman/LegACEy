@@ -1309,7 +1309,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _busyCursor?.Show(_inGame && _appraisal.Waiting);
             if (_worldEffects != null)
             {
-                _worldEffects.Selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
+                // Never outline the player: opening the main pack selects them.
+                var selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
+                _worldEffects.Selected = selected != 0 && selected != (uint)Bridge.Fact(BridgeFact.CharacterId) ? selected : 0;
             }
             _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
