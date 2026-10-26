@@ -35,9 +35,9 @@ public sealed record AppraisalSection(string Heading, IReadOnlyList<AppraisalRow
 
 /// <summary>
 /// A creature's boxed header in the retail layout: its centred lines (gender and heritage, title and PK status for a character; its type
-/// for a creature), and the level cell beside them, its caption over the level.
+/// for a creature), and the level cell beside them, its caption over the level. <see cref="Character"/> marks a player.
 /// </summary>
-public sealed record AppraisalCreatureHeader(IReadOnlyList<string> Lines, string LevelCaption, string Level);
+public sealed record AppraisalCreatureHeader(IReadOnlyList<string> Lines, string LevelCaption, string Level, bool Character = false);
 
 /// <summary>
 /// What the appraisal window shows for one object: the header, the summary figures, the sections and the long description. The window
@@ -635,7 +635,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         var gender = Int(response, GenderInt) switch { 1 => "Male", 2 => "Female", _ => null };
         var lines = new[] { Join(" ", gender, Named(HeritageNames, Int(response, HeritageGroupInt))), TitleOf(response, names),
             PkStatusText(Int(response, PlayerKillerStatusInt)) };
-        return new AppraisalCreatureHeader(lines.OfType<string>().Where(line => line.Length > 0).ToList(), "Character Level", level);
+        return new AppraisalCreatureHeader(lines.OfType<string>().Where(line => line.Length > 0).ToList(), "Character Level", level, Character: true);
     }
 
     /// <summary>A character's title, muted under the type line. A creature has none.</summary>

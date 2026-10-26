@@ -628,14 +628,21 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame(), retailLayout: () => retail);
         appraisals.Request(Potion);
-        appraisals.Receive(InscribedPotion(Potion, string.Empty, string.Empty));
+        appraisals.Receive(InscribedPotion(Potion, "testomg", "Aerbax"));
         Assert.Equal("Inscribe here", InscriptionField(host).Watermark);
 
         retail = true;
         appraisals.Relayout();
 
-        Assert.Equal("<Inscribe here>", InscriptionField(host).Watermark);
-        Assert.Contains(host.LastWindow!.GetLogicalDescendants().OfType<TextBlock>(), text => text.Text == "Value: 75");
+        // Retail's box: the text, signed by its scribe at the bottom right, and the placeholder only while it is empty.
+        bool Shown(string line) => host.LastWindow!.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == line && text.IsVisible);
+        Assert.Equal("testomg", InscriptionField(host).Text);
+        Assert.True(Shown("--Aerbax"));
+        Assert.True(Shown("Value: 75"));
+        Assert.False(Shown("<Inscribe here>"));
+        InscriptionField(host).Text = string.Empty;
+        Assert.True(Shown("<Inscribe here>"));
+        InscriptionField(host).Text = "testomg";
         using var panel = AvaloniaPanel.Create(() => host.LastWindow!, AppraisalWindow.Width, 300);
         panel.Tick();
         var path = Environment.GetEnvironmentVariable("LEGACEY_APPRAISAL_RENDER");
@@ -645,6 +652,24 @@ public sealed class AppraisalTests
             bitmap.Render(host.LastWindow!);
             bitmap.Save(path);
         }
+    });
+
+    [Fact]
+    public void The_retail_layout_always_stands_a_player_behind_its_lines_but_a_creature_only_once_its_look_is_known() => OnWindowThread(() =>
+    {
+        // Neither look has been sent: the player's doll waits for it, the drudge gets none.
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { }, retailLayout: () => true);
+        appraisals.Request(0x50000C01);
+        appraisals.Receive(new ServerAppraisal(0x50000C01)
+        {
+            Strings = { [1] = "Big Dog" }, Ints = { [25] = 126, [188] = 1, [261] = 5 }, Creature = new CreatureWrite(10, 10, null, 0, 0),
+        }.Build());
+        Assert.Single(host.LastWindow!.GetLogicalDescendants().OfType<PaperdollView>());
+
+        appraisals.Request(0x80000B03);
+        appraisals.Receive(new ServerAppraisal(0x80000B03) { Strings = { [1] = "Drudge" }, Creature = new CreatureWrite(10, 10, null, 0, 0) }.Build());
+        Assert.Empty(host.LastWindow!.GetLogicalDescendants().OfType<PaperdollView>());
     });
 
     [Fact]

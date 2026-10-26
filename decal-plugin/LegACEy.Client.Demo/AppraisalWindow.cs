@@ -90,7 +90,7 @@ public sealed class AppraisalWindow
     /// <paramref name="figure"/> gives a creature's figure to stand behind its lines (null for none).
     /// </summary>
     public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe,
-        Func<Control, Size, Size>? measure = null, Action<AppraisalContent>? inspect = null, bool retail = false, Func<uint, Control?>? figure = null)
+        Func<Control, Size, Size>? measure = null, Action<AppraisalContent>? inspect = null, bool retail = false, Func<AppraisalContent, Control?>? figure = null)
     {
         var layout = Layout(content, inscribe, retail);
         var scroll = Scroll(layout.Body);
@@ -118,7 +118,7 @@ public sealed class AppraisalWindow
     /// creature already shown stays, turned as it was.
     /// </summary>
     public void Show(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe, Action<AppraisalContent>? inspect = null,
-        bool retail = false, Func<uint, Control?>? figure = null)
+        bool retail = false, Func<AppraisalContent, Control?>? figure = null)
     {
         var layout = Layout(content, inscribe, retail);
         var sameLayout = retail == _retail;
@@ -264,8 +264,8 @@ public sealed class AppraisalWindow
     }
 
     /// <summary>The retail layout's figure for a creature, standing still behind its lines; nothing for an item or the sections layout.</summary>
-    private static Control? Figure(AppraisalContent content, bool retail, Func<uint, Control?>? figure) =>
-        retail && content.Creature != null ? figure?.Invoke(content.ObjectId) : null;
+    private static Control? Figure(AppraisalContent content, bool retail, Func<AppraisalContent, Control?>? figure) =>
+        retail && content.Creature != null ? figure?.Invoke(content) : null;
 
     /// <summary>The frame's content: the header box, the scrolling body over the figure, and the inscription pinned under it.</summary>
     private static Grid Frame(Control top, Control behind, Control scroll, Control foot)
@@ -411,17 +411,11 @@ public sealed class AppraisalWindow
     {
         if (inscription.Mode == InscriptionMode.Editable)
         {
-            field = new InscriptionField(inscription.Text, text => inscribe(itemId, text), retail);
+            field = new InscriptionField(inscription.Text, text => inscribe(itemId, text), retail, inscription.Scribe);
             return field.Panel;
         }
         field = null;
-        if (retail)
-        {
-            var written = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2 };
-            if (inscription.Text.Length > 0) written.Children.Add(ParchmentText(inscription.Text, 12.5, FontStyle.Italic));
-            if (inscription.Scribe.Length > 0) written.Children.Add(ParchmentText("— inscribed by " + inscription.Scribe, 11, FontStyle.Normal));
-            return Parchment(written);
-        }
+        if (retail) return Parchment(ParchmentText(inscription.Text), inscription.Scribe);
         var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         panel.Children.Add(new TextBlock
         {
@@ -447,19 +441,18 @@ public sealed class AppraisalWindow
         private string? _sent;
         private bool _detached;
 
-        /// <param name="parchment">Draws the field as retail's parchment box, with "&lt;Inscribe here&gt;" while it is empty.</param>
-        public InscriptionField(string saved, Func<string, bool> save, bool parchment = false)
+        /// <param name="parchment">Draws the field as retail's parchment box, with "&lt;Inscribe here&gt;" centred while it is empty and
+        /// <paramref name="scribe"/> signed at the bottom right.</param>
+        public InscriptionField(string saved, Func<string, bool> save, bool parchment = false, string scribe = "")
         {
             _saved = saved;
             _save = save;
             _input = parchment
                 ? new TextBox
                 {
-                    Text = saved, Watermark = "<Inscribe here>", MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Title,
-                    FontSize = 12.5, Foreground = ParchmentInkBrush, CaretBrush = ParchmentInkBrush, Background = Brushes.Transparent,
-                    BorderThickness = new Thickness(0), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
-                    VerticalContentAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch,
-                    VerticalAlignment = VerticalAlignment.Stretch,
+                    Text = saved, MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Title, FontSize = 13,
+                    Foreground = ParchmentInkBrush, CaretBrush = ParchmentInkBrush, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+                    Padding = new Thickness(0), MinHeight = 0, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top,
                 }
                 : new TextBox
                 {
@@ -475,7 +468,17 @@ public sealed class AppraisalWindow
             _input.LostFocus += (_, _) => Save();
             if (parchment)
             {
-                Panel = Parchment(_input);
+                // The text box's own watermark follows its text to the top left; retail centres the placeholder in the box.
+                var placeholder = ParchmentText("<Inscribe here>");
+                placeholder.HorizontalAlignment = HorizontalAlignment.Center;
+                placeholder.VerticalAlignment = VerticalAlignment.Center;
+                placeholder.IsHitTestVisible = false;
+                placeholder.IsVisible = string.IsNullOrEmpty(saved);
+                _input.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property == TextBox.TextProperty) placeholder.IsVisible = string.IsNullOrEmpty(_input.Text);
+                };
+                Panel = Parchment(new Grid { Children = { _input, placeholder } }, scribe);
                 return;
             }
             var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2, Children = { _input } };
@@ -507,22 +510,35 @@ public sealed class AppraisalWindow
         }
     }
 
-    /// <summary>Retail's parchment inscription box at the window's foot, around its text.</summary>
-    private static Control Parchment(Control child) => new Border
+    /// <summary>
+    /// Retail's parchment inscription box at the window's foot: the text from its top left in dark ink, and the scribe signed at its
+    /// bottom right ("--Name") once someone has written on it.
+    /// </summary>
+    private static Control Parchment(Control text, string scribe)
     {
-        Height = ParchmentHeight, Margin = new Thickness(2, 4, 2, 0), BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(1),
-        Padding = new Thickness(8, 4), Child = child,
-        Background = new LinearGradientBrush
+        var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Children = { text } };
+        if (scribe.Length > 0)
         {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-            GradientStops = { new GradientStop(Color.Parse("#C9B48A"), 0), new GradientStop(Color.Parse("#A88F62"), 1) }
-        },
-    };
+            var signature = ParchmentText("--" + scribe);
+            signature.HorizontalAlignment = HorizontalAlignment.Right;
+            Grid.SetRow(signature, 1);
+            grid.Children.Add(signature);
+        }
+        return new Border
+        {
+            Height = ParchmentHeight, Margin = new Thickness(2, 4, 2, 0), BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(1),
+            Padding = new Thickness(5, 3), Child = grid,
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.Parse("#C9B48A"), 0), new GradientStop(Color.Parse("#A88F62"), 1) }
+            },
+        };
+    }
 
-    private static TextBlock ParchmentText(string text, double size, FontStyle style) => new()
+    private static TextBlock ParchmentText(string text) => new()
     {
-        Text = text, Foreground = ParchmentInkBrush, FontFamily = DerethPalette.Title, FontSize = size, FontStyle = style,
-        TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
+        Text = text, Foreground = ParchmentInkBrush, FontFamily = DerethPalette.Title, FontSize = 13, TextWrapping = TextWrapping.Wrap,
     };
 
     /// <summary>Raised values are the theme's green, lowered ones its red (the invalid colour), and the rest the text colour.</summary>

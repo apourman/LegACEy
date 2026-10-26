@@ -58,6 +58,13 @@ public sealed class PaperdollView : Border
         set => _view.IsHitTestVisible = !value;
     }
 
+    /// <summary>Whether the status line shows while the model loads or cannot be had; off for a figure drawn behind other text.</summary>
+    public bool StatusShown
+    {
+        get => _status.IsVisible;
+        set => _status.IsVisible = value;
+    }
+
     /// <summary>The body part (a setup part number) drawn at a point of this view, or -1.</summary>
     public int PartAt(Avalonia.Point point) => _view.PartAt(point);
 

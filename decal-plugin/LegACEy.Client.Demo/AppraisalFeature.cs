@@ -305,9 +305,14 @@ public sealed class AppraisalFeature
         catch (Exception exception) { _log($"Could not redraw the appraisal window: {exception.Message}"); }
     }
 
-    /// <summary>The retail layout's figure for a creature the looks know, standing still behind its lines.</summary>
-    private Avalonia.Controls.Control? Figure(uint objectId) =>
-        _host.Looks.Knows(objectId) ? new PaperdollView(_host.Looks, _host.PortalPath, objectId) { Still = true } : null;
+    /// <summary>
+    /// The retail layout's figure, standing still behind the lines: always for a player, whose look the doll waits for when the game has not
+    /// sent it yet, and for another creature when the looks know it. No status line shows behind the text.
+    /// </summary>
+    private Avalonia.Controls.Control? Figure(AppraisalContent content) =>
+        content.Creature is { Character: true } || _host.Looks.Knows(content.ObjectId)
+            ? new PaperdollView(_host.Looks, _host.PortalPath, content.ObjectId) { Still = true, StatusShown = false }
+            : null;
 
     /// <summary>
     /// The switch turned to retail's examination window: closes the open window and returns the world object it showed, for retail to
