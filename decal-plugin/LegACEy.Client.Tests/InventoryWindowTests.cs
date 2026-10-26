@@ -119,8 +119,8 @@ public sealed class InventoryWindowTests
 
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Character));
         Assert.Contains("Contents of Main Pack", host.Texts());
-        // The main pack is the character: clicking it selects them, as retail's does, so an item in use can target them.
-        Assert.Equal(new[] { $"select 0x{InventorySample.Character:X8}" }, port.Commands);
+        // A click selects the pack, never uses it; the main pack is the character, so an item in use can target them.
+        Assert.Equal(new[] { $"select 0x{InventorySample.Potions:X8}", $"select 0x{InventorySample.Character:X8}" }, port.Commands);
     });
 
     [Fact]
@@ -139,17 +139,16 @@ public sealed class InventoryWindowTests
         Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
         Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Character).Selected);
 
-        // Opening a pack leaves retail's selection on the focus, but the outline goes to the pack.
+        // A side pack is an item too: a click opens and selects it, and the outline goes to it.
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack));
+        Assert.Equal($"select 0x{InventorySample.Sack:X8}", port.Commands[^1]);
+        port.Push(InventorySample.Snapshot(focus: true, selected: InventorySample.Sack));
         InventoryDriver.Tick(host.Host);
         Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Sack).Selected);
         Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
 
-        // The focus is still retail's selection, so clicking it again changes nothing there; the outline comes back to it all the same.
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Focus));
-        InventoryDriver.Tick(host.Host);
-        Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
-        Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Sack).Selected);
+        Assert.Equal($"select 0x{InventorySample.Focus:X8}", port.Commands[^1]);
     });
 
     [Fact]

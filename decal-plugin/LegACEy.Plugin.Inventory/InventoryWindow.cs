@@ -93,8 +93,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     // The pack the player picked, or zero for the port's open container. Picking a pack is local, as in retail: the server answers a
     // use of a carried pack with only "use done", which flashed the busy cursor and changed nothing.
     private uint _picked;
-    // The last pack-column tile clicked: a selected focus keeps the column's outline only until another pack is clicked.
-    private uint _columnClicked;
     private IDisposable? _dragIcon;
     private bool _showSlots;
     private bool _suspended;
@@ -408,13 +406,14 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         if (slot.Place == SlotPlace.Pack)
         {
-            _columnClicked = slot.Container;
             // A focus takes a pack slot but holds nothing, so it does not open.
-            if (slot.Container != 0 && !IsFocus(_port.Snapshot, slot.Container)) _picked = slot.Container;
-            // Drawn now: the outline moves with the click even when retail's selection does not change (a focus clicked again).
-            Render(_port.Snapshot);
-            // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit). A focus
-            // is an item, so a click selects it. Either clears a picked set, as a plain click on an item does.
+            if (slot.Container != 0 && !IsFocus(_port.Snapshot, slot.Container))
+            {
+                _picked = slot.Container;
+                Render(_port.Snapshot);
+            }
+            // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit). A side
+            // pack or a focus is an item, so a click selects it. Any clears a picked set, as a plain click on an item does.
             if (TargetOf(slot) is var target and not 0)
             {
                 _selection.Clear();
@@ -656,18 +655,14 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return slot.Container != 0 && (slot.Container == s.MainPack.Id || s.SidePacks.Any(pack => pack.Id == slot.Container)) ? slot.Container : 0;
     }
 
-    /// <summary>The object a slot stands for when it is selected or targeted: its item, the character for the main pack, or a focus.</summary>
-    private uint TargetOf(InventorySlotId slot) =>
-        slot.Place != SlotPlace.Pack ? slot.ItemId
-        : slot.Container != 0 && (slot.Container == _port.Snapshot.MainPack.Id || IsFocus(_port.Snapshot, slot.Container)) ? slot.Container : 0;
+    /// <summary>The object a slot stands for when it is selected or targeted: its item, the character for the main pack, or a side pack.</summary>
+    private static uint TargetOf(InventorySlotId slot) => slot.Place != SlotPlace.Pack ? slot.ItemId : slot.Container;
 
     /// <summary>Whether a side-pack slot holds a focus: it takes the slot but holds nothing.</summary>
     private static bool IsFocus(InventorySnapshot s, uint id) => PackOf(s, id)?.Capacity == 0;
 
-    /// <summary>A pack tile is outlined while its pack is open, and a focus while it is retail's selection.</summary>
-    // A selected focus takes the outline from the open pack until a pack is clicked: one tile in the column is outlined.
-    private bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) =>
-        IsFocus(s, s.Selected) && _columnClicked == s.Selected ? id == s.Selected : id == open.Id;
+    /// <summary>A pack tile is outlined while its pack is open; a focus that is retail's selection takes the outline from it.</summary>
+    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => IsFocus(s, s.Selected) ? id == s.Selected : id == open.Id;
 
     private GameImage? DragImage(uint id)
     {
