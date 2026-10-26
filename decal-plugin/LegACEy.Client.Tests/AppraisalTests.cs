@@ -576,6 +576,78 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void The_retail_layout_boxes_a_player_s_header_and_runs_its_attributes_into_its_vitals()
+    {
+        // A Penumbraen male, non-PK, level 126, with Strength raised by a buff.
+        var bytes = new ServerAppraisal(0x50000C01)
+        {
+            Strings = { [1] = "Big Dog", [21] = "Ronin Kael" },
+            Ints = { [25] = 126, [188] = 10, [113] = 1, [261] = 5, [134] = 2 },
+            Creature = new CreatureWrite(412, 455, new uint[] { 200, 100, 100, 100, 60, 100, 380, 510, 380, 510 }, 0x1, 0x1),
+        }.Build();
+        var names = new CharacterNames(new Dictionary<uint, string>(), new Dictionary<uint, string> { [5] = "Vanquisher of the Olthoi" });
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, names: names);
+        var groups = RetailAppraisalLayout.Groups(content);
+
+        Assert.Equal(new[] { "Male Penumbraen", "Vanquisher of the Olthoi", "Non-Player Killer" }, content.Creature!.Lines);
+        Assert.Equal(("Character Level", "126"), (content.Creature.LevelCaption, content.Creature.Level));
+        Assert.Equal(new[] { "Strength", "Endurance", "Coordination", "Quickness", "Focus", "Self", "Health", "Stamina", "Mana" },
+            groups[0].Lines.Select(line => line.Label));
+        Assert.Equal(new RetailAppraisalLine("Strength", "200", AppraisalTone.Raised), groups[0].Lines[0]);
+        Assert.Equal(new RetailAppraisalLine("Health", "412/455 (91 %)"), groups[0].Lines[6]);
+        // The header box shows the PK status, so the lines do not.
+        Assert.DoesNotContain(groups.SelectMany(group => group.Lines), line => line.Label == "PK Status");
+    }
+
+    [Fact]
+    public void The_retail_layout_writes_an_item_as_label_value_lines_with_its_use_and_description_as_paragraphs()
+    {
+        var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells);
+        var wand = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A07)
+        {
+            Ints = { [106] = 370, [107] = 1492, [108] = 1494 },
+            Floats = { [5] = -1 / 15.0 },
+            SpellBook = { 0x1111u },
+        }.Build()), NoSpells);
+
+        Assert.Equal(new[]
+        {
+            new[] { "Value: 75", "Burden: 5" }, new[] { "Restores 75 points of Mana." }, new[] { "A small vial of glowing blue liquid." },
+        }, RetailAppraisalLayout.Groups(potion).Select(group => group.Lines.Select(line => line.Value).ToArray()));
+        Assert.Equal(new[]
+        {
+            new[] { "Spells: Spell 4369" }, new[] { "Spellcraft: 370", "Mana: 1,492 / 1,494", "Mana Cost: 1 point per 15 seconds" },
+        }, RetailAppraisalLayout.Groups(wand).Select(group => group.Lines.Select(line => line.Value).ToArray()));
+    }
+
+    [Fact]
+    public void Switching_to_the_retail_layout_redraws_the_open_window_with_a_parchment_inscription_box() => OnWindowThread(() =>
+    {
+        var retail = false;
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame(), retailLayout: () => retail);
+        appraisals.Request(Potion);
+        appraisals.Receive(InscribedPotion(Potion, string.Empty, string.Empty));
+        Assert.Equal("Inscribe here", InscriptionField(host).Watermark);
+
+        retail = true;
+        appraisals.Relayout();
+
+        Assert.Equal("<Inscribe here>", InscriptionField(host).Watermark);
+        Assert.Contains(host.LastWindow!.GetLogicalDescendants().OfType<TextBlock>(), text => text.Text == "Value: 75");
+        using var panel = AvaloniaPanel.Create(() => host.LastWindow!, AppraisalWindow.Width, 300);
+        panel.Tick();
+        var path = Environment.GetEnvironmentVariable("LEGACEY_APPRAISAL_RENDER");
+        if (path != null)
+        {
+            using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(AppraisalWindow.Width, 300));
+            bitmap.Render(host.LastWindow!);
+            bitmap.Save(path);
+        }
+    });
+
+    [Fact]
     public void A_character_with_no_named_monarch_shows_its_followers_and_its_society_with_the_rank_word()
     {
         // The template name marks a character (the server sends it for every player); the Celestial Hand bit with rank 150 is an Adept.

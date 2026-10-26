@@ -395,7 +395,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
-            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale));
+            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale),
+            retailLayout: AppraisalRetailLayout);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal,
             () => SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch));
         _row2Choice = new ShortcutRowChoice(_settingsStore);
@@ -1069,6 +1070,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
             VitalsRetailBars = new OptionChoice<bool>(_vitalsLayouts.RetailBars(SessionServer(), SessionCharacter()), SetVitalsRetailBars),
+            AppraisalRetailLayout = new OptionChoice<bool>(AppraisalRetailLayout(), SetAppraisalRetailLayout),
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
             ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore, SessionServer(), SessionCharacter()), SetChatTextSize),
             ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
@@ -3919,6 +3921,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _vitalsLayouts.SaveRetailBars(SessionServer(), SessionCharacter(), on);
         _vitalsLayoutPicked = true;
         if (_settings != null) _settings.VitalsRetailBars = new OptionChoice<bool>(on, SetVitalsRetailBars);
+    }
+
+    // The appraisal window's layout for the character: 1 for retail's, else the sections (backlog 082).
+    private const string AppraisalLayoutKey = "dereth-appraisal-retail-layout";
+
+    private bool AppraisalRetailLayout() => _settingsStore.Load(SessionServer(), SessionCharacter(), AppraisalLayoutKey) is { Location.X: 1 };
+
+    /// <summary>Keeps the character's appraisal layout; an open appraisal window draws again in it.</summary>
+    private void SetAppraisalRetailLayout(bool on)
+    {
+        _settingsStore.Save(SessionServer(), SessionCharacter(), AppraisalLayoutKey, (new Point(on ? 1 : 0, 0), null));
+        if (_settings != null) _settings.AppraisalRetailLayout = new OptionChoice<bool>(on, SetAppraisalRetailLayout);
+        _appraisal.Relayout();
     }
 
     /// <summary>

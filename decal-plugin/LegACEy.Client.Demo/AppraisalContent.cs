@@ -34,11 +34,19 @@ public sealed record AppraisalMeterRow(string Name, int Current, int Maximum, st
 public sealed record AppraisalSection(string Heading, IReadOnlyList<AppraisalRow> Rows);
 
 /// <summary>
+/// A creature's boxed header in the retail layout: its centred lines (gender and heritage, title and PK status for a character; its type
+/// for a creature), and the level cell beside them, its caption over the level.
+/// </summary>
+public sealed record AppraisalCreatureHeader(IReadOnlyList<string> Lines, string LevelCaption, string Level);
+
+/// <summary>
 /// What the appraisal window shows for one object: the header, the summary figures, the sections and the long description. The window
-/// draws this model and nothing else, so the rules that build it are tested without drawing. Built by <see cref="From"/>.
+/// draws this model and nothing else, so the rules that build it are tested without drawing. Built by <see cref="From"/>. A creature also
+/// has <see cref="Creature"/>, the header the retail layout boxes.
 /// </summary>
 public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Visual, string TypeLine, IReadOnlyList<AppraisalFigure> Figures,
-    IReadOnlyList<AppraisalSection> Sections, string Description, AppraisalInscription? Inscription, string Subtitle = "")
+    IReadOnlyList<AppraisalSection> Sections, string Description, AppraisalInscription? Inscription, string Subtitle = "",
+    AppraisalCreatureHeader? Creature = null)
 {
     // The server's property ids (ACE.Entity PropertyInt, PropertyString and PropertyDataId).
     private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;
@@ -177,7 +185,8 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             sections,
             response.Strings.TryGetValue(LongDescString, out var description) ? description : string.Empty,
             AppraisalInscription.From(response, characterName, carried, descriptionFlags),
-            hasCreatureProfile ? TitleOf(response, names ?? CharacterNames.None) : string.Empty);
+            hasCreatureProfile ? TitleOf(response, names ?? CharacterNames.None) : string.Empty,
+            hasCreatureProfile ? CreatureHeader(response, names ?? CharacterNames.None) : null);
     }
 
     /// <summary>A portal id the response sent, or zero when it did not.</summary>
@@ -608,6 +617,25 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         var kind = Int(response, CreatureTypeInt);
         var type = kind > 0 && names.CreatureTypes.TryGetValue((uint)kind, out var typeName) ? typeName : null;
         return Join(" · ", type, level);
+    }
+
+    /// <summary>
+    /// Retail's header box: a character's gender and heritage ("Male Penumbraen"), title and PK status over its Character Level; a creature's
+    /// type over its Level. A name the names do not hold is left out.
+    /// </summary>
+    private static AppraisalCreatureHeader CreatureHeader(AppraisalResponse response, CharacterNames names)
+    {
+        var level = response.Ints.TryGetValue(LevelInt, out var value) && value > 0 ? Invariant(value) : string.Empty;
+        if (!IsCharacter(response))
+        {
+            var kind = Int(response, CreatureTypeInt);
+            var type = kind > 0 && names.CreatureTypes.TryGetValue((uint)kind, out var typeName) ? typeName : null;
+            return new AppraisalCreatureHeader(new[] { type }.OfType<string>().ToList(), "Level", level);
+        }
+        var gender = Int(response, GenderInt) switch { 1 => "Male", 2 => "Female", _ => null };
+        var lines = new[] { Join(" ", gender, Named(HeritageNames, Int(response, HeritageGroupInt))), TitleOf(response, names),
+            PkStatusText(Int(response, PlayerKillerStatusInt)) };
+        return new AppraisalCreatureHeader(lines.OfType<string>().Where(line => line.Length > 0).ToList(), "Character Level", level);
     }
 
     /// <summary>A character's title, muted under the type line. A creature has none.</summary>
