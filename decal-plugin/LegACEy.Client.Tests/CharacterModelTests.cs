@@ -30,6 +30,23 @@ public sealed class CharacterModelTests
     }
 
     [Fact]
+    public void Real_dat_human_stands_in_retail_s_paperdoll_stance()
+    {
+        var path = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");
+        if (string.IsNullOrWhiteSpace(path)) return;
+        using var dat = new PortalDat(path);
+
+        var rest = CharacterModel.Build(dat, Appearance());
+        var stance = CharacterModel.Build(dat, Appearance(), CharacterModel.PaperDollPose);
+
+        // Still standing, but elbows and feet out: wider than the rest pose.
+        Assert.InRange(stance.Top - stance.Bottom, 1.6f, 2.0f);
+        Assert.True(Width(stance) > Width(rest) + 0.05f, $"stance {Width(stance)}, rest {Width(rest)}");
+        static float Width(CharacterModel model) =>
+            model.Meshes.SelectMany(mesh => mesh.Vertices).Max(v => v.X) - model.Meshes.SelectMany(mesh => mesh.Vertices).Min(v => v.X);
+    }
+
+    [Fact]
     public void Real_dat_human_holds_a_wielded_sword_in_the_right_hand()
     {
         var path = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");

@@ -120,8 +120,8 @@ dragged onto a pack's tile or into its slots, the set moves there one item after
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
 paperdoll alone, which drags to turn. The client reads every object's look from the game's own messages, so Inspect and the inventory's
 doll work on any server; only objects outside the world (Vault items) ask a LegACEy server (`paperdoll.inspect`). The expand button in the
-inventory's doll area opens the same window on your own character, from its first view each time. The inventory's doll stands still,
-facing front without what it holds, and fills the panel above the Slots row. A click, drag, right-click or double-click on it acts on the
+inventory's doll area opens the same window on your own character, from its first view each time. The inventory's doll stands still in
+retail's paperdoll stance, facing front without what it holds, and takes the panel's height above the Slots row, its head beside the aetheria row. A click, drag, right-click or double-click on it acts on the
 worn item drawn under the pointer, as on that item's slot, and a drop on it wields the item; a weapon or shield dropped there first
 puts the one it replaces back in the main pack. While an item is dragged, the body parts
 it covers are outlined: gold where it can be worn, red where it can't, teal for a worn item being lifted. Which worn item draws which

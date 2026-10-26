@@ -111,8 +111,8 @@ public sealed class ModelView : Border
 
     /// <summary>
     /// The world, view and projection the host draws a model with in a view of the size, turned, zoomed and centred as given; null when
-    /// there is nothing to frame. The camera stands back far enough for the model's height. A model wider than it is tall (a shield, a
-    /// sword lying down) is fitted by its width at any turn instead, so it shows whole; a character keeps its tight height framing. An
+    /// there is nothing to frame. The camera stands back far enough for the model's height, and further when the view is too narrow for
+    /// its width at any turn (a shield, a sword lying down, a wide stance in a slim view), so it always shows whole. An
     /// empty model or no zoom gives no distance: CreateLookAt would make NaNs. System.Numerics builds the same right-handed matrices as
     /// D3DX's RotationZ, LookAtRH and PerspectiveFovRH.
     /// </summary>
@@ -120,7 +120,7 @@ public sealed class ModelView : Border
         float zoom, float focus)
     {
         var tall = model.Top - model.Bottom;
-        var span = 2 * model.Radius > tall ? Math.Max(tall, 2 * model.Radius * height / width) : tall;
+        var span = Math.Max(tall, 2 * model.Radius * height / width);
         var fit = span * Framing / 2 / (float)Math.Tan(FieldOfView / 2);
         if (!(fit > 0) || !(zoom > 0) || !(width > 0) || !(height > 0)) return null;
         var middle = model.Bottom + tall * focus;

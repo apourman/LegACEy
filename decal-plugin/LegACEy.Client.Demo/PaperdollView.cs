@@ -49,7 +49,7 @@ public sealed class PaperdollView : Border
     public void ResetView() => _view.ResetView();
 
     /// <summary>
-    /// The inventory's doll, as retail's: the character holds still facing the viewer, without what it holds, and takes no pointer input,
+    /// The inventory's doll, as retail's: the character holds still in retail's stance facing the viewer, without what it holds, and takes no pointer input,
     /// so the window under it gets the presses and picks the body part with <see cref="PartAt"/>.
     /// </summary>
     public bool Still
@@ -128,9 +128,10 @@ public sealed class PaperdollView : Border
             Task.Run(() =>
             {
                 using var dat = new PortalDat(_portalPath);
-                var model = CharacterModel.Build(dat, still
-                    ? new CharacterAppearance(appearance.SetupId, appearance.PaletteId, appearance.SubPalettes, appearance.TextureChanges, appearance.PartChanges)
-                    : appearance);
+                var model = still
+                    ? CharacterModel.Build(dat, new CharacterAppearance(appearance.SetupId, appearance.PaletteId, appearance.SubPalettes,
+                        appearance.TextureChanges, appearance.PartChanges), CharacterModel.PaperDollPose)
+                    : CharacterModel.Build(dat, appearance);
                 return (Model: model, Tables: still ? TablesFor(dat, appearance.SetupId) : null);
             }).ContinueWith(task => Dispatcher.UIThread.Post(() =>
             {
