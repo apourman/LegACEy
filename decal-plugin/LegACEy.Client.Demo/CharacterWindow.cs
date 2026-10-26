@@ -32,7 +32,8 @@ public interface ICharacterGame
 
 /// <summary>
 /// The Dereth character window, retail's Attributes, Skills and Titles tabs in retail's order: a plaque with the name, level and
-/// experience, the list, and a plate at the bottom that raises or trains the selected row. Every group (attributes, vitals and each skill group) folds, and the folds are
+/// experience, the list, and a plate at the bottom with the credits and experience to spend. A click on a row drops its cost and its Raise
+/// and +10 (or Train) down under it; a second click folds it away. Every group (attributes, vitals and each skill group) folds, and the folds are
 /// remembered. One instance serves the session; <see cref="Refresh"/> redraws what changed.
 /// </summary>
 public sealed class CharacterWindow
@@ -93,7 +94,7 @@ public sealed class CharacterWindow
     private uint _titleSelected;
     private IReadOnlyList<CharacterRow> _rows = Array.Empty<CharacterRow>();
     private IReadOnlyList<CharacterRow>? _drawnRows;
-    private string? _drawnPlaque, _drawnFoot, _drawnTitles;
+    private string? _drawnPlaque, _drawnFoot, _drawnTitles, _drawnInline;
     // The untrained skill whose Train was pressed once: a second press spends the credits.
     private uint _confirmTrain;
 
@@ -258,7 +259,7 @@ public sealed class CharacterWindow
         }
         _rows = _tab == 0 ? CharacterRows.Attributes(_sheet, tables, _game.Value, _game.Current) : CharacterRows.Skills(_sheet, tables, _game.Value);
         DrawPlaque(tables);
-        if (_drawnRows == null || !_drawnRows.SequenceEqual(_rows)) DrawList(tables);
+        if (_drawnRows == null || !_drawnRows.SequenceEqual(_rows) || _drawnInline != InlineKey) DrawList();
         DrawFoot();
     }
 
@@ -294,9 +295,10 @@ public sealed class CharacterWindow
         _plaque.Content = Plate(grid, padding: 0);
     }
 
-    private void DrawList(CharacterTables tables)
+    private void DrawList()
     {
         _drawnRows = _rows;
+        _drawnInline = InlineKey;
         _list.Children.Clear();
         // Every group folds from its band: the attributes and vitals as the skill groups do.
         var height = _tab == 0 ? AttributeRowHeight : SkillRowHeight;
@@ -304,7 +306,11 @@ public sealed class CharacterWindow
         {
             _list.Children.Add(Band(group.Key, group.Count()));
             if (_folded.Contains(group.Key)) continue;
-            foreach (var row in group) _list.Children.Add(Row(row, height));
+            foreach (var row in group)
+            {
+                _list.Children.Add(Row(row, height));
+                if (IsSelected(row)) _list.Children.Add(Inline(row));
+            }
         }
     }
 
@@ -371,7 +377,14 @@ public sealed class CharacterWindow
         {
             if (!e.GetCurrentPoint(border).Properties.IsLeftButtonPressed) return;
             e.Handled = true;
-            Select(row.Kind, row.Id);
+            if (!IsSelected(row)) Select(row.Kind, row.Id);
+            else
+            {
+                _selected = null;
+                _confirmTrain = 0;
+                _drawnRows = null;
+                Refresh();
+            }
         };
         return border;
     }
@@ -397,31 +410,23 @@ public sealed class CharacterWindow
         : row.Group is CharacterGroup.Untrained or CharacterGroup.Unusable ? DerethPalette.MutedBrush
         : DerethPalette.TextBrush;
 
+    /// <summary>The plate at the bottom: what the character has to spend.</summary>
     private void DrawFoot()
     {
-        var row = SelectedRow;
-        var key = row == null ? $"none|{_tab}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}"
-            : $"{row}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}|{_confirmTrain}";
+        var key = $"{_tab}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}";
         if (key == _drawnFoot) return;
         _drawnFoot = key;
-
         var stack = new StackPanel { Spacing = 3 };
-        if (row == null)
-        {
-            stack.Children.Add(Centred(Label(_tab == 1 ? "Select a Skill to Improve" : "Select an Attribute to Improve", 14, DerethPalette.CreamBrush, title: true)));
-            stack.Children.Add(Pair("Skill Credits Available", _sheet.SkillCredits.ToString(CultureInfo.InvariantCulture)));
-            stack.Children.Add(Pair("Unassigned Experience", Number(_sheet.UnassignedExperience)));
-            _foot.Content = Plate(stack);
-            return;
-        }
+        stack.Children.Add(Pair("Skill Credits Available", _sheet.SkillCredits.ToString(CultureInfo.InvariantCulture)));
+        stack.Children.Add(Pair("Unassigned Experience", Number(_sheet.UnassignedExperience)));
+        _foot.Content = Plate(stack);
+    }
 
-        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 6, MinHeight = 24 };
-        head.Children.Add(Label($"{row.Name}: {ValueText(row)}", 14, DerethPalette.CreamBrush, title: true));
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(buttons, 1);
-        head.Children.Add(buttons);
-        stack.Children.Add(head);
-
+    /// <summary>What drops down under the selected row: its cost, and Raise and +10, or Train.</summary>
+    private Control Inline(CharacterRow row)
+    {
+        var stack = new StackPanel { Spacing = 3 };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Right };
         if (row.TrainCost > 0)
         {
             var affordable = row.TrainCost <= _sheet.SkillCredits;
@@ -430,7 +435,6 @@ public sealed class CharacterWindow
             ToolTip.SetTip(train, armed ? "Press again to spend the credits" : $"Spend {row.TrainCost} skill credits to train {row.Name}");
             buttons.Children.Add(train);
             stack.Children.Add(Pair("Credits To Train", row.TrainCost.ToString(CultureInfo.InvariantCulture), short_: !affordable));
-            stack.Children.Add(Pair("Skill Credits Available", _sheet.SkillCredits.ToString(CultureInfo.InvariantCulture)));
         }
         else if (row.NextCost is { } next)
         {
@@ -438,15 +442,18 @@ public sealed class CharacterWindow
             buttons.Children.Add(Button("+10", row.TenCost is { } ten && ten > 0 && ten <= unassigned, () => Raise(ten: true)));
             buttons.Children.Add(Button("Raise", next > 0 && next <= unassigned, () => Raise(ten: false)));
             stack.Children.Add(Pair("Experience To Raise", Number(next), short_: next > unassigned));
-            stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
         }
-        else
+        else stack.Children.Add(Pair("Experience To Raise", row.AtMax ? "Max" : "–"));
+        if (buttons.Children.Count > 0) stack.Children.Add(buttons);
+        return new Border
         {
-            stack.Children.Add(Pair("Experience To Raise", row.AtMax ? "Max" : "–"));
-            stack.Children.Add(Pair("Unassigned Experience", Number(_sheet.UnassignedExperience)));
-        }
-        _foot.Content = Plate(stack);
+            Margin = new Thickness(26, 0, 2, 4), Padding = new Thickness(7, 5, 7, 6), Background = PlateBrush,
+            BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(2, 0, 0, 0), Child = stack
+        };
     }
+
+    // What the drop-down under the selected row shows besides the row itself: redrawn when it changes.
+    private string InlineKey => $"{_selected}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}|{_confirmTrain}";
 
     private void DrawTitles()
     {

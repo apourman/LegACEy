@@ -134,8 +134,9 @@ window. The file is only checked, never consumed. A drag that leaves the LegACEy
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
 The Dereth character window replaces retail's character panel (its key and toolbar button open it) with the same three tabs. Attributes
-and Skills share a plaque with the name, heritage, title, player-killer status, experience and level, and a plate at the bottom: select a
-row to see what its next rank costs, then Raise or +10. An untrained skill shows Train with its credit cost; the first press asks, the
+and Skills share a plaque with the name, heritage, title, player-killer status, experience and level, and a plate at the bottom with the
+credits and experience to spend. Click a row and its next rank's cost drops down under it with Raise and +10; click it again to fold it
+away. An untrained skill drops down Train with its credit cost; the first press asks, the
 second spends the credits. Every group (Attributes, Vitals, and the Specialized, Trained, Untrained and Unusable skills) folds from its
 band, remembered per character.
 Titles lists every title the character holds and sets the display title. Values come from Decal, buffs included: green when raised, red
