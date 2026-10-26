@@ -259,6 +259,7 @@ internal static class RetailPanelCatalogue
         Shared("UIElement::GetCurrentPosition"),
         Shared("UIElement::SetSaveLocation"),
         Shared("UIElement::MoveTo"),
+        Shared("RootElementId::CharacterPanel"),
         Shared("RootElementId::Examination"),
         Shared("RootElementId::ExaminationInscription"),
         new NativeUiEntry("gmPanelUI::RecvNotice_SetPanelVisibility", RecvNoticeSetPanelVisibility, NativeUiCatalogue.Bytes(

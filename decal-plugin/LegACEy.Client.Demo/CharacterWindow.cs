@@ -173,9 +173,6 @@ public sealed class CharacterWindow
     /// <summary>Runs when the player closes the window with its close box.</summary>
     public Action? Close { get; set; }
 
-    /// <summary>The open tab: 0 Attributes, 1 Skills, 2 Titles.</summary>
-    public int Tab => _tab;
-
     /// <summary>The rows the open Attributes or Skills tab lists, folded groups included.</summary>
     public IReadOnlyList<CharacterRow> Rows => _rows;
 
@@ -500,13 +497,6 @@ public sealed class CharacterWindow
             };
             _titleList.Children.Add(border);
         }
-    }
-
-    /// <summary>Selects a title, as a click on it does.</summary>
-    public void SelectTitle(uint title)
-    {
-        _titleSelected = title;
-        Refresh();
     }
 
     /// <summary>Sets the selected title as the display title, as the button does.</summary>

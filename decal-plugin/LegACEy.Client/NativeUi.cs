@@ -27,6 +27,8 @@ internal static class NativeUi
     public const uint Vitae = 0x1000018A;
     /// <summary>InventoryPanel_Field, the retail inventory panel root.</summary>
     public const uint InventoryPanel = 0x1000018B;
+    /// <summary>The character panel (Attributes, Skills, Titles), placed under PanelPages as gmPanelUI's panel 11.</summary>
+    public const uint CharacterPanel = 0x1000018E;
     /// <summary>
     /// Retail's toolbar window: the framed panel placed in LayoutDesc 0x21000005 as 0x10000603 (from 0x21000070/0x10000602), holding the
     /// toolbar. The takeover hides and moves this one. RootToolbar_Field (0x10000191) is only the base id and finds nothing.

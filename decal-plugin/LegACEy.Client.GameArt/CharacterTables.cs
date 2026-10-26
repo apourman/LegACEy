@@ -7,7 +7,7 @@ namespace LegACEy.Client.GameArt;
 /// <summary>A skill as the portal DAT's skill table describes it: its name, icon, credit costs, and what it is trained from.</summary>
 public sealed class SkillDefinition
 {
-    public SkillDefinition(uint id, string name, string description, uint iconId, int trainedCost, int specializedCost, uint minLevel,
+    public SkillDefinition(uint id, string name, string description, uint iconId, int trainedCost, uint minLevel,
         uint attribute1, uint attribute2, uint divisor, bool hasFormula)
     {
         Id = id;
@@ -15,7 +15,6 @@ public sealed class SkillDefinition
         Description = description;
         IconId = iconId;
         TrainedCost = trainedCost;
-        SpecializedCost = specializedCost;
         MinLevel = minLevel;
         Attribute1 = attribute1;
         Attribute2 = attribute2;
@@ -29,7 +28,6 @@ public sealed class SkillDefinition
     public uint IconId { get; }
     /// <summary>The skill credits training costs; the train action must send exactly this.</summary>
     public int TrainedCost { get; }
-    public int SpecializedCost { get; }
     /// <summary>1: usable untrained; 2: unusable until trained (retail's Unusable Skills group).</summary>
     public uint MinLevel { get; }
     /// <summary>The attributes the skill is trained from (ACE's attribute ids, 1 Strength to 6 Self; 0 none) and their divisor.</summary>
@@ -96,7 +94,7 @@ public sealed class CharacterTables
             Align(reader);
             var icon = reader.ReadUInt32();
             var trained = reader.ReadInt32();
-            var specialized = reader.ReadInt32();
+            reader.ReadInt32(); // specialized cost: specializing is an NPC's, not this window's
             reader.ReadUInt32(); // category
             reader.ReadUInt32(); // chargen use
             var minLevel = reader.ReadUInt32();
@@ -108,7 +106,7 @@ public sealed class CharacterTables
             var attribute2 = reader.ReadUInt32();
             reader.BaseStream.Seek(3 * 8, SeekOrigin.Current); // upper and lower bound, learn mod
             if (name.Length == 0) continue;
-            skills[id] = new SkillDefinition(id, name, description, icon, trained, specialized, minLevel, attribute1, attribute2, divisor, x != 0);
+            skills[id] = new SkillDefinition(id, name, description, icon, trained, minLevel, attribute1, attribute2, divisor, x != 0);
         }
         return skills;
     }

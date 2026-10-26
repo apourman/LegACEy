@@ -430,7 +430,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // The sheet reads the server's messages from the start; retail's character panel is taken over only with its addresses checked.
             _character = new CharacterFeature(this,
                 NativeUi.Ready && RetailPanelCatalogueValid()
-                    ? new NativeRetailPanelPort(NativeRetailPanelPort.CharacterElement, NativeRetailPanelPort.CharacterPanelId)
+                    ? new NativeRetailPanelPort(NativeUi.CharacterPanel, NativeRetailPanelPort.CharacterPanelId)
                     : null,
                 () => _portal?.ReadCharacterTables(Log) ?? CharacterTables.None, () => _portal?.ReadCharacterNames(Log).Titles ?? new Dictionary<uint, string>(),
                 () => _channelTransport, _settingsStore, () => (SessionServer(), SessionCharacter()), Log);

@@ -320,7 +320,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     {
         RetailPanel.WorldMap => 0x1000018C,
         RetailPanel.Options => 0x1000018D,
-        RetailPanel.Skills => 0x1000018E,
+        RetailPanel.Skills => NativeUi.CharacterPanel,
         RetailPanel.Social => 0x1000018F,
         RetailPanel.Magic => 0x10000190,
         RetailPanel.Quests => 0x10000559,

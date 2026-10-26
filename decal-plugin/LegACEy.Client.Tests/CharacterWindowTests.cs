@@ -43,9 +43,9 @@ public sealed class CharacterWindowTests
     private static CharacterTables Tables() => new(
         new Dictionary<uint, SkillDefinition>
         {
-            [24] = new(24, "Run", "Helps you run faster.", 0x06000173, 0, 4, 1, 3, 0, 1, true),
-            [38] = new(38, "Alchemy", "Brew potions.", 0x060019E4, 4, 12, 2, 4, 5, 3, true),
-            [20] = new(20, "Deception", "Lie.", 0x0600016A, 4, 6, 1, 5, 0, 1, false),
+            [24] = new(24, "Run", "Helps you run faster.", 0x06000173, 0, 1, 3, 0, 1, true),
+            [38] = new(38, "Alchemy", "Brew potions.", 0x060019E4, 4, 2, 4, 5, 3, true),
+            [20] = new(20, "Deception", "Lie.", 0x0600016A, 4, 1, 5, 0, 1, false),
         },
         new CharacterTables.Xp
         {
@@ -63,7 +63,6 @@ public sealed class CharacterWindowTests
         var sheet = new CharacterSheet();
         sheet.Receive(GameEvent, Description());
 
-        Assert.True(sheet.Known);
         Assert.Equal(5, sheet.Level);
         Assert.Equal(4, sheet.SkillCredits);
         Assert.Equal(2, sheet.PlayerKillerStatus);
@@ -100,8 +99,10 @@ public sealed class CharacterWindowTests
     {
         var sheet = new CharacterSheet();
         var description = Description();
-        sheet.Receive(GameEvent, description.AsSpan(0, description.Length - 10));
-        Assert.False(sheet.Known);
+        // Cut inside the int table, before the level: read no further, and nothing throws.
+        sheet.Receive(GameEvent, description.AsSpan(0, 30));
+        Assert.Empty(sheet.Attributes);
+        Assert.Equal(0, sheet.Level);
     }
 
     [Fact]

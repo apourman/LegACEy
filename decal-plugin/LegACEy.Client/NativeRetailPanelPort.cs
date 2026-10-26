@@ -14,8 +14,8 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
     // The inventory panel's id in gmPanelUI's panel table: 7, from the element property 0x10000029 of InventoryPanel_Field
     // (the InventoryButton in layout 0x21000016 carries the same id).
     private const uint InventoryPanelId = 7;
-    // The character panel: placed as 0x1000018E under PanelPages, panel number 11 (RetailPanel.Skills), as the toolbar reads it.
-    internal const uint CharacterElement = 0x1000018E, CharacterPanelId = 11;
+    // The character panel's number in gmPanelUI's panel table (RetailPanel.Skills).
+    internal const uint CharacterPanelId = 11;
 
     private readonly uint _elementId;
     private readonly uint _panelId;

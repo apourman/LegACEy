@@ -35,8 +35,6 @@ public sealed class CharacterSheet
     // Ranks a raise sent from this client bought that the server has not confirmed yet, by kind and id: Decal's values lag by them.
     private readonly Dictionary<(StatKind, uint), uint> _unconfirmed = new();
 
-    /// <summary>Whether a PlayerDescription has been read this session.</summary>
-    public bool Known { get; private set; }
     public int Level { get; private set; }
     public int SkillCredits { get; private set; }
     public long TotalExperience { get; private set; }
@@ -100,7 +98,6 @@ public sealed class CharacterSheet
     /// <summary>Logoff: the next character's description starts afresh.</summary>
     public void Clear()
     {
-        Known = false;
         _attributes.Clear();
         _vitals.Clear();
         _skills.Clear();
@@ -238,7 +235,6 @@ public sealed class CharacterSheet
         }
         if ((vectors & SkillVector) != 0)
             for (var count = Header(ref reader); count > 0; count--) ReadSkill(ref reader);
-        Known = true;
     }
 
     /// <summary>A skill as the description and PrivateUpdateSkill write it, from its id.</summary>
