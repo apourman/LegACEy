@@ -195,8 +195,8 @@ public sealed class AppraisalWindow
 
     /// <summary>
     /// The retail layout's lines in Palatino, a blank line between groups. An item's lines wrap across the window in one colour. A
-    /// creature's labels sit on the left with the values at the right edge, or in a column after the labels for a column group, each value
-    /// coloured by its tone; a shadow keeps them readable over the figure.
+    /// creature's labels sit on the left with the values at the right edge, each value coloured by its tone; a shadow keeps them readable
+    /// over the figure.
     /// </summary>
     private static Control RetailBody(AppraisalContent content)
     {
@@ -208,14 +208,14 @@ public sealed class AppraisalWindow
         {
             if (!first) body.Children.Add(new Border { Height = RetailLineHeight * group.BlankLinesBefore });
             first = false;
-            foreach (var line in group.Lines) body.Children.Add(creature ? RetailRow(line, group.Column) : RetailText(line.Value, DerethPalette.TextBrush, wrap: true));
+            foreach (var line in group.Lines) body.Children.Add(creature ? RetailRow(line) : RetailText(line.Value, DerethPalette.TextBrush, wrap: true));
         }
         return body;
     }
 
-    private static Control RetailRow(RetailAppraisalLine line, bool column)
+    private static Control RetailRow(RetailAppraisalLine line)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(column ? "58*,42*" : "*,Auto") };
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         grid.Children.Add(RetailText(line.Label ?? string.Empty, DerethPalette.TextBrush));
         var value = RetailText(line.Value, line.Tone == AppraisalTone.Normal ? DerethPalette.TextBrush : ToneBrush(line.Tone));
         Grid.SetColumn(value, 1);
@@ -267,13 +267,19 @@ public sealed class AppraisalWindow
     private static Control? Figure(AppraisalContent content, bool retail, Func<AppraisalContent, Control?>? figure) =>
         retail && content.Creature != null ? figure?.Invoke(content) : null;
 
-    /// <summary>The frame's content: the header box, the scrolling body over the figure, and the inscription pinned under it.</summary>
+    /// <summary>
+    /// The frame's content: the header box, the scrolling body over the figure, and the inscription pinned under it. As retail's, the
+    /// figure stands in the middle 44% of the body, clear of the labels on the left and the values on the right.
+    /// </summary>
     private static Grid Frame(Control top, Control behind, Control scroll, Control foot)
     {
         var grid = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         grid.Children.Add(top);
-        Grid.SetRow(behind, 1);
-        grid.Children.Add(behind);
+        var middle = new Grid { ColumnDefinitions = new ColumnDefinitions("28*,44*,28*"), IsHitTestVisible = false };
+        Grid.SetColumn(behind, 1);
+        middle.Children.Add(behind);
+        Grid.SetRow(middle, 1);
+        grid.Children.Add(middle);
         Grid.SetRow(scroll, 1);
         grid.Children.Add(scroll);
         Grid.SetRow(foot, 2);

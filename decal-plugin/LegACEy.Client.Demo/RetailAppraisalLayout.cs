@@ -8,17 +8,14 @@ namespace LegACEy.Client.Demo;
 /// <summary>A line of the retail layout: a label and its value, or text across the window when there is no label. The tone colours the value.</summary>
 public sealed record RetailAppraisalLine(string? Label, string Value, AppraisalTone Tone = AppraisalTone.Normal);
 
-/// <summary>
-/// A run of lines with the blank lines above it (none above the first group). <see cref="Column"/> starts the values in one column after
-/// the labels, as retail lines up the armour levels, instead of at the window's right edge.
-/// </summary>
-public sealed record RetailAppraisalGroup(IReadOnlyList<RetailAppraisalLine> Lines, int BlankLinesBefore = 1, bool Column = false);
+/// <summary>A run of lines with the blank lines above it (none above the first group).</summary>
+public sealed record RetailAppraisalGroup(IReadOnlyList<RetailAppraisalLine> Lines, int BlankLinesBefore = 1);
 
 /// <summary>
 /// The retail layout of an appraisal (backlog 082): the same content as the sections layout, without headings, in groups split by blank
 /// lines, as retail's examination panel writes it. An item is plain "Label: value" lines in one colour, with use text and the description
 /// as paragraphs. A creature is labels with their values at the right, attributes then vitals in one run, the vitals as
-/// "413/413 (100 %)" text, and its tones kept, so only a buffed or debuffed stat is coloured.
+/// "413/413 (100 %)" text (stamina and mana without the percentage), and its tones kept, so only a buffed or debuffed stat is coloured.
 /// </summary>
 public static class RetailAppraisalLayout
 {
@@ -121,7 +118,7 @@ public static class RetailAppraisalLayout
         var groups = new[]
         {
             new RetailAppraisalGroup(Rows("Attributes").Concat(Rows("Vitals")).Select(CreatureLine).ToList()),
-            new RetailAppraisalGroup(Rows("Armor").Select(CreatureLine).ToList(), BlankLinesBefore: 2, Column: true),
+            new RetailAppraisalGroup(Rows("Armor").Select(CreatureLine).ToList(), BlankLinesBefore: 2),
             new RetailAppraisalGroup(Rows("Ratings").Select(CreatureLine).ToList()),
             new RetailAppraisalGroup(Rows("Allegiance").Select(CreatureLine).ToList()),
             // The header box shows the PK status.
@@ -130,9 +127,12 @@ public static class RetailAppraisalLayout
         return groups.Where(group => group.Lines.Count > 0).ToList();
     }
 
+    // Retail gives health its percentage, and stamina and mana only current over maximum.
     private static RetailAppraisalLine CreatureLine(AppraisalRow row) => row is AppraisalMeterRow meter
-        ? new RetailAppraisalLine(meter.Name, string.Format(CultureInfo.InvariantCulture, "{0}/{1} ({2:0} %)", meter.Current, meter.Maximum,
-            meter.Maximum > 0 ? Math.Round(100.0 * meter.Current / meter.Maximum) : 0), meter.Tone)
+        ? new RetailAppraisalLine(meter.Name, meter.Fill == AppraisalMeterFill.Health
+            ? string.Format(CultureInfo.InvariantCulture, "{0}/{1} ({2:0} %)", meter.Current, meter.Maximum,
+                meter.Maximum > 0 ? Math.Round(100.0 * meter.Current / meter.Maximum) : 0)
+            : string.Format(CultureInfo.InvariantCulture, "{0}/{1}", meter.Current, meter.Maximum), meter.Tone)
         : new RetailAppraisalLine(row.Label, row.Text, row.Tone);
 
     private static RetailAppraisalLine Text(string text) => new(null, text);

@@ -596,6 +596,7 @@ public sealed class AppraisalTests
             groups[0].Lines.Select(line => line.Label));
         Assert.Equal(new RetailAppraisalLine("Strength", "200", AppraisalTone.Raised), groups[0].Lines[0]);
         Assert.Equal(new RetailAppraisalLine("Health", "412/455 (91 %)"), groups[0].Lines[6]);
+        Assert.Equal(new RetailAppraisalLine("Stamina", "380/380"), groups[0].Lines[7]);
         // The header box shows the PK status, so the lines do not.
         Assert.DoesNotContain(groups.SelectMany(group => group.Lines), line => line.Label == "PK Status");
     }
