@@ -618,7 +618,28 @@ public sealed class AppraisalTests
         Assert.Equal(new[]
         {
             new[] { "Spells: Spell 4369" }, new[] { "Spellcraft: 370", "Mana: 1,492 / 1,494", "Mana Cost: 1 point per 15 seconds" },
+            new[] { "Spell Descriptions:", "~ Spell 4369: " },
         }, RetailAppraisalLayout.Groups(wand).Select(group => group.Lines.Select(line => line.Value).ToArray()));
+    }
+
+    [Fact]
+    public void The_retail_layout_gathers_an_item_s_properties_on_one_line_and_says_what_it_covers_after_its_armor()
+    {
+        // A bonded, attuned, retained, dyeable breastplate with a Bludgeon Rending imbue, covering the chest and upper arms.
+        var bytes = new ServerAppraisal(0x80000A06)
+        {
+            Ints = { [1] = 0x2, [28] = 650, [33] = 1, [114] = 1, [179] = 0x20 },
+            Bools = { [91] = true, [100] = true },
+            Armor = new[] { 1.2f, 1.0f, 1.2f, 0.78f, 0.38f, 1.0f, 0f, 1.0f },
+        }.Build();
+
+        var groups = RetailAppraisalLayout.Groups(AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, validLocations: 0x200,
+            coverage: 0x0008 | 0x1000)).Select(group => group.Lines.Select(line => line.Value).ToList()).ToList();
+        var lines = groups.SelectMany(group => group).ToList();
+
+        Assert.Contains("Properties: Bludgeon Rending, Attuned, Bonded, Retained, Dyeable", lines);
+        Assert.DoesNotContain(lines, line => line is "Attuned" or "Bonded" or "Dyeable" || line.StartsWith("Imbued Effect", StringComparison.Ordinal));
+        Assert.Equal("Covers Chest, Upper Arms", groups.Single(group => group[0].StartsWith("Armor level", StringComparison.Ordinal))[^1]);
     }
 
     [Fact]

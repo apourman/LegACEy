@@ -25,22 +25,75 @@ public static class RetailAppraisalLayout
     public static IReadOnlyList<RetailAppraisalGroup> Groups(AppraisalContent content) =>
         content.Creature != null ? CreatureGroups(content) : ItemGroups(content);
 
+    // The section headings are AppraisalContent's: the retail layout drops them, but words some groups as retail's examination text does
+    // (OpenAC's ItemAppraisalTextFormatter, MIT).
     private static IReadOnlyList<RetailAppraisalGroup> ItemGroups(AppraisalContent content)
     {
         var groups = new List<IEnumerable<RetailAppraisalLine>> { content.Figures.Select(figure => Text($"{figure.Label}: {figure.Value}")) };
-        groups.AddRange(content.Sections.Select(ItemLines));
+        // What a piece covers follows the weapon's and armour's lines.
+        var covers = content.Covers.Length > 0 ? Text("Covers " + content.Covers) : null;
+        foreach (var section in content.Sections)
+        {
+            if (covers != null && section.Heading is not ("Tinkering" or "Set & Ratings" or "Combat" or "Armor"))
+            {
+                groups.Add(new[] { covers });
+                covers = null;
+            }
+            switch (section.Heading)
+            {
+                case "Armor" when covers != null:
+                    groups.Add(section.Rows.SelectMany(ItemLines).Append(covers));
+                    covers = null;
+                    break;
+                case "Spells":
+                    groups.Add(section.Rows.Select(row => Text("Spells: " + row.Text)));
+                    break;
+                case "Properties":
+                    groups.Add(PropertyLines(section.Rows, content.RetailProperties ?? Array.Empty<string>()));
+                    break;
+                // Spellcraft and mana, then each spell under retail's heading.
+                case "Magic":
+                    groups.Add(section.Rows.Where(row => row is not AppraisalSpellRow).SelectMany(ItemLines));
+                    groups.Add(SpellLines("Spell Descriptions:", section.Rows));
+                    break;
+                case "Enchantments":
+                    groups.Add(SpellLines("Enchantments:", section.Rows));
+                    break;
+                default:
+                    groups.Add(section.Rows.SelectMany(ItemLines));
+                    break;
+            }
+        }
+        if (covers != null) groups.Add(new[] { covers });
         groups.Add(content.Description.Length > 0 ? new[] { Text(content.Description) } : Array.Empty<RetailAppraisalLine>());
         return groups.Select(lines => lines.ToList()).Where(lines => lines.Count > 0).Select(lines => new RetailAppraisalGroup(lines)).ToList();
     }
 
-    // The section headings are AppraisalContent's: the retail layout drops them, but names the spell lines as retail does, and leaves out
-    // each spell's description (retail's panel lists the spells by name).
-    private static IEnumerable<RetailAppraisalLine> ItemLines(AppraisalSection section) => section.Heading switch
+    /// <summary>
+    /// The properties group with retail's one Properties line in place of the rows it gathers (the imbues, the properties, Dyeable, the
+    /// bond and Attuned, which the sections layout lists one by one).
+    /// </summary>
+    private static IEnumerable<RetailAppraisalLine> PropertyLines(IReadOnlyList<AppraisalRow> rows, IReadOnlyList<string> words)
     {
-        "Spells" => section.Rows.Select(row => Text("Spells: " + row.Text)),
-        "Enchantments" => new[] { Text("Enchantments: " + string.Join(", ", section.Rows.Select(row => row.Label))) },
-        _ => section.Rows.Where(row => row is not AppraisalSpellRow).SelectMany(ItemLines),
-    };
+        var written = false;
+        foreach (var row in rows)
+        {
+            if (row.Label is "Imbued Effect" or "Properties" || (row.Label == null && words.Contains(row.Text)))
+            {
+                if (!written && words.Count > 0) yield return Text("Properties: " + string.Join(", ", words));
+                written = true;
+                continue;
+            }
+            foreach (var line in ItemLines(row)) yield return line;
+        }
+    }
+
+    /// <summary>"Spell Descriptions:" or "Enchantments:", then "~ Name: description" for each spell, as retail lists them.</summary>
+    private static IEnumerable<RetailAppraisalLine> SpellLines(string heading, IEnumerable<AppraisalRow> rows)
+    {
+        var spells = rows.OfType<AppraisalSpellRow>().Select(spell => Text($"~ {spell.Name}: {spell.Description}")).ToList();
+        return spells.Count == 0 ? spells : spells.Prepend(Text(heading));
+    }
 
     private static IEnumerable<RetailAppraisalLine> ItemLines(AppraisalRow row)
     {

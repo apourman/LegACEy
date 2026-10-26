@@ -42,11 +42,13 @@ public sealed record AppraisalCreatureHeader(IReadOnlyList<string> Lines, string
 /// <summary>
 /// What the appraisal window shows for one object: the header, the summary figures, the sections and the long description. The window
 /// draws this model and nothing else, so the rules that build it are tested without drawing. Built by <see cref="From"/>. A creature also
-/// has <see cref="Creature"/>, the header the retail layout boxes.
+/// has <see cref="Creature"/>, the header the retail layout boxes. An item also has what the retail layout writes on its own lines:
+/// <see cref="Covers"/>, the body areas a piece of clothing or armour covers ("Chest, Upper Arms"), and <see cref="RetailProperties"/>,
+/// retail's one Properties line.
 /// </summary>
 public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Visual, string TypeLine, IReadOnlyList<AppraisalFigure> Figures,
     IReadOnlyList<AppraisalSection> Sections, string Description, AppraisalInscription? Inscription, string Subtitle = "",
-    AppraisalCreatureHeader? Creature = null)
+    AppraisalCreatureHeader? Creature = null, string Covers = "", IReadOnlyList<string>? RetailProperties = null)
 {
     // The server's property ids (ACE.Entity PropertyInt, PropertyString and PropertyDataId).
     private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;
@@ -186,7 +188,9 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             response.Strings.TryGetValue(LongDescString, out var description) ? description : string.Empty,
             AppraisalInscription.From(response, characterName, carried, descriptionFlags),
             hasCreatureProfile ? TitleOf(response, names ?? CharacterNames.None) : string.Empty,
-            hasCreatureProfile ? CreatureHeader(response, names ?? CharacterNames.None) : null);
+            hasCreatureProfile ? CreatureHeader(response, names ?? CharacterNames.None) : null,
+            hasCreatureProfile ? string.Empty : covered,
+            hasCreatureProfile ? null : AppraisalOtherLines.RetailProperties(response));
     }
 
     /// <summary>A portal id the response sent, or zero when it did not.</summary>
