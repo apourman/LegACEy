@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace LegACEy.Client.GameArt;
@@ -47,7 +46,7 @@ public sealed class GroundTiles
                 if (!_wanted.Contains(id)) _tiles.Remove(id);
             foreach (var id in order)
                 if (!_tiles.ContainsKey(id) && _building.Add(id))
-                    _queue = _queue.ContinueWith(_ => Build(id), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+                    _queue = _queue.ContinueWith(_ => Build(id), TaskScheduler.Default);
         }
     }
 

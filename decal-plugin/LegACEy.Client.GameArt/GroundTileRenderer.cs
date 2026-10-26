@@ -49,7 +49,29 @@ internal static class GroundTileRenderer
         var scratch = Interlocked.Exchange(ref _spare, null) ?? new Scratch();
         try
         {
-            return Render(centre, around, textures, scratch);
+            var blocks = Grid(centre, around);
+            var canvas = scratch.Canvas; // every pixel is written below
+            Parallel.For(0, Size, row =>
+            {
+                for (var col = 0; col < Size; col++) canvas[(row * Size) + col] = Ground(blocks, textures, col, row);
+            });
+
+            var footprints = Place(centre, around);
+            var shadow = scratch.Shadow;
+            Array.Clear(shadow, 0, shadow.Length);
+            foreach (var (hull, _) in footprints)
+                Visit(Shift(hull, ShadowOffset), .5f, (i, s) => shadow[i] = Math.Min(1, shadow[i] + Clamp01((s / PixelMetres) + .5f)));
+            Blur(shadow, scratch.Blur);
+            for (var i = 0; i < canvas.Length; i++) canvas[i] = canvas[i] * (1 - (ShadowAlpha * shadow[i]));
+
+            // Scenery first, so a building's outline is never under a wall's fill.
+            foreach (var (hull, building) in footprints.OrderBy(f => f.Building))
+            {
+                Fill(canvas, hull, building ? BuildingFill : SceneryFill, building ? 1 : SceneryFillAlpha);
+                Stroke(canvas, hull, OutlineHalfWidth, building ? BuildingLine : SceneryLine, building ? 1 : SceneryLineAlpha);
+                if (building) Stroke(canvas, Shift(hull, HighlightOffset), HighlightHalfWidth, BuildingHighlight, HighlightAlpha);
+            }
+            return ToImage(canvas);
         }
         finally
         {
@@ -64,33 +86,6 @@ internal static class GroundTileRenderer
         public readonly Rgb[] Canvas = new Rgb[Size * Size];
         public readonly float[] Shadow = new float[Size * Size];
         public readonly float[] Blur = new float[Size * Size];
-    }
-
-    private static GameImage Render(GroundLandblock centre, IReadOnlyList<GroundLandblock> around, GameImage?[] textures, Scratch scratch)
-    {
-        var blocks = Grid(centre, around);
-        var canvas = scratch.Canvas; // every pixel is written below
-        Parallel.For(0, Size, row =>
-        {
-            for (var col = 0; col < Size; col++) canvas[(row * Size) + col] = Ground(blocks, textures, col, row);
-        });
-
-        var footprints = Place(centre, around);
-        var shadow = scratch.Shadow;
-        Array.Clear(shadow, 0, shadow.Length);
-        foreach (var (hull, _) in footprints)
-            Visit(Shift(hull, ShadowOffset), .5f, (i, s) => shadow[i] = Math.Min(1, shadow[i] + Clamp01((s / PixelMetres) + .5f)));
-        Blur(shadow, scratch.Blur);
-        for (var i = 0; i < canvas.Length; i++) canvas[i] = canvas[i] * (1 - (ShadowAlpha * shadow[i]));
-
-        // Scenery first, so a building's outline is never under a wall's fill.
-        foreach (var (hull, building) in footprints.OrderBy(f => f.Building))
-        {
-            Fill(canvas, hull, building ? BuildingFill : SceneryFill, building ? 1 : SceneryFillAlpha);
-            Stroke(canvas, hull, OutlineHalfWidth, building ? BuildingLine : SceneryLine, building ? 1 : SceneryLineAlpha);
-            if (building) Stroke(canvas, Shift(hull, HighlightOffset), HighlightHalfWidth, BuildingHighlight, HighlightAlpha);
-        }
-        return ToImage(canvas);
     }
 
     /// <summary>The landblocks by their offset from the centre, in landblocks; the centre is at (0, 0).</summary>
