@@ -57,6 +57,21 @@ public sealed class GroundTilesTests
         Assert.True(uneven.Count == 0, $"the shading is {centre} at the centre but differs at {string.Join(", ", uneven)}");
     }
 
+    [Fact]
+    public void A_tile_drawn_after_another_carries_nothing_over_from_it()
+    {
+        // The renderer reuses its buffers, so a tile with a building's shadow must not leave that shadow on the next.
+        var shade = new GroundFootprint(true, new[] { new GroundPoint(60, 60), new GroundPoint(130, 60), new GroundPoint(130, 130), new GroundPoint(60, 130) });
+        var built = new GroundLandblock(0xC6, 0xA9, new ushort[81], new float[81], new[] { shade });
+        var bare = new GroundLandblock(0xC6, 0xA9, new ushort[81], new float[81], Array.Empty<GroundFootprint>());
+
+        var first = GroundTileRenderer.Render(bare, new[] { bare }, _ => null);
+        GroundTileRenderer.Render(built, new[] { built }, _ => null);
+        var again = GroundTileRenderer.Render(bare, new[] { bare }, _ => null);
+
+        Assert.Equal(first.Pixels, again.Pixels);
+    }
+
     private static GroundLandblock Slope(int x, int y)
     {
         var height = new float[81];
