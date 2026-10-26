@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace LegACEy.Client.GameArt;
 
 /// <summary>
 /// The ground tiles around the player. <see cref="Follow"/> names the player's landblock; the 3 × 3 landblocks around it are
-/// built on the thread pool and every other tile is dropped. <see cref="Tile"/> only reads what has been built, so the UI thread
+/// built on the thread pool one at a time, centre first, so an arrival renders one tile's buffers at once rather than nine, and
+/// every other tile is dropped. <see cref="Tile"/> only reads what has been built, so the UI thread
 /// never waits on a DAT.
 /// </summary>
 public sealed class GroundTiles
@@ -18,6 +20,7 @@ public sealed class GroundTiles
     private readonly HashSet<ushort> _building = new();
     private readonly Dictionary<ushort, GameImage?> _tiles = new(); // a null entry is a landblock with no ground data
     private ushort? _centre;
+    private Task _queue = Task.CompletedTask; // the builds run one after another; a build no longer wanted ends at once
 
     /// <param name="log">Told why a landblock's tile could not be built; that landblock is tried again on the next <see cref="Follow"/>.</param>
     public GroundTiles(IGroundSource source, Action<string>? log = null)
@@ -36,13 +39,15 @@ public sealed class GroundTiles
         {
             if (_centre == landblock) return;
             _centre = landblock;
+            var order = new List<ushort> { landblock };
+            foreach (var (nx, ny) in Neighbours(landblock >> 8, landblock & 0xFF)) order.Add((ushort)((nx << 8) | ny));
             _wanted.Clear();
-            _wanted.Add(landblock);
-            foreach (var (nx, ny) in Neighbours(landblock >> 8, landblock & 0xFF)) _wanted.Add((ushort)((nx << 8) | ny));
+            _wanted.UnionWith(order);
             foreach (var id in new List<ushort>(_tiles.Keys))
                 if (!_wanted.Contains(id)) _tiles.Remove(id);
-            foreach (var id in _wanted)
-                if (!_tiles.ContainsKey(id) && _building.Add(id)) Task.Run(() => Build(id));
+            foreach (var id in order)
+                if (!_tiles.ContainsKey(id) && _building.Add(id))
+                    _queue = _queue.ContinueWith(_ => Build(id), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
         }
     }
 

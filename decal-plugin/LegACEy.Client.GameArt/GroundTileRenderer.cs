@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace LegACEy.Client.GameArt;
@@ -43,19 +44,43 @@ internal static class GroundTileRenderer
     {
         var textures = new GameImage?[RoadType + 1];
         for (var type = 0; type < textures.Length; type++) textures[type] = texture((uint)type);
-        var blocks = Grid(centre, around);
 
-        var canvas = new Rgb[Size * Size];
+        // The scratch is about 3 MB, on the large object heap; one set is kept and reused, and a build that finds it taken makes its own.
+        var scratch = Interlocked.Exchange(ref _spare, null) ?? new Scratch();
+        try
+        {
+            return Render(centre, around, textures, scratch);
+        }
+        finally
+        {
+            _spare = scratch;
+        }
+    }
+
+    private static Scratch? _spare;
+
+    private sealed class Scratch
+    {
+        public readonly Rgb[] Canvas = new Rgb[Size * Size];
+        public readonly float[] Shadow = new float[Size * Size];
+        public readonly float[] Blur = new float[Size * Size];
+    }
+
+    private static GameImage Render(GroundLandblock centre, IReadOnlyList<GroundLandblock> around, GameImage?[] textures, Scratch scratch)
+    {
+        var blocks = Grid(centre, around);
+        var canvas = scratch.Canvas; // every pixel is written below
         Parallel.For(0, Size, row =>
         {
             for (var col = 0; col < Size; col++) canvas[(row * Size) + col] = Ground(blocks, textures, col, row);
         });
 
         var footprints = Place(centre, around);
-        var shadow = new float[Size * Size];
+        var shadow = scratch.Shadow;
+        Array.Clear(shadow, 0, shadow.Length);
         foreach (var (hull, _) in footprints)
             Visit(Shift(hull, ShadowOffset), .5f, (i, s) => shadow[i] = Math.Min(1, shadow[i] + Clamp01((s / PixelMetres) + .5f)));
-        Blur(shadow);
+        Blur(shadow, scratch.Blur);
         for (var i = 0; i < canvas.Length; i++) canvas[i] = canvas[i] * (1 - (ShadowAlpha * shadow[i]));
 
         // Scenery first, so a building's outline is never under a wall's fill.
@@ -285,9 +310,8 @@ internal static class GroundTileRenderer
             canvas[i] = Mix(canvas[i], colour, alpha * Clamp01(((halfWidth - Math.Abs(s)) / PixelMetres) + .5f)));
 
     /// <summary>Three box blurs of radius 3 px: close to the prototype's Gaussian shadow edge.</summary>
-    private static void Blur(float[] mask)
+    private static void Blur(float[] mask, float[] scratch)
     {
-        var scratch = new float[mask.Length];
         for (var pass = 0; pass < 3; pass++)
         {
             BoxBlur(mask, scratch, 1);
