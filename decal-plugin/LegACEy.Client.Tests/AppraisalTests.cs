@@ -704,6 +704,37 @@ public sealed class AppraisalTests
         Assert.Empty(host.LastWindow!.GetLogicalDescendants().OfType<PaperdollView>());
     });
 
+    [Theory]
+    [InlineData(260)]
+    [InlineData(AppraisalWindow.Width)]
+    public void The_retail_figure_stands_between_the_labels_and_the_values_at_any_width(int width) => OnWindowThread(() =>
+    {
+        // The 3D view draws over text, so the figure's room must miss every word, however narrow the window: at the narrowest it has none.
+        var bytes = new ServerAppraisal(0x50000C01)
+        {
+            Strings = { [1] = "Big Dog" }, Ints = { [25] = 126, [188] = 1, [261] = 5 },
+            Creature = new CreatureWrite(412, 455, new uint[] { 200, 100, 100, 100, 60, 100, 380, 510, 380, 510 }, 0, 0),
+            ArmorLevels = new uint[] { 679, 854, 826, 641, 639, 649, 883, 629, 670 },
+        }.Build();
+        var figure = new Border();
+        var view = AppraisalWindow.Create(AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells), null, (_, _) => true, retail: true,
+            figure: _ => figure);
+        using var panel = AvaloniaPanel.Create(() => view.Window, width, 500);
+        panel.Tick();
+
+        Avalonia.Rect Bounds(Control control) => new(Avalonia.VisualExtensions.TranslatePoint(control, new Avalonia.Point(0, 0), view.Window)!.Value, control.Bounds.Size);
+        var room = Bounds(figure);
+        if (width == AppraisalWindow.Width) Assert.True(room.Width > 30, $"The figure has {room.Width} pixels.");
+        var words = view.Window.GetLogicalDescendants().OfType<TextBlock>()
+            .Where(text => text.Text is "Head/Chest/Groin" or "Coordination" or "AL: 679/854/826" or "412/455 (91 %)").ToList();
+        Assert.Equal(4, words.Count);
+        if (room.Width > 0) Assert.All(words, text => Assert.False(Bounds(text).Intersects(room), $"\"{text.Text}\" is under the figure."));
+        // Every value shows whole inside the body: a narrow window cuts the labels short instead.
+        var scroll = view.Window.GetLogicalDescendants().OfType<ScrollViewer>().First();
+        Assert.All(words.Where(text => text.Text!.Contains('/') && char.IsDigit(text.Text[0]) || text.Text!.StartsWith("AL", StringComparison.Ordinal)),
+            text => Assert.True(Bounds(text).Right <= Bounds(scroll).Right, $"\"{text.Text}\" is cut off."));
+    });
+
     [Fact]
     public void A_character_with_no_named_monarch_shows_its_followers_and_its_society_with_the_rank_word()
     {

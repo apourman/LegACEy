@@ -37,6 +37,8 @@ public sealed class AppraisalWindow
     // The retail layout's line height, a blank line's height, and the parchment inscription box's height, as in retail's panel.
     private const double RetailLineHeight = 19;
     private const int ParchmentHeight = 78;
+    // The retail body's side margins, and the space kept between the figure and the words either side of it.
+    private const double BodySide = 6, FigureGap = 6;
     private static readonly IBrush ParchmentInkBrush = DerethPalette.Brush(Color.Parse("#2A2014"));
 
     // The inventory's figure glyph, for the Inspect button.
@@ -96,7 +98,7 @@ public sealed class AppraisalWindow
         var scroll = Scroll(layout.Body);
         var foot = new ContentControl { Content = layout.Foot };
         var top = new ContentControl { Content = layout.Top };
-        var behind = new ContentControl { Content = Figure(content, retail, figure), IsHitTestVisible = false };
+        var behind = new ContentControl { Content = Figure(content, retail, figure), IsHitTestVisible = false, Margin = layout.Room };
         var glyph = new DerethPathGlyph(FigureGlyph) { Stroke = DerethPalette.MutedBrush };
         var button = new DerethHeaderButton(glyph) { Name = "InspectButton" };
         ToolTip.SetTip(button, "Inspect");
@@ -129,6 +131,7 @@ public sealed class AppraisalWindow
         _window.Title = content.Name;
         _window.SetIcon(retail ? null : Icon(content.Visual, art));
         _scroll.Content = layout.Body;
+        _behind.Margin = layout.Room;
         _top.Content = layout.Top;
         if (_field is { Unsaved: true } kept && layout.Field != null && content.ObjectId == _footObject && sameLayout)
         {
@@ -150,11 +153,15 @@ public sealed class AppraisalWindow
     /// <summary>The window is replaced by a new one: its inscription field no longer saves what is typed in it.</summary>
     public void Retire() => _field?.Detach();
 
-    /// <summary>The body, the header box and the inscription for the content, and the height the window needs to show all of it.</summary>
-    private static (Control Body, Control? Top, Control? Foot, int Height, InscriptionField? Field) Layout(AppraisalContent content,
+    /// <summary>
+    /// The body, the header box and the inscription for the content, the height the window needs to show all of it, and the figure's margin
+    /// within the body (<see cref="RetailBody"/>).
+    /// </summary>
+    private static (Control Body, Control? Top, Control? Foot, int Height, InscriptionField? Field, Thickness Room) Layout(AppraisalContent content,
         Func<uint, string, bool> inscribe, bool retail)
     {
-        var body = retail ? RetailBody(content) : SectionsBody(content);
+        var room = default(Thickness);
+        var body = retail ? RetailBody(content, out room) : SectionsBody(content);
         var top = retail && content.Creature is { } creature ? HeaderBox(creature) : null;
         InscriptionField? field = null;
         var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, retail, out field) : null;
@@ -165,7 +172,7 @@ public sealed class AppraisalWindow
             part.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
             return (int)Math.Ceiling(part.DesiredSize.Height);
         });
-        return (body, top, foot, Math.Min(MaxHeight, needed), field);
+        return (body, top, foot, Math.Min(MaxHeight, needed), field, room);
     }
 
     /// <summary>The sections layout: the summary, then each section under its heading, then the description under a rule.</summary>
@@ -195,32 +202,45 @@ public sealed class AppraisalWindow
 
     /// <summary>
     /// The retail layout's lines in Palatino, a blank line between groups. An item's lines wrap across the window in one colour. A
-    /// creature's labels sit on the left with the values at the right edge, each value coloured by its tone; a shadow keeps them readable
-    /// over the figure.
+    /// creature's labels sit on the left with the values at the right edge, each value coloured by its tone; a label too long for a narrow
+    /// window is cut short before a value is. <paramref name="room"/> is the figure's margin: clear of the widest label and the widest value,
+    /// since the game draws the 3D view over the window's text, so the figure narrows with the window and is gone before it covers a word.
     /// </summary>
-    private static Control RetailBody(AppraisalContent content)
+    private static Control RetailBody(AppraisalContent content, out Thickness room)
     {
         var creature = content.Creature != null;
-        var body = new StackPanel { Margin = new Thickness(6, 4, 6, 6) };
+        var body = new StackPanel { Margin = new Thickness(BodySide, 4, BodySide, 6) };
         if (creature) body.Effect = new DropShadowEffect { BlurRadius = 2, OffsetX = 0, OffsetY = 1, Color = Colors.Black, Opacity = 1 };
+        double labels = 0, values = 0;
         var first = true;
         foreach (var group in RetailAppraisalLayout.Groups(content))
         {
             if (!first) body.Children.Add(new Border { Height = RetailLineHeight * group.BlankLinesBefore });
             first = false;
-            foreach (var line in group.Lines) body.Children.Add(creature ? RetailRow(line) : RetailText(line.Value, DerethPalette.TextBrush, wrap: true));
+            foreach (var line in group.Lines)
+            {
+                if (!creature)
+                {
+                    body.Children.Add(RetailText(line.Value, DerethPalette.TextBrush, wrap: true));
+                    continue;
+                }
+                var label = RetailText(line.Label ?? string.Empty, DerethPalette.TextBrush);
+                label.HorizontalAlignment = HorizontalAlignment.Left;
+                var value = RetailText(line.Value, line.Tone == AppraisalTone.Normal ? DerethPalette.TextBrush : ToneBrush(line.Tone));
+                labels = Math.Max(labels, WidthOf(label));
+                values = Math.Max(values, WidthOf(value));
+                Grid.SetColumn(value, 1);
+                body.Children.Add(new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { label, value } });
+            }
         }
+        room = creature ? new Thickness(BodySide + labels + FigureGap, 0, BodySide + values + FigureGap, 0) : default;
         return body;
     }
 
-    private static Control RetailRow(RetailAppraisalLine line)
+    private static double WidthOf(TextBlock text)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        grid.Children.Add(RetailText(line.Label ?? string.Empty, DerethPalette.TextBrush));
-        var value = RetailText(line.Value, line.Tone == AppraisalTone.Normal ? DerethPalette.TextBrush : ToneBrush(line.Tone));
-        Grid.SetColumn(value, 1);
-        grid.Children.Add(value);
-        return grid;
+        text.Measure(Size.Infinity);
+        return text.DesiredSize.Width;
     }
 
     private static TextBlock RetailText(string text, IBrush brush, bool wrap = false) => new()
@@ -269,17 +289,14 @@ public sealed class AppraisalWindow
 
     /// <summary>
     /// The frame's content: the header box, the scrolling body over the figure, and the inscription pinned under it. As retail's, the
-    /// figure stands in the middle 44% of the body, clear of the labels on the left and the values on the right.
+    /// figure stands between the labels on the left and the values on the right, by its margin.
     /// </summary>
     private static Grid Frame(Control top, Control behind, Control scroll, Control foot)
     {
         var grid = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         grid.Children.Add(top);
-        var middle = new Grid { ColumnDefinitions = new ColumnDefinitions("28*,44*,28*"), IsHitTestVisible = false };
-        Grid.SetColumn(behind, 1);
-        middle.Children.Add(behind);
-        Grid.SetRow(middle, 1);
-        grid.Children.Add(middle);
+        Grid.SetRow(behind, 1);
+        grid.Children.Add(behind);
         Grid.SetRow(scroll, 1);
         grid.Children.Add(scroll);
         Grid.SetRow(foot, 2);
