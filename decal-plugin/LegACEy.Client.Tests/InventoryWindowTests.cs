@@ -138,6 +138,12 @@ public sealed class InventoryWindowTests
         InventoryDriver.Tick(host.Host);
         Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
         Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Character).Selected);
+
+        // Opening a pack leaves retail's selection on the focus, but the outline goes to the pack.
+        InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack));
+        InventoryDriver.Tick(host.Host);
+        Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Sack).Selected);
+        Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
     });
 
     [Fact]
