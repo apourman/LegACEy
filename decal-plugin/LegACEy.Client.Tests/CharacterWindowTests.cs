@@ -144,16 +144,17 @@ public sealed class CharacterWindowTests
         view.Select(StatKind.Attribute, 2);
         view.Raise(ten: false);
         Assert.Equal((StatKind.Attribute, 2u, 110u), game.Raised.Single());
-        // Until the server answers, the buttons wait: a second press sends nothing.
-        view.Raise(ten: true);
-        Assert.Single(game.Raised);
-
-        sheet.Receive(0x02E3, new Writer().U8(1).U32(2).U32(1).U32(30).U32(110).ToArray());
-        view.SheetChanged();
+        // Applied at once, as retail does: the value shows the new rank, and a press straight after costs the next ranks.
+        Assert.Equal(31, view.Rows.Single(row => row.Name == "Endurance").Value.Buffed);
+        Assert.Equal(11006 - 110, sheet.UnassignedExperience);
         view.Raise(ten: true);
         Assert.Equal((StatKind.Attribute, 2u, 4459u - 110u), game.Raised.Last());
-        // The server answers that raise too.
+
+        // The server's update confirms the first raise; Decal's value has caught up, so nothing is added to it twice.
+        game.Endurance = 31;
+        sheet.Receive(0x02E3, new Writer().U8(1).U32(2).U32(1).U32(30).U32(110).ToArray());
         view.SheetChanged();
+        Assert.Equal(31, view.Rows.Single(row => row.Name == "Endurance").Value.Buffed);
 
         view.ShowTab(1);
         view.Select(StatKind.Skill, 38);
@@ -223,10 +224,11 @@ public sealed class CharacterWindowTests
         public string Name => "Testerman";
         public string Race => "Viamontian";
         public string Gender => "Male";
+        public int Endurance = 30;
 
         public StatValue? Value(StatKind kind, uint id) => kind switch
         {
-            StatKind.Attribute => new StatValue(new[] { 0, 40, 30, 100, 100, 50, 10 }[id], new[] { 0, 40, 30, 100, 100, 50, 10 }[id]),
+            StatKind.Attribute => new StatValue(new[] { 0, 40, Endurance, 100, 100, 50, 10 }[id], new[] { 0, 40, Endurance, 100, 100, 50, 10 }[id]),
             StatKind.Vital => new StatValue(new[] { 0, 15, 0, 30, 0, 10 }[id], new[] { 0, 15, 0, 30, 0, 10 }[id]),
             _ => id switch { 24 => new StatValue(110, 110), 46 => new StatValue(82, 92), _ => new StatValue(5, 5) }
         };

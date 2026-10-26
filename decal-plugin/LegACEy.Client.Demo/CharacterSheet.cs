@@ -32,6 +32,8 @@ public sealed class CharacterSheet
     private readonly Dictionary<uint, Advancement> _vitals = new();
     private readonly Dictionary<uint, SkillAdvancement> _skills = new();
     private readonly List<uint> _titles = new();
+    // Ranks a raise sent from this client bought that the server has not confirmed yet, by kind and id: Decal's values lag by them.
+    private readonly Dictionary<(StatKind, uint), uint> _unconfirmed = new();
 
     /// <summary>Whether a PlayerDescription has been read this session.</summary>
     public bool Known { get; private set; }
@@ -55,6 +57,46 @@ public sealed class CharacterSheet
     /// <summary>Raised after a message changed the sheet.</summary>
     public event Action? Changed;
 
+    /// <summary>The ranks raises sent from this client bought that the server has not confirmed yet.</summary>
+    public uint Unconfirmed(StatKind kind, uint id) => _unconfirmed.TryGetValue((kind, id), out var ranks) ? ranks : 0;
+
+    /// <summary>
+    /// A raise this client just sent, applied at once as the server will apply it, so the next click costs the next rank, as in retail:
+    /// <paramref name="experience"/> leaves the unassigned pool and buys every rank of <paramref name="costs"/> it reaches. The server's
+    /// update for the row replaces it.
+    /// </summary>
+    public void Spend(StatKind kind, uint id, uint experience, uint[] costs)
+    {
+        var rows = kind switch { StatKind.Attribute => _attributes, StatKind.Vital => _vitals, _ => null };
+        Advancement before;
+        if (rows != null) rows.TryGetValue(id, out before);
+        else before = _skills.TryGetValue(id, out var skill) ? skill.Advancement : default;
+        var spent = before.Experience + experience;
+        var ranks = before.Ranks;
+        while (ranks + 1 < costs.Length && costs[ranks + 1] <= spent) ranks++;
+        var after = before with { Ranks = ranks, Experience = spent };
+        if (rows != null) rows[id] = after;
+        else _skills[id] = _skills[id] with { Advancement = after };
+        _unconfirmed[(kind, id)] = Unconfirmed(kind, id) + ranks - before.Ranks;
+        UnassignedExperience -= experience;
+        Changed?.Invoke();
+    }
+
+    /// <summary>A train this client just sent, applied at once: the skill is trained and the credits are spent.</summary>
+    public void Train(uint skill, int credits)
+    {
+        _skills[skill] = _skills.TryGetValue(skill, out var known) ? known with { Training = SkillTraining.Trained } : new SkillAdvancement(default, SkillTraining.Trained);
+        SkillCredits -= credits;
+        Changed?.Invoke();
+    }
+
+    /// <summary>A display title this client just set, applied at once.</summary>
+    public void SetDisplayTitle(uint title)
+    {
+        DisplayTitle = title;
+        Changed?.Invoke();
+    }
+
     /// <summary>Logoff: the next character's description starts afresh.</summary>
     public void Clear()
     {
@@ -63,6 +105,7 @@ public sealed class CharacterSheet
         _vitals.Clear();
         _skills.Clear();
         _titles.Clear();
+        _unconfirmed.Clear();
         Level = SkillCredits = PlayerKillerStatus = 0;
         TotalExperience = UnassignedExperience = 0;
         DisplayTitle = 0;
@@ -102,13 +145,21 @@ public sealed class CharacterSheet
                 reader.Skip(1);
                 return SetInt64(reader.UInt32(), reader.Int64());
             case UpdateAttribute:
+            {
                 reader.Skip(1);
-                _attributes[reader.UInt32()] = new Advancement(reader.UInt32(), reader.UInt32(), reader.UInt32());
+                var id = reader.UInt32();
+                _attributes[id] = new Advancement(reader.UInt32(), reader.UInt32(), reader.UInt32());
+                _unconfirmed.Remove((StatKind.Attribute, id));
                 return true;
+            }
             case UpdateVital:
+            {
                 reader.Skip(1);
-                _vitals[reader.UInt32()] = new Advancement(reader.UInt32(), reader.UInt32(), reader.UInt32());
+                var id = reader.UInt32();
+                _vitals[id] = new Advancement(reader.UInt32(), reader.UInt32(), reader.UInt32());
+                _unconfirmed.Remove((StatKind.Vital, id));
                 return true;
+            }
             case UpdateSkill:
                 reader.Skip(1);
                 ReadSkill(ref reader);
@@ -148,6 +199,7 @@ public sealed class CharacterSheet
         _attributes.Clear();
         _vitals.Clear();
         _skills.Clear();
+        _unconfirmed.Clear();
         var tables = reader.UInt32();
         reader.Skip(4); // the weenie type
         if ((tables & IntTable) != 0)
@@ -200,6 +252,7 @@ public sealed class CharacterSheet
         var start = reader.UInt32();
         reader.Skip(4 + 8); // resistance at last check, last used
         _skills[id] = new SkillAdvancement(new Advancement(ranks, start, experience), training);
+        _unconfirmed.Remove((StatKind.Skill, id));
     }
 
     private void ReadTitles(Reader reader)

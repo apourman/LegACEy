@@ -41,8 +41,6 @@ public sealed class CharacterWindow
     public const int Width = 310, Height = 640;
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(280, 360));
     private const double SkillRowHeight = 21, AttributeRowHeight = 27, BandHeight = 20;
-    // A raise or train waits this long for the server's update before its buttons wake again.
-    private const long PendingMs = 3000;
 
     private static readonly IBrush Transparent = Brushes.Transparent;
     private static readonly IBrush HoverBrush = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x12));
@@ -68,7 +66,6 @@ public sealed class CharacterWindow
     private readonly CharacterSheet _sheet;
     private readonly ICharacterGame _game;
     private readonly IGameArtSource? _art;
-    private readonly Func<long> _clock;
     private readonly Func<CharacterTables> _tables;
     private readonly Func<IReadOnlyDictionary<uint, string>> _titleNames;
     private readonly Action<IReadOnlyCollection<CharacterGroup>> _foldsChanged;
@@ -93,13 +90,11 @@ public sealed class CharacterWindow
     private IReadOnlyList<CharacterRow> _rows = Array.Empty<CharacterRow>();
     private IReadOnlyList<CharacterRow>? _drawnRows;
     private string? _drawnPlaque, _drawnFoot, _drawnTitles;
-    private long _pendingSince = -1;
     // The untrained skill whose Train was pressed once: a second press spends the credits.
     private uint _confirmTrain;
 
     public CharacterWindow(CharacterSheet sheet, ICharacterGame game, IGameArtSource? art, Func<CharacterTables> tables,
-        Func<IReadOnlyDictionary<uint, string>> titleNames, IEnumerable<CharacterGroup> folded, Action<IReadOnlyCollection<CharacterGroup>> foldsChanged,
-        Func<long>? clock = null)
+        Func<IReadOnlyDictionary<uint, string>> titleNames, IEnumerable<CharacterGroup> folded, Action<IReadOnlyCollection<CharacterGroup>> foldsChanged)
     {
         _sheet = sheet;
         _game = game;
@@ -108,7 +103,6 @@ public sealed class CharacterWindow
         _titleNames = titleNames;
         _folded = new HashSet<CharacterGroup>(folded);
         _foldsChanged = foldsChanged;
-        _clock = clock ?? (() => System.Diagnostics.Stopwatch.GetTimestamp() * 1000 / System.Diagnostics.Stopwatch.Frequency);
 
         _tabs = new DerethSegmented(TabNames) { Margin = new Thickness(1, 6, 1, 4) };
         _tabs.Chosen += index =>
@@ -182,8 +176,6 @@ public sealed class CharacterWindow
 
     public IReadOnlyCollection<CharacterGroup> Folded => _folded;
 
-    private bool Pending => _pendingSince >= 0 && _clock() - _pendingSince < PendingMs;
-
     public void ShowTab(int tab)
     {
         _tab = tab;
@@ -214,17 +206,19 @@ public sealed class CharacterWindow
     /// <summary>Spends experience on the selected row: the next rank, or ten ranks (fewer near the top).</summary>
     public void Raise(bool ten)
     {
-        if (SelectedRow is not { } row || Pending) return;
+        if (SelectedRow is not { } row) return;
         var cost = ten ? row.TenCost : row.NextCost;
         if (cost is not { } experience || experience == 0 || experience > _sheet.UnassignedExperience) return;
-        if (_game.Raise(row.Kind, row.Id, experience)) _pendingSince = _clock();
+        // Applied at once, as retail does: the next click costs the next rank, and the server's update confirms it.
+        if (_game.Raise(row.Kind, row.Id, experience) && CharacterRows.CostList(_sheet, _tables(), row.Kind, row.Id) is { } costs)
+            _sheet.Spend(row.Kind, row.Id, experience, costs);
         Refresh();
     }
 
     /// <summary>The first press arms the train; the second spends the skill's credits.</summary>
     public void Train()
     {
-        if (SelectedRow is not { TrainCost: > 0 } row || Pending || row.TrainCost > _sheet.SkillCredits) return;
+        if (SelectedRow is not { TrainCost: > 0 } row || row.TrainCost > _sheet.SkillCredits) return;
         if (_confirmTrain != row.Id)
         {
             _confirmTrain = row.Id;
@@ -232,7 +226,7 @@ public sealed class CharacterWindow
             return;
         }
         _confirmTrain = 0;
-        if (_game.Train(row.Id, row.TrainCost)) _pendingSince = _clock();
+        if (_game.Train(row.Id, row.TrainCost)) _sheet.Train(row.Id, row.TrainCost);
         Refresh();
     }
 
@@ -246,12 +240,8 @@ public sealed class CharacterWindow
         Refresh();
     }
 
-    /// <summary>The server updated the character: a raise or train it answered wakes the buttons, and the window redraws.</summary>
-    public void SheetChanged()
-    {
-        _pendingSince = -1;
-        Refresh();
-    }
+    /// <summary>The character changed (the server's update, or a raise just sent): the window redraws.</summary>
+    public void SheetChanged() => Refresh();
 
     /// <summary>Reads the character again and redraws only what changed. Call it when the sheet changes and about once a second while open.</summary>
     public void Refresh()
@@ -413,9 +403,8 @@ public sealed class CharacterWindow
     private void DrawFoot()
     {
         var row = SelectedRow;
-        var pending = Pending;
         var key = row == null ? $"none|{_tab}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}"
-            : $"{row}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}|{pending}|{_confirmTrain}";
+            : $"{row}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}|{_confirmTrain}";
         if (key == _drawnFoot) return;
         _drawnFoot = key;
 
@@ -440,7 +429,7 @@ public sealed class CharacterWindow
         {
             var affordable = row.TrainCost <= _sheet.SkillCredits;
             var armed = _confirmTrain == row.Id;
-            var train = Button(armed ? $"Confirm · {row.TrainCost} credits" : "Train", affordable && !pending, Train);
+            var train = Button(armed ? $"Confirm · {row.TrainCost} credits" : "Train", affordable, Train);
             ToolTip.SetTip(train, armed ? "Press again to spend the credits" : $"Spend {row.TrainCost} skill credits to train {row.Name}");
             buttons.Children.Add(train);
             stack.Children.Add(Pair("Credits To Train", row.TrainCost.ToString(CultureInfo.InvariantCulture), short_: !affordable));
@@ -449,8 +438,8 @@ public sealed class CharacterWindow
         else if (row.NextCost is { } next)
         {
             var unassigned = _sheet.UnassignedExperience;
-            buttons.Children.Add(Button("+10", row.TenCost is { } ten && ten > 0 && ten <= unassigned && !pending, () => Raise(ten: true)));
-            buttons.Children.Add(Button("Raise", next > 0 && next <= unassigned && !pending, () => Raise(ten: false)));
+            buttons.Children.Add(Button("+10", row.TenCost is { } ten && ten > 0 && ten <= unassigned, () => Raise(ten: true)));
+            buttons.Children.Add(Button("Raise", next > 0 && next <= unassigned, () => Raise(ten: false)));
             stack.Children.Add(Pair("Experience To Raise", Number(next), short_: next > unassigned));
             stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
         }
@@ -468,8 +457,8 @@ public sealed class CharacterWindow
         string NameOf(uint id) => names.TryGetValue(id, out var name) ? name : $"Title {id}";
         var titles = _sheet.Titles.Select(id => (Id: id, Name: NameOf(id))).OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
         if (_titleSelected == 0 || !_sheet.Titles.Contains(_titleSelected)) _titleSelected = _sheet.DisplayTitle;
-        var key = $"{_sheet.DisplayTitle}|{_titleSelected}|{Pending}|{string.Join(",", titles.Select(t => t.Id))}";
-        _setTitle.IsEnabled = _titleSelected != 0 && _titleSelected != _sheet.DisplayTitle && !Pending;
+        var key = $"{_sheet.DisplayTitle}|{_titleSelected}|{string.Join(",", titles.Select(t => t.Id))}";
+        _setTitle.IsEnabled = _titleSelected != 0 && _titleSelected != _sheet.DisplayTitle;
         if (key == _drawnTitles) return;
         _drawnTitles = key;
 
@@ -519,8 +508,8 @@ public sealed class CharacterWindow
     /// <summary>Sets the selected title as the display title, as the button does.</summary>
     public void SetSelectedTitle()
     {
-        if (_titleSelected == 0 || _titleSelected == _sheet.DisplayTitle || Pending) return;
-        if (_game.SetTitle(_titleSelected)) _pendingSince = _clock();
+        if (_titleSelected == 0 || _titleSelected == _sheet.DisplayTitle) return;
+        if (_game.SetTitle(_titleSelected)) _sheet.SetDisplayTitle(_titleSelected);
         Refresh();
     }
 

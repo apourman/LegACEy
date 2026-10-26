@@ -39,7 +39,8 @@ public static class CharacterRows
         foreach (var id in AttributeOrder)
         {
             var advancement = sheet.Attributes.TryGetValue(id, out var a) ? a : default;
-            var shown = value(StatKind.Attribute, id) ?? new StatValue((int)(advancement.Start + advancement.Ranks), (int)(advancement.Start + advancement.Ranks));
+            var shown = Ahead(value(StatKind.Attribute, id) ?? new StatValue((int)(advancement.Start + advancement.Ranks), (int)(advancement.Start + advancement.Ranks)),
+                sheet.Unconfirmed(StatKind.Attribute, id));
             var (next, ten) = Costs(tables.Experience.Attribute, advancement);
             rows.Add(new CharacterRow(StatKind.Attribute, id, AttributeNames[id], CharacterGroup.Attributes, Icon(tables.AttributeIcons, id), shown, 0,
                 next, ten, 0, string.Empty, string.Empty));
@@ -47,7 +48,7 @@ public static class CharacterRows
         foreach (var (id, name) in VitalOrder)
         {
             var advancement = sheet.Vitals.TryGetValue(id, out var a) ? a : default;
-            var shown = value(StatKind.Vital, id) ?? new StatValue((int)advancement.Ranks, (int)advancement.Ranks);
+            var shown = Ahead(value(StatKind.Vital, id) ?? new StatValue((int)advancement.Ranks, (int)advancement.Ranks), sheet.Unconfirmed(StatKind.Vital, id));
             var (next, ten) = Costs(tables.Experience.Vital, advancement);
             rows.Add(new CharacterRow(StatKind.Vital, id, name, CharacterGroup.Vitals, Icon(tables.VitalIcons, id), shown, current(id),
                 next, ten, 0, string.Empty, string.Empty));
@@ -69,7 +70,7 @@ public static class CharacterRows
                 SkillTraining.Trained => CharacterGroup.Trained,
                 _ => skill.MinLevel >= 2 ? CharacterGroup.Unusable : CharacterGroup.Untrained
             };
-            var shown = value(StatKind.Skill, skill.Id) ?? new StatValue(0, 0);
+            var shown = Ahead(value(StatKind.Skill, skill.Id) ?? new StatValue(0, 0), sheet.Unconfirmed(StatKind.Skill, skill.Id));
             uint? next = null, ten = null;
             if (training >= SkillTraining.Trained)
                 (next, ten) = Costs(training == SkillTraining.Specialized ? tables.Experience.SpecializedSkill : tables.Experience.TrainedSkill, s.Advancement);
@@ -79,6 +80,22 @@ public static class CharacterRows
         }
         return rows.OrderBy(row => row.Group).ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    /// <summary>Decal's value with the ranks a raise bought that Decal has not heard of yet.</summary>
+    private static StatValue Ahead(StatValue value, uint ranks) => ranks == 0 ? value : new StatValue(value.Base + (int)ranks, value.Buffed + (int)ranks);
+
+    /// <summary>The experience list a row's ranks are bought from, or null for a row experience cannot raise.</summary>
+    public static uint[]? CostList(CharacterSheet sheet, CharacterTables tables, StatKind kind, uint id) => kind switch
+    {
+        StatKind.Attribute => tables.Experience.Attribute,
+        StatKind.Vital => tables.Experience.Vital,
+        _ => sheet.Skills.TryGetValue(id, out var skill) ? skill.Training switch
+        {
+            SkillTraining.Specialized => tables.Experience.SpecializedSkill,
+            SkillTraining.Trained => tables.Experience.TrainedSkill,
+            _ => null
+        } : null
+    };
 
     /// <summary>
     /// What the next rank and the next ten ranks cost: the table's total for that rank less the experience already spent. Null at the last
