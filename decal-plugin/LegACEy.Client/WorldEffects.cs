@@ -728,7 +728,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private int OnReset(IntPtr device, IntPtr parameters)
     {
         if (device == _device) ReleaseTextures();
-        ReleaseSavedStates();
+        ReleaseSpareStates();
         return _resetHook.OriginalFunction(device, parameters);
     }
 

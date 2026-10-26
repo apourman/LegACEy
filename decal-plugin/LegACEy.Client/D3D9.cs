@@ -148,7 +148,7 @@ internal static unsafe class D3D9
     {
         if (device != _spareStatesDevice)
         {
-            ReleaseSavedStates();
+            ReleaseSpareStates();
             _spareStatesDevice = device;
         }
         if (SpareStates.TryPop(out var spare))
@@ -163,6 +163,7 @@ internal static unsafe class D3D9
         return block;
     }
 
+    /// <summary>Puts back the states <see cref="SaveState"/> recorded and keeps the block as a spare for the next save.</summary>
     public static void RestoreState(IntPtr block)
     {
         try { Check(((delegate* unmanaged[Stdcall]<IntPtr, int>)Vt(block)[ApplySlot])(block), "StateBlock.Apply"); }
@@ -170,7 +171,7 @@ internal static unsafe class D3D9
     }
 
     /// <summary>Frees the spare state blocks: at the end of each frame's drawing, and before a device reset.</summary>
-    public static void ReleaseSavedStates()
+    public static void ReleaseSpareStates()
     {
         while (SpareStates.TryPop(out var block)) Release(block);
     }
