@@ -1580,7 +1580,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         var start = Stopwatch.GetTimestamp();
         try { DrawAfterRetailUiCore(); }
-        finally { _postUiDrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds); }
+        finally
+        {
+            D3D9.ReleaseSavedStates();
+            _postUiDrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        }
     }
 
     private void DrawAfterRetailUiCore()

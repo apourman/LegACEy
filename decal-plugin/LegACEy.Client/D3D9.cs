@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -58,8 +59,8 @@ internal static unsafe class D3D9
     private const int UnlockRectSlot = 20;
     // IDirect3DVertexBuffer9 (after IDirect3DResource9 3-10)
     private const int BufferLockSlot = 11, BufferUnlockSlot = 12;
-    // IDirect3DStateBlock9 (GetDevice 3, Capture 4)
-    private const int ApplySlot = 5;
+    // IDirect3DStateBlock9 (GetDevice 3)
+    private const int CaptureSlot = 4, ApplySlot = 5;
 
     // Values from mingw-w64 d3d9types.h.
     public const uint FvfXyz = 0x002, FvfXyzRhw = 0x004, FvfNormal = 0x010, FvfDiffuse = 0x040, FvfTex1 = 0x100, FvfTex2 = 0x200, FvfTex3 = 0x300;
@@ -137,9 +138,26 @@ internal static unsafe class D3D9
         if (com != IntPtr.Zero) ((delegate* unmanaged[Stdcall]<IntPtr, uint>)Vt(com)[ReleaseSlot])(com);
     }
 
-    /// <summary>Records every device state; <see cref="RestoreState"/> puts them back and frees the record.</summary>
+    // Restored blocks wait here to be re-captured, so a frame creates one per nesting depth instead of one per draw (backlog 088).
+    // Render-thread only. Held blocks keep the textures they recorded alive and must be gone before a device reset.
+    private static readonly Stack<IntPtr> SpareStates = new();
+    private static IntPtr _spareStatesDevice;
+
+    /// <summary>Records every device state; <see cref="RestoreState"/> puts them back.</summary>
     public static IntPtr SaveState(IntPtr device)
     {
+        if (device != _spareStatesDevice)
+        {
+            ReleaseSavedStates();
+            _spareStatesDevice = device;
+        }
+        if (SpareStates.TryPop(out var spare))
+        {
+            var result = ((delegate* unmanaged[Stdcall]<IntPtr, int>)Vt(spare)[CaptureSlot])(spare);
+            if (result >= 0) return spare;
+            Release(spare);
+            Check(result, "StateBlock.Capture");
+        }
         IntPtr block;
         Check(((delegate* unmanaged[Stdcall]<IntPtr, int, IntPtr*, int>)Vt(device)[CreateStateBlockSlot])(device, StateBlockAll, &block), "CreateStateBlock");
         return block;
@@ -148,7 +166,13 @@ internal static unsafe class D3D9
     public static void RestoreState(IntPtr block)
     {
         try { Check(((delegate* unmanaged[Stdcall]<IntPtr, int>)Vt(block)[ApplySlot])(block), "StateBlock.Apply"); }
-        finally { Release(block); }
+        finally { SpareStates.Push(block); }
+    }
+
+    /// <summary>Frees the spare state blocks: at the end of each frame's drawing, and before a device reset.</summary>
+    public static void ReleaseSavedStates()
+    {
+        while (SpareStates.TryPop(out var block)) Release(block);
     }
 
     /// <summary>An A8R8G8B8 texture in the managed pool, which Direct3D restores itself after a device reset; <paramref name="levels"/> mip levels.</summary>
