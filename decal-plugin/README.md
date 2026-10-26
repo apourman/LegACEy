@@ -127,7 +127,9 @@ puts the one it replaces back in the main pack. While an item is dragged, the bo
 it covers are outlined: gold where it can be worn, red where it can't, teal for a worn item being lifted. Which worn item draws which
 part is worked out on the client from portal.dat's clothing tables, so this too works on any server. The appraisal window lists an item's lines in the order retail's examination
 text does (tinkering, set and ratings, combat, spells, properties, use, requirements, the rest, then spellcraft, mana and each
-spell's description), under Dereth headings. Creating an empty file named `retail-inventory-native` beside the main DLL
+spell's description), under Dereth headings. Its Layout row on the Settings Appraisal card (per character) switches it to
+retail's layout inside the Dereth frame: no headings, groups split by blank lines, a creature's header box with its level and its
+figure behind the stats, and a parchment inscription box for items. Creating an empty file named `retail-inventory-native` beside the main DLL
 gives retail's inventory panel back, and `retail-appraisal-native` gives retail's examination panel back; deleting a file
 takes its panel over again. Settings → Windows switches both (Inventory and Appraisal); switching Appraisal to Retail with an item open hands that item to retail's
 window. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
