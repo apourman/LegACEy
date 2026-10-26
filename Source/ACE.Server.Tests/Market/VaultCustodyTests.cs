@@ -96,6 +96,43 @@ namespace ACE.Server.Tests.Market
         }
 
         [TestMethod]
+        public void Deposit_SplitPart_SavesTheSourceStackBeforeTheVaultHasThePart()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var source = VaultTestWorld.NewItem(PyrealWcid);
+            source.SetStackSize(10);
+            VaultTestWorld.Give(player, source);
+
+            var part = VaultTestWorld.NewItem(PyrealWcid);
+            part.SetStackSize(4);
+
+            long sourceSizeAfterJob = -1;
+            var probed = new ManualResetEventSlim();
+            VaultResult result = null;
+            var done = new ManualResetEventSlim();
+
+            using (var gate = HoldSaveQueue())
+            {
+                VaultTestWorld.OnWorldThread(() =>
+                {
+                    // a split inside the pack: the source shrinks in memory, the part is new and unsaved
+                    source.SetStackSize(6);
+                    Assert.IsTrue(player.TryAddToInventory(part, out _));
+
+                    Vault.Deposit(player, part.Guid.ClientGUID, r => { result = r; done.Set(); });
+
+                    // what a crash right after the deposit job, before any later player save, would leave in the database
+                    DatabaseManager.Shard.GetCurrentQueueWaitTime(_ => { sourceSizeAfterJob = StackSizeRow(source.Guid.ClientGUID); probed.Set(); });
+                });
+            }
+
+            Assert.IsTrue(done.Wait(TimeSpan.FromSeconds(30)), "the Vault reported a result");
+            Assert.AreEqual(VaultOutcome.Deposited, result.Outcome, result.Message);
+            Assert.IsTrue(probed.Wait(TimeSpan.FromSeconds(30)), "the probe ran");
+            Assert.AreEqual(6, sourceSizeAfterJob, "the source's new size was saved by the time the deposit job committed");
+        }
+
+        [TestMethod]
         public void Deposit_SaveFails_ReturnedItemKeepsItsCastOnEnchantments()
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
@@ -144,6 +181,8 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(0, ContainerRows(guid), "the item is still in escrow");
             Assert.AreEqual(1, VaultStore.Count(account));
         }
+
+        private static long StackSizeRow(uint guid) => Count($"SELECT value FROM biota_properties_int WHERE object_Id = {guid} AND type = {(int)PropertyInt.StackSize};");
 
         private static long ContainerRows(uint guid) => Count($"SELECT COUNT(*) FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};");
 

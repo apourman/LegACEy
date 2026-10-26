@@ -163,16 +163,22 @@ namespace ACE.Server.WorldObjects
                     return;
                 }
 
-                CreateMoveToChain(target, (success) =>
-                {
-                    if (success)
-                        sourceItem.HandleActionUseOnTarget(this, target);
-                    else
-                        SendUseDoneEvent();
-                });
+                CreateMoveToChain(target, (success) => UseOnTargetAfterMove(sourceItem, target, success));
             }
             else
                 sourceItem.HandleActionUseOnTarget(this, target);
+        }
+
+        /// <summary>
+        /// Uses the source on the target once the turn or walk to it ends. An instant Vault deposit during the move may have taken the source,
+        /// so it must still be the one in the pack, or a key, lockpick or kit would be used while the Vault keeps all its uses.
+        /// </summary>
+        private void UseOnTargetAfterMove(WorldObject sourceItem, WorldObject target, bool success)
+        {
+            if (success && FindObject(sourceItem.Guid, SearchLocations.MyInventory | SearchLocations.MyEquippedItems) == sourceItem)
+                sourceItem.HandleActionUseOnTarget(this, target);
+            else
+                SendUseDoneEvent();
         }
 
         /// <summary>

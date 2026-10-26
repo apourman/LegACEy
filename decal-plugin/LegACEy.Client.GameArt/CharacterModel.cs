@@ -116,6 +116,12 @@ public sealed class CharacterModel
         Radius = (float)Math.Sqrt(radius);
     }
 
+    /// <summary>
+    /// Retail's inventory stance: the animation portal.dat's DID mapper 0x25000010 names PaperDollAnimation (enum 0x10000005), which
+    /// gmPaperDollUI plays on its doll.
+    /// </summary>
+    public const uint PaperDollPose = 0x030003C0;
+
     /// <summary>The middle of the model's footprint: the upright axis the view turns it around.</summary>
     public float CentreX { get; }
     public float CentreY { get; }
@@ -130,11 +136,14 @@ public sealed class CharacterModel
 
     /// <summary>
     /// Assemble a character from portal.dat: the setup's parts in its first placement (the default pose), with the
-    /// appearance's part swaps, texture swaps and palette applied. Unreadable parts and textures are skipped or drawn grey.
+    /// appearance's part swaps, texture swaps and palette applied. Unreadable parts and textures are skipped or drawn grey. A pose (an
+    /// animation, such as <see cref="PaperDollPose"/>) stands the parts in its second frame instead: the first leads in from another pose.
     /// </summary>
-    public static CharacterModel Build(PortalDat dat, CharacterAppearance appearance)
+    public static CharacterModel Build(PortalDat dat, CharacterAppearance appearance, uint pose = 0)
     {
         var setup = DatModels.ReadSetup(dat, appearance.SetupId) ?? throw new InvalidDataException($"Setup {appearance.SetupId:X8} is not in portal.dat.");
+        if (pose != 0 && DatModels.ReadPose(dat, pose, 1) is { } frames)
+            for (var i = 0; i < Math.Min(frames.Length, setup.Frames.Length); i++) setup.Frames[i] = frames[i];
         var ordered = new List<ModelMesh>();
         AddParts(dat, setup, appearance, ordered, null);
         // Each held item in its own setup's default pose, scaled, then placed by the holding location on its part, then by that part.

@@ -173,7 +173,7 @@ public sealed class WieldedItem : IEquatable<WieldedItem>
 public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
 {
     public InventorySnapshot(InventoryPack mainPack, IReadOnlyList<InventoryPack> sidePacks, IReadOnlyList<InventoryItem> items,
-        IReadOnlyList<WieldedItem> wielded, int burden, int burdenLimit, int pyreals, uint openContainer, uint selected, string characterName = "")
+        IReadOnlyList<WieldedItem> wielded, int burden, int burdenLimit, uint openContainer, uint selected, string characterName = "")
     {
         MainPack = mainPack ?? throw new ArgumentNullException(nameof(mainPack));
         SidePacks = sidePacks ?? throw new ArgumentNullException(nameof(sidePacks));
@@ -181,7 +181,6 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
         Wielded = wielded ?? throw new ArgumentNullException(nameof(wielded));
         Burden = burden;
         BurdenLimit = burdenLimit;
-        Pyreals = pyreals;
         OpenContainer = openContainer;
         Selected = selected;
         CharacterName = characterName ?? string.Empty;
@@ -189,7 +188,7 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
 
     /// <summary>A snapshot with no packs and nothing carried: what a window shows before the character is in the world.</summary>
     public static InventorySnapshot Empty { get; } = new(new InventoryPack(0, string.Empty, 0, 0), Array.Empty<InventoryPack>(),
-        Array.Empty<InventoryItem>(), Array.Empty<WieldedItem>(), 0, 0, 0, 0, 0);
+        Array.Empty<InventoryItem>(), Array.Empty<WieldedItem>(), 0, 0, 0, 0);
 
     public InventoryPack MainPack { get; }
     /// <summary>The side packs in retail's order, one entry per side-pack slot up to the character's capacity. Free slots are empty placeholders.</summary>
@@ -200,8 +199,6 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
     /// <summary>The current burden in the client's units (the same units as <see cref="BurdenLimit"/>).</summary>
     public int Burden { get; }
     public int BurdenLimit { get; }
-    /// <summary>The total stack count of every pyreal carried in a pack.</summary>
-    public int Pyreals { get; }
     /// <summary>The open container's id, or zero when none is open.</summary>
     public uint OpenContainer { get; }
     /// <summary>The selected item's id, or zero when nothing is selected.</summary>
@@ -237,7 +234,7 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
 
     public bool Equals(InventorySnapshot? other) => other != null && MainPack.Equals(other.MainPack)
         && SidePacks.SequenceEqual(other.SidePacks) && Items.SequenceEqual(other.Items) && Wielded.SequenceEqual(other.Wielded)
-        && (Burden, BurdenLimit, Pyreals, OpenContainer, Selected, CharacterName).Equals((other.Burden, other.BurdenLimit, other.Pyreals, other.OpenContainer, other.Selected, other.CharacterName));
+        && (Burden, BurdenLimit, OpenContainer, Selected, CharacterName).Equals((other.Burden, other.BurdenLimit, other.OpenContainer, other.Selected, other.CharacterName));
     public override bool Equals(object? obj) => Equals(obj as InventorySnapshot);
     public override int GetHashCode() => OpenContainer.GetHashCode();
 }

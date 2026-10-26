@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -31,17 +32,11 @@ namespace LegACEy.Plugin.Inventory;
 public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZone, IRetailItemDropTarget
 {
     internal const string Title = "Inventory";
-    /// <summary>The vertical layout's grid is retail's main pack: six columns, whatever the width.</summary>
+    /// <summary>The grid is retail's main pack: six columns, whatever the width.</summary>
     internal const int RetailColumns = 6;
-    // The pyreal stack's icon in the portal.
-    private const uint PyrealIcon = 0x06001080;
     private const double EmptyOpacity = 0.8;
     // A lifted item's slots fade while it is dragged, as the Vault's do.
     private const double LiftedOpacity = 0.4;
-    // A figure: a head over shoulders and a body.
-    private const string FigureGlyph = "M7,1.5 A2.2,2.2 0 1 1 6.99,1.5 Z M2.5,13 V9.5 Q2.5,6.8 7,6.8 Q11.5,6.8 11.5,9.5 V13 Z";
-    private const string StackedGlyph = "M2,1 H12 V6 H2 Z M2,8 H12 V13 H2 Z";
-    private const string SideBySideGlyph = "M1,2 H6 V12 H1 Z M8,2 H13 V12 H8 Z";
     private const double DragThreshold = 4;
 
     private static readonly IBrush GoldBrush = DerethPalette.GoldBrush;
@@ -55,20 +50,18 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private readonly IInventoryPort _port;
     private readonly IGameArtSource _art;
-    private readonly InventoryLayout _layout;
     private PaperdollView? _doll;
     private readonly Dictionary<ItemVisual, WriteableBitmap?> _images = new();
     private readonly DerethWindow _frame;
     private readonly InventoryPaperdoll _paperdoll = new();
-    // Its columns start under the contents line's name, as the pack row's do in the horizontal layout.
+    // Its columns start under the contents line's name.
     private readonly DerethSlotGrid _grid = new() { ColumnAlignment = HorizontalAlignment.Left };
     private readonly TextBlock _contentsName = Label(string.Empty, TextBrush, 13);
     private readonly TextBlock _contentsCount = Label(string.Empty, MutedBrush, 13);
-    // The pack list: a column in the vertical layout, a strip of tabs in the horizontal one.
-    private readonly Panel _packList;
+    // The pack list: the main pack, a rule and the side packs, in a column right of the grid.
+    private readonly StackPanel _packList = new() { Spacing = 4 };
     private readonly ContentControl _burdenMeter = new();
     private readonly TextBlock _burdenText = Label(string.Empty, TextBrush, 12);
-    private readonly TextBlock _pyrealCount = Label(string.Empty, GoldBrush, 12);
     // Shown over the slot under the pointer while an item is dragged: a gold border where the drop is accepted, red where it is refused.
     private readonly Border _dropIndicator = new()
     {
@@ -102,14 +95,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private uint _picked;
     private IDisposable? _dragIcon;
     private bool _showSlots;
-    // The equipment and paperdoll section is left out: the window is the packs and their contents. Fixed for the window's life.
-    private readonly bool _collapsed;
     private bool _suspended;
     private bool _disposed;
 
     /// <param name="port">The character's inventory. The window reads its snapshot and re-renders on its change event.</param>
     /// <param name="art">The game art the icons are drawn from.</param>
-    /// <param name="settings">The layout this window draws, and whether the armour slots show.</param>
+    /// <param name="settings">Whether the armour slots show.</param>
     /// <param name="dragHost">Shows the icon of a dragged item under the pointer, and hands an item released outside the slots to the
     /// LegACEy window under the pointer. Null shows no icon and hands nothing over; the drag still works.</param>
     public InventoryWindow(IInventoryPort port, IGameArtSource art, InventorySettings settings, IItemDragHost? dragHost = null)
@@ -117,15 +108,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _art = art ?? throw new ArgumentNullException(nameof(art));
         _dragHost = dragHost;
-        _layout = settings.Layout;
         _showSlots = settings.ShowSlots;
-        _collapsed = settings.Collapsed;
-        _packList = _layout == InventoryLayout.Vertical
-            ? new StackPanel { Spacing = 4 }
-            : new WrapPanel { Orientation = Orientation.Horizontal };
 
-        var body = _layout == InventoryLayout.Vertical ? VerticalBody() : HorizontalBody();
-        _frame = new DerethWindow(Title, null, body, LayoutToggles(), centreTitle: true);
+        _frame = new DerethWindow(Title, null, Body(), centreTitle: true);
         _frame.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Content = new Grid { Children = { _frame, _dropIndicator } };
         // The window takes the pointer on its own handlers, so a drag that leaves a slot, or the window, still ends here.
@@ -143,10 +128,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _port.Changed += OnChanged;
     }
 
-    /// <summary>The window's current settings: its layout, and the Slots toggle.</summary>
-    private InventorySettings Settings => new(_layout, _showSlots, _collapsed);
+    /// <summary>The window's current settings: the Slots toggle.</summary>
+    private InventorySettings Settings => new(_showSlots);
 
-    /// <summary>Raised when the player changes the layout or the Slots toggle. The settings are the new ones.</summary>
+    /// <summary>Raised when the player changes the Slots toggle. The settings are the new ones.</summary>
     public event Action<InventorySettings>? SettingsChanged;
 
     /// <summary>Raised when the player asks to see the character in the larger Inspect window.</summary>
@@ -806,11 +791,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return worn != null ? (worn.Name, worn.StackMax, worn.Wcid) : (string.Empty, 0, 0);
     }
 
-    private void RequestLayout(InventoryLayout layout)
-    {
-        if (layout != _layout) SettingsChanged?.Invoke(new InventorySettings(layout, _showSlots, _collapsed));
-    }
-
     private void Render(InventorySnapshot snapshot)
     {
         if (_disposed) return;
@@ -828,8 +808,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         RenderContents(snapshot, open);
         ShowSelection();
         RenderBurden(snapshot);
-        _pyrealCount.Text = snapshot.Pyreals.ToString("N0");
         _frame.Title = snapshot.CharacterName.Length == 0 ? Title : Title + " of " + snapshot.CharacterName;
+        _frame.ShortTitle = snapshot.CharacterName.Length == 0 ? null : snapshot.CharacterName;
         Fade(_dragged, lifted: true);
         if (_indicatorAt is { } at && (_dragged != 0 || _retailItem != 0))
         {
@@ -864,49 +844,26 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         _packList.Children.Clear();
         // A side pack's tile carries its position in the side-pack list: a drop of a pack reorders by that position.
-        if (_layout == InventoryLayout.Vertical)
-        {
-            _packList.Children.Add(PackColumnSlot(snapshot, snapshot.MainPack, -1, open));
-            _packList.Children.Add(new DerethRule { Margin = new Thickness(0, 2), Opacity = 0.7 });
-            for (var position = 0; position < snapshot.SidePacks.Count; position++)
-                _packList.Children.Add(PackColumnSlot(snapshot, snapshot.SidePacks[position], position, open));
-            return;
-        }
-        _packList.Children.Add(PackTab(snapshot, snapshot.MainPack, -1, open));
-        _packList.Children.Add(new Border { Width = 1, Background = DerethPalette.GrooveEdgeBrush, Margin = new Thickness(3, 4) });
+        _packList.Children.Add(PackColumnSlot(snapshot, snapshot.MainPack, -1, open));
+        _packList.Children.Add(new DerethRule { Margin = new Thickness(0, 2), Opacity = 0.7 });
         for (var position = 0; position < snapshot.SidePacks.Count; position++)
-            _packList.Children.Add(PackTab(snapshot, snapshot.SidePacks[position], position, open));
+            _packList.Children.Add(PackColumnSlot(snapshot, snapshot.SidePacks[position], position, open));
     }
 
-    /// <summary>A pack in the vertical column: its icon, with an upright fill bar on its right. An empty side-pack slot is a placeholder.</summary>
+    /// <summary>A pack in the column: its icon, with an upright fill bar inside its right edge, as retail's. An empty side-pack slot is a placeholder.</summary>
     private Control PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
     {
-        // The fill bar stands right of the tile, only for a container holding something; otherwise a gap of the bar's width keeps every tile lined up.
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = FillGap };
         var count = pack.Id == 0 ? 0 : ItemsIn(snapshot, pack.Id);
         var tile = pack.Id == 0
             ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null))
             : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
-        row.Children.Add(tile);
-        row.Children.Add(pack.Capacity > 0 && count > 0 ? FillBar(count, pack.Capacity) : new Control { Width = FillWidth });
-        return row;
-    }
-
-    /// <summary>A pack in the horizontal strip: its icon, with "n/cap" under it. An empty side-pack slot is a placeholder.</summary>
-    private Control PackTab(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
-    {
-        var stack = new StackPanel { Spacing = 2 };
-        if (pack.Id == 0)
-        {
-            stack.Children.Add(Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null)));
-            return stack;
-        }
-        var selected = pack.Id == open.Id;
-        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open)));
-        var count = Label(pack.Capacity > 0 ? $"{ItemsIn(snapshot, pack.Id)}/{pack.Capacity}" : " ", selected ? TealTextBrush : MutedBrush, 10);
-        count.HorizontalAlignment = HorizontalAlignment.Center;
-        stack.Children.Add(count);
-        return stack;
+        // Only a container holding something shows its fill. The bar takes no presses, so the tile under it still does.
+        if (pack.Capacity <= 0 || count <= 0) return tile;
+        var bar = FillBar(count, pack.Capacity);
+        bar.HorizontalAlignment = HorizontalAlignment.Right;
+        bar.Margin = new Thickness(0, 0, FillInset, 0);
+        bar.IsHitTestVisible = false;
+        return new Grid { HorizontalAlignment = HorizontalAlignment.Left, Children = { tile, bar } };
     }
 
     private void RenderContents(InventorySnapshot snapshot, InventoryPack open)
@@ -937,14 +894,14 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private void RenderBurden(InventorySnapshot snapshot)
     {
         var percent = snapshot.BurdenLimit > 0 ? snapshot.Burden * 100 / snapshot.BurdenLimit : 0;
-        var vertical = _layout == InventoryLayout.Vertical;
-        _burdenMeter.Content = BurdenMeter(snapshot, vertical);
-        _burdenText.Text = vertical ? $"{percent}%" : $"{snapshot.Burden:N0} / {snapshot.BurdenLimit:N0}  ·  {percent}%";
+        _burdenMeter.Content = BurdenMeter(snapshot);
+        _burdenText.Text = $"{percent}%";
     }
 
     private static int ItemsIn(InventorySnapshot snapshot, uint container) => snapshot.Items.Count(item => item.Container == container);
 
-    private const double FillWidth = 4, FillGap = 3;
+    // The bar sits this far in from the tile's right edge, inside its rim.
+    private const double FillWidth = 3, FillInset = 3;
 
     /// <summary>A pack's fill: a narrow upright groove, filled in gold from the foot to the share of its slots in use.</summary>
     private static Control FillBar(int count, int capacity)
@@ -962,35 +919,26 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// A groove filled to the burden, full at the most a character can carry (three times the limit). As retail's, each third
     /// keeps its band's colour: green to the limit, yellow above it, red above twice it.
     /// </summary>
-    private static Control BurdenMeter(InventorySnapshot snapshot, bool vertical)
+    private static Control BurdenMeter(InventorySnapshot snapshot)
     {
+        const double Height = 62, Inside = Height - 4, LeastBand = 3;
         var load = snapshot.BurdenLimit <= 0 ? 0 : (double)snapshot.Burden / snapshot.BurdenLimit;
-        var bands = BurdenBandBrushes.Select((_, band) => Math.Max(0, Math.Min(1, load - band)) / 3).ToArray();
-        var empty = 1 - bands.Sum();
+        var bands = BurdenBandBrushes.Select((_, band) => Math.Max(0, Math.Min(1, load - band)) * Inside / 3).ToArray();
+        // The band the load is in shows at least a sliver, so a load just past the limit already shows yellow (and past twice it, red).
+        var top = Array.FindLastIndex(bands, height => height > 0);
+        if (top > 0) bands[top] = Math.Max(bands[top], LeastBand);
         var track = new Border
         {
             Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(2), Padding = new Thickness(1), VerticalAlignment = VerticalAlignment.Center,
+            CornerRadius = new CornerRadius(2), Padding = new Thickness(1), VerticalAlignment = VerticalAlignment.Center, Width = 12, Height = Height,
         };
-        if (vertical)
-        {
-            track.Width = 12;
-            track.Height = 62;
-        }
-        else
-        {
-            track.Height = 8;
-        }
-        // The bands run from the foot (or the left) in order; the empty share sits at the far end.
-        var shares = bands.Append(empty).Select(share => $"{share:0.###}*").ToArray();
-        var holder = new Grid();
-        if (vertical) holder.RowDefinitions = new RowDefinitions(string.Join(",", Enumerable.Reverse(shares)));
-        else holder.ColumnDefinitions = new ColumnDefinitions(string.Join(",", shares));
+        // The bands run from the foot in order; the empty share sits at the top.
+        var rows = new[] { "*" }.Concat(Enumerable.Reverse(bands).Select(height => height.ToString("0.###", CultureInfo.InvariantCulture)));
+        var holder = new Grid { RowDefinitions = new RowDefinitions(string.Join(",", rows)) };
         for (var band = 0; band < bands.Length; band++)
         {
             var fill = new Border { Background = BurdenBandBrushes[band] };
-            if (vertical) Grid.SetRow(fill, bands.Length - band);
-            else Grid.SetColumn(fill, band);
+            Grid.SetRow(fill, bands.Length - band);
             holder.Children.Add(fill);
         }
         track.Child = holder;
@@ -1015,7 +963,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return bitmap;
     }
 
-    private Control VerticalBody()
+    private Control Body()
     {
         // The pack's six columns sit under the paperdoll's left column, with the contents line across their width.
         _grid.Columns = RetailColumns;
@@ -1032,103 +980,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Margin = new Thickness(0, 4, 0, 0),
         };
         var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 0, 0) };
-        // The burden sits centred over the tiles, not over the tiles and their fill bars.
-        var overTiles = new Thickness(0, 0, FillWidth + FillGap, 0);
-        column.Children.Add(At(new Border { Margin = overTiles, Child = Centred(_burdenMeter) }, 0));
-        column.Children.Add(At(new Border { Margin = overTiles, Child = Centred(_burdenText) }, 1));
+        column.Children.Add(At(Centred(_burdenMeter), 0));
+        column.Children.Add(At(Centred(_burdenText), 1));
         column.Children.Add(At(packs, 2));
 
         var body = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), Margin = new Thickness(2, 8, 2, 0)
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(2, 8, 2, 6)
         };
-        if (!_collapsed)
-        {
-            body.Children.Add(At(_paperdoll, 0));
-            body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
-        }
+        body.Children.Add(At(_paperdoll, 0));
+        body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
         body.Children.Add(At(pack, 2));
         body.Children.Add(At(column, 0, 1));
         Grid.SetRowSpan(column, 3);
-        var footer = PyrealsFooter();
-        body.Children.Add(At(footer, 3));
-        Grid.SetColumnSpan(footer, 2);
         return body;
-    }
-
-    private Control HorizontalBody()
-    {
-        var left = new StackPanel { Children = { _paperdoll } };
-        var rule = new Border { Width = 1, Background = DerethPalette.GoldWashBrush, Margin = new Thickness(0, 4) };
-
-        var right = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
-        _packList.Margin = new Thickness(0, 0, 0, 6);
-        right.Children.Add(At(_packList, 0));
-        right.Children.Add(At(ContentsLine(), 1));
-        right.Children.Add(At(_grid, 2));
-
-        // The footer: pyreals, then the burden meter with its reading.
-        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 8, Margin = new Thickness(2, 6, 2, 0) };
-        footer.Children.Add(PyrealsLine());
-        footer.Children.Add(At(Label("Burden", MutedBrush, 12), 0, 1));
-        // The meter stretches across its star column, so it has a width to fill.
-        _burdenMeter.VerticalAlignment = VerticalAlignment.Center;
-        footer.Children.Add(At(_burdenMeter, 0, 2));
-        footer.Children.Add(At(_burdenText, 0, 3));
-
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"), RowDefinitions = new RowDefinitions("*,Auto"), ColumnSpacing = 10, Margin = new Thickness(2, 8, 2, 0) };
-        if (!_collapsed)
-        {
-            body.Children.Add(At(left, 0, 0));
-            body.Children.Add(At(rule, 0, 1));
-        }
-        else body.ColumnSpacing = 0;
-        body.Children.Add(At(right, 0, 2));
-        body.Children.Add(At(footer, 1, 0));
-        Grid.SetColumnSpan(footer, 3);
-        return body;
-    }
-
-    private Control LayoutToggles()
-    {
-        var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = DerethWindow.ActionGap, VerticalAlignment = VerticalAlignment.Center };
-        toggles.Children.Add(LayoutToggle(InventoryLayout.Vertical, StackedGlyph));
-        toggles.Children.Add(LayoutToggle(InventoryLayout.Horizontal, SideBySideGlyph));
-        // Every header button is the same gap from the next, the close box included.
-        toggles.Children.Add(EquipmentToggle());
-        return toggles;
-    }
-
-    /// <summary>A header button that shows or collapses the equipment and paperdoll section. Lit green while the section shows.</summary>
-    private Control EquipmentToggle()
-    {
-        var icon = new Path
-        {
-            Data = Geometry.Parse(FigureGlyph), Width = 14, Height = 14, StrokeThickness = 1.2, UseLayoutRounding = false,
-            Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
-            Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
-        };
-        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon };
-        ToolTip.SetTip(button, _collapsed ? "Show equipment" : "Hide equipment");
-        button.Click += (_, _) => SettingsChanged?.Invoke(new InventorySettings(_layout, _showSlots, !_collapsed));
-        return button;
-    }
-
-    /// <summary>A header button that switches to its layout. The window's own layout is lit green.</summary>
-    private Control LayoutToggle(InventoryLayout layout, string glyph)
-    {
-        var active = layout == _layout;
-        var icon = new Path
-        {
-            // Unrounded, so the glyph sits at the button's exact centre: at a scale the button can round to an odd number of
-            // pixels and the glyph to an even one, and snapping both would push the glyph a pixel off.
-            Data = Geometry.Parse(glyph), Width = 14, Height = 14, StrokeThickness = 1.2, UseLayoutRounding = false,
-            Stroke = active ? DerethPalette.TealBrush : MutedBrush,
-            Fill = active ? DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)) : null,
-        };
-        var button = new DerethButton { Width = 24, Height = 24, Tag = layout, Content = icon };
-        button.Click += (_, _) => RequestLayout(layout);
-        return button;
     }
 
     private Control ContentsLine()
@@ -1136,23 +1001,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 2, 6) };
         line.Children.Add(_contentsName);
         line.Children.Add(At(_contentsCount, 0, 1));
-        return line;
-    }
-
-    /// <summary>The pyreal count with its icon, as the footer's first item.</summary>
-    private Control PyrealsLine()
-    {
-        var money = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        money.Children.Add(Icon(new ItemVisual(PyrealIcon, 0, 0, 0)));
-        money.Children.Add(_pyrealCount);
-        return money;
-    }
-
-    /// <summary>The vertical layout's footer: the pyreals alone.</summary>
-    private Grid PyrealsFooter()
-    {
-        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(2, 6, 2, 0) };
-        line.Children.Add(PyrealsLine());
         return line;
     }
 

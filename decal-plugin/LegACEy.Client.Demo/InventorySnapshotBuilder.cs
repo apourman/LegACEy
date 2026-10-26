@@ -77,8 +77,6 @@ public interface IInventoryReader
 /// <summary>Builds an <see cref="InventorySnapshot"/> from the reads. It has no Decal dependency, so the rules are tested here.</summary>
 public static class InventorySnapshotBuilder
 {
-    // The weenie class id of a pyreal stack (ACE's pyreal weenie: Player_Death and Player_House check it the same way).
-    private const int PyrealWcid = 273;
     // The main pack's size when the client reports none. The server's value wins when it reports one.
     private const int DefaultMainPackCapacity = 96;
     private const int MaxAugmentationBurden = 150;
@@ -204,7 +202,6 @@ public static class InventorySnapshotBuilder
         var items = new List<InventoryItem>();
         var wielded = new List<WieldedItem>();
         var unslotted = new List<InventoryObjectRead>();
-        var pyreals = 0;
         foreach (var read in objects)
         {
             if (read.EquippedMask != 0)
@@ -214,7 +211,6 @@ public static class InventorySnapshotBuilder
                 continue;
             }
             if (read.IsContainer) continue;
-            if (read.Wcid == PyrealWcid) pyreals += read.StackCount;
             if (read.Slot < 0) unslotted.Add(read);
             else items.Add(ItemAt(read, read.Slot));
         }
@@ -228,7 +224,7 @@ public static class InventorySnapshotBuilder
         }
 
         return new InventorySnapshot(mainPack, sidePacks, items, wielded, reader.Burden,
-            BurdenLimit(reader.Strength, reader.CarryingAugmentations), pyreals, reader.OpenContainer, reader.Selected, reader.CharacterName);
+            BurdenLimit(reader.Strength, reader.CarryingAugmentations), reader.OpenContainer, reader.Selected, reader.CharacterName);
     }
 
     private static InventoryItem ItemAt(InventoryObjectRead read, int slot) =>

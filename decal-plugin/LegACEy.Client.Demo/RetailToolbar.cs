@@ -126,6 +126,11 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     };
     private readonly Border _meterSlot = new() { IsVisible = false };
     private readonly StackPanel _plaqueContent;
+    /// <summary>
+    /// Retail's toolbar window width (its 300 DIP toolbar in a 5 DIP border), which the Dereth inventory shares. Set, not left to the
+    /// parts, so it scales as a window does; the parts, each rounded up to whole pixels, would make it a few pixels wider at most scales.
+    /// </summary>
+    public const double RetailWidth = 310;
     // The part above the rows, then the shortcut rows in order, touching as retail's do.
     private readonly StackPanel _sections = new();
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
@@ -140,6 +145,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _openMenu = openMenu ?? throw new ArgumentNullException(nameof(openMenu));
         _moveToMainPack = moveToMainPack ?? throw new ArgumentNullException(nameof(moveToMainPack));
         _startMove = startMove;
+        Width = RetailWidth;
 
         _stance = new DerethMedallion(GlyphOf(port.Stance), 40, 25);
         ToolTip.SetTip(_stance, "Combat stance");
@@ -190,8 +196,12 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _sections.Children.Add(Columns(Centred(_stance), middle, Centred(backpack)));
 
         // A transparent backing takes the press wherever no button or control does (a medallion marks its presses handled), the frame's edge
-        // included, so a press there starts the move. The frame holds the sections with no padding, so the toolbar is retail's width.
-        var frame = new Border { Background = Brushes.Transparent, Child = new DerethFrame(DerethFrameArt.Window) { Child = _sections } };
+        // included, so a press there starts the move. The sections sit 3 DIPs inside the frame's 8 DIP sides, so the toolbar is retail's
+        // window width, as the Dereth inventory is: 11 + 9 × 32 + 11 = 310.
+        var frame = new Border
+        {
+            Background = Brushes.Transparent, Child = new DerethFrame(DerethFrameArt.Window) { Child = _sections, Padding = new Thickness(11, 8) }
+        };
         frame.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(frame).Properties.IsLeftButtonPressed) _startMove?.Invoke();

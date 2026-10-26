@@ -7,26 +7,23 @@ using LegACEy.Client.Themes;
 
 namespace LegACEy.Plugin.Inventory;
 
-/// <summary>
-/// The inventory window, standing in for retail's inventory panel: it opens and closes with retail's panel, in the layout the
-/// character last chose. Each layout is its own window with its own saved size and position, so switching hides one and opens the
-/// other at its own size. A layout with its equipment section collapsed is another window with its own size, but it stays where
-/// the full one is, so collapsing and expanding keep the window in place.
-/// </summary>
+/// <summary>The inventory window, standing in for retail's inventory panel: it opens and closes with retail's panel.</summary>
 public sealed class InventoryPlugin : ILegACEyPlugin
 {
     private static readonly Point DefaultLocation = new(240, 100);
+    // The id the vertical layout's window had, so its saved place and size still apply.
+    private const string WindowId = "inventory-vertical";
 
-    // The window of each view while the client keeps it, open or hidden. A hidden window keeps its content.
-    private readonly Dictionary<InventoryView, InventoryWindow> _windows = new();
+    // The window while the client keeps it, open or hidden. A hidden window keeps its content.
+    private InventoryWindow? _window;
     // The retail panel this window stands in for. It does nothing while the client's takeover is off, and then retail's panel shows.
     private IRetailPanel? _retail;
-    // The settings while a window is open: read from the client when a window opens, and every change is saved as it happens.
+    // The settings while the window is open: read from the client when it opens, and every change is saved as it happens.
     // The cache is the character's, and the character logged in now may not be the one it came from, so a retail report clears it
-    // while no window is open (the next read reaches the client); a view switch never clears it.
+    // while the window is closed (the next read reaches the client).
     private InventorySettings? _settings;
-    // The view whose window the plugin last showed, so a retail report knows whether it hides the window or opens one.
-    private InventoryView? _shown;
+    // Whether the plugin last showed the window, so a retail report knows whether it hides the window or opens it.
+    private bool _shown;
 
     public string Name => "Inventory";
     public string Version => typeof(InventoryPlugin).Assembly.GetName().Version.ToString(3);
@@ -39,41 +36,35 @@ public sealed class InventoryPlugin : ILegACEyPlugin
         // The window can open before the server's action list arrives at login: the doll joins it when the list does.
         client.WhenServerActionsChange(() =>
         {
-            if (_shown is { } view && _windows.TryGetValue(view, out var window)) GiveDoll(client, window);
+            if (_shown && _window != null) GiveDoll(client, _window);
         });
     }
 
-    /// <summary>
-    /// Retail opened or closed its inventory panel (by key, toolbar or item) while the takeover is on. A view switch never comes
-    /// here: it hides and shows windows of its own and leaves retail's panel open.
-    /// </summary>
+    /// <summary>Retail opened or closed its inventory panel (by key, toolbar or item) while the takeover is on.</summary>
     private void RetailPanelChanged(ILegACEyClient client, bool open)
     {
-        if (open == (_shown != null)) return;
-        if (_shown == null) _settings = null;
-        Toggle(client, Current(client).View);
+        if (open == _shown) return;
+        if (!_shown) _settings = null;
+        Toggle(client);
     }
 
-    /// <summary>Opens the window of a view, or hides it when it is the one showing.</summary>
-    private void Toggle(ILegACEyClient client, InventoryView view)
+    /// <summary>Opens the window, or hides it when it is showing.</summary>
+    private void Toggle(ILegACEyClient client)
     {
-        var opening = _shown != view;
-        if (opening)
+        if (!_shown)
         {
             // A kept window takes the Slots choice made since it was hidden, and draws what changed while it was hidden.
-            if (_windows.TryGetValue(view, out var kept))
+            if (_window != null)
             {
-                GiveDoll(client, kept);
-                kept.SetShowSlots(Current(client).ShowSlots);
-                kept.Resume();
+                GiveDoll(client, _window);
+                _window.SetShowSlots(Current(client).ShowSlots);
+                _window.Resume();
             }
         }
-        else if (_windows.TryGetValue(view, out var shown))
-        {
-            shown.Suspend();
-        }
-        _shown = opening ? view : null;
-        Show(client, view);
+        else _window?.Suspend();
+        _shown = !_shown;
+        client.ToggleWindowWithChrome(WindowId, InventoryWindow.Title, Width, DefaultHeight, DefaultLocation, close => CreateWindow(client, close),
+            new DerethClientTheme(), Sizing, DerethWindow.TitleBarHeight);
     }
 
     /// <summary>
@@ -85,79 +76,53 @@ public sealed class InventoryPlugin : ILegACEyPlugin
         if (!window.HasDoll && client.Looks.Knows(0)) window.SetDoll(new PaperdollView(client.Looks, client.PortalPath) { Still = true });
     }
 
-    /// <summary>Opens the window of a view, or hides it when the client has it open.</summary>
-    private void Show(ILegACEyClient client, InventoryView view)
+    private Control CreateWindow(ILegACEyClient client, Action close)
     {
-        var (width, height, sizing) = Shape(view);
-        client.ToggleWindowWithChrome(WindowId(view), InventoryWindow.Title, width, height, DefaultLocation,
-            close => CreateWindow(client, view, close), new DerethClientTheme(), sizing, DerethWindow.CentredTitleBarHeight,
-            view.Collapsed ? WindowId(new InventoryView(view.Layout, false)) : null);
-    }
-
-    private Control CreateWindow(ILegACEyClient client, InventoryView view, Action close)
-    {
-        // The client keeps a closed window hidden and shows it again, so this runs once per session for each view.
-        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(view.Layout, Current(client).ShowSlots, view.Collapsed), client.ItemDrag);
+        // The client keeps a closed window hidden and shows it again, so this runs once per session.
+        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(Current(client).ShowSlots), client.ItemDrag);
         GiveDoll(client, window);
-        _windows[view] = window;
+        _window = window;
         // The close box closes retail's panel too, through its own path, when the takeover holds it. Retail's close then reaches us as
         // closed, which finds the window already hidden.
         window.CloseRequested += (_, _) =>
         {
-            Hide(view, close);
+            window.Suspend();
+            _shown = false;
+            close();
             _retail?.Close();
         };
         window.InspectRequested += () => client.Inspect(0, string.Empty, null);
         window.SettingsChanged += settings =>
         {
-            // The new settings are the plugin's from here on, even if the client cannot save them, so the other view opens from
-            // them and not from what the client reads back. The cache is not reset here: this is not a menu press.
+            // The new settings are the plugin's from here on, even if the client cannot save them.
             _settings = settings;
             client.SaveSettings(settings.ToInt());
-            if (settings.View == view) return;
-            // Hiding keeps this view's size and position. The other view opens with its own saved size.
-            Hide(view, close);
-            Toggle(client, settings.View);
         };
-        window.DetachedFromVisualTree += (_, _) => Released(view, window);
+        window.DetachedFromVisualTree += (_, _) => Released(window);
         return window;
     }
 
-    /// <summary>Hides a view's window. The client keeps it, so it comes back as it was.</summary>
-    private void Hide(InventoryView view, Action close)
+    /// <summary>The client released the window (the player logged off, or the plugin turned off): forget it and free it.</summary>
+    private void Released(InventoryWindow window)
     {
-        if (_windows.TryGetValue(view, out var window)) window.Suspend();
-        if (_shown == view) _shown = null;
-        close();
-    }
-
-    /// <summary>The client released a window (the player logged off, or the plugin turned off): forget it and free it.</summary>
-    private void Released(InventoryView view, InventoryWindow window)
-    {
-        if (_windows.TryGetValue(view, out var current) && current == window) _windows.Remove(view);
-        if (_shown == view) _shown = null;
+        if (_window == window)
+        {
+            _window = null;
+            _shown = false;
+        }
         window.Dispose();
     }
 
     private InventorySettings Current(ILegACEyClient client) => _settings ??= InventorySettings.FromInt(client.LoadSettings());
 
-    private static string WindowId(InventoryView view) => "inventory-" + view.Layout.ToString().ToLowerInvariant() + (view.Collapsed ? "-compact" : string.Empty);
-
-    private const int VerticalWidth = 305, TallestVertical = 10_000;
+    // Retail's toolbar window width, so the inventory stacked on the toolbar lines up with it.
+    private const int Width = (int)RetailToolbar.RetailWidth;
 
     /// <summary>
-    /// Each view's default size and minimum. The minimum keeps the paperdoll, unless it is collapsed, and one row of the grid visible,
-    /// and the horizontal one also keeps the pack strip on one row: the strip is the main pack, a divider and seven side packs, 295 px across.
-    /// The vertical views are retail's panel, so only their height changes: retail's width, the paperdoll and grid with the pack column
-    /// on their right, and the full one opens with the grid's six columns eleven rows deep, as retail's does. Scaling, by the UI size or
-    /// Ctrl and the wheel, changes the whole window.
+    /// The window's default height and its resizing. It is retail's panel, so only its height changes: retail's width, the paperdoll and
+    /// grid with the pack column on their right, opening with the grid's six columns eleven rows deep, as retail's does; the minimum keeps
+    /// the paperdoll and one row of the grid visible. Scaling, by the UI size or Ctrl and the wheel, changes the whole window.
     /// </summary>
-
-    private static (int Width, int Height, WindowResizing Sizing) Shape(InventoryView view) => (view.Layout, view.Collapsed) switch
-    {
-        (InventoryLayout.Horizontal, false) => (671, 441, new WindowResizing(new Size(631, 371))),
-        (InventoryLayout.Horizontal, true) => (420, 361, new WindowResizing(new Size(340, 261))),
-        (_, false) => (VerticalWidth, 818, new WindowResizing(new Size(VerticalWidth, 449), new Size(VerticalWidth, TallestVertical))),
-        _ => (VerticalWidth, 300, new WindowResizing(new Size(VerticalWidth, 228), new Size(VerticalWidth, TallestVertical))),
-    };
+    private const int DefaultHeight = 741;
+    private static readonly WindowResizing Sizing = new(new Size(Width, 385), new Size(Width, 10_000));
 }

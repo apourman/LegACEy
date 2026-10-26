@@ -105,7 +105,8 @@ namespace ACE.Server.Market
         /// <summary>
         /// Moves an item from the player's pack into their account's Vault.
         /// The item is taken out of the pack in memory only. The networking removal saves an ownerless item, and destroying the item would delete its row.
-        /// The deposit job then saves the item and the Vault row together. On success the object is forgotten; on a failure that saved nothing it goes back to the pack.
+        /// A player save queued just ahead of the deposit job writes the rest of the pack, so the source of a split part never keeps its old size once
+        /// the Vault has the part. The deposit job then saves the item and the Vault row together. On success the object is forgotten; on a failure that saved nothing it goes back to the pack.
         /// </summary>
         public static void Deposit(Player player, uint itemGuid, Action<VaultResult> completed = null)
         {
@@ -168,6 +169,9 @@ namespace ACE.Server.Market
             item.OwnerId = ownerId;
             item.PlacementPosition = placement;
 
+            // a split changes the source stack in memory only: saving it ahead of the job means a crash can't leave the full source and the split part in the Vault
+            player.SavePlayerToDatabase();
+
             inFlight.Add(player.Guid.ClientGUID);
 
             if (player.CurrentAppraisalTarget == itemGuid)
@@ -221,7 +225,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// Deposits a set of items in one save: all of them or none. It is instant, with no channel, and refused while a transfer is active or when a
         /// channel could not start (a recent player fight, a trade). Each item's rules come first, so the first refusal is the one reported; then the
-        /// Vault's room for the whole set. The items leave the pack as a single deposit's item does. The result is reported once, on the world thread.
+        /// Vault's room for the whole set. The items leave the pack, and the rest of the pack is saved ahead of the job, as for a single deposit. The result is reported once, on the world thread.
         /// </summary>
         public static void DepositMany(Player player, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
         {
@@ -277,6 +281,9 @@ namespace ACE.Server.Market
 
                 deposits.Add((escrowed, new ReaderWriterLockSlim(), vaultItem));
             }
+
+            // the source of a split part, as for a single deposit (see Deposit)
+            player.SavePlayerToDatabase();
 
             inFlight.Add(player.Guid.ClientGUID);
 
@@ -334,7 +341,10 @@ namespace ACE.Server.Market
             {
                 log.Error($"[VAULT] Batch deposit of {items.Count} items for {player.Name} may or may not have been saved; the objects are dropped and the database decides at the next login");
                 foreach (var item in items)
+                {
+                    WarnIfPackGone(player, item, item.Name);
                     player.SendRemovedForVault(item);
+                }
                 FinishBatch(player, VaultOutcome.Unconfirmed, items[0].Name, itemGuids, completed);
                 return;
             }
@@ -354,9 +364,8 @@ namespace ACE.Server.Market
             }
 
             // the database still has every item in the pack, as after a failed single deposit; they go back last first, to the places they were taken from
-            if (!player.IsLoggingOut)
-                for (var index = items.Count - 1; index >= 0; index--)
-                    ReturnToPack(player, items[index], items[index].Name);
+            for (var index = items.Count - 1; index >= 0; index--)
+                ReturnToPack(player, items[index], items[index].Name);
 
             FinishBatch(player, outcome, items[0].Name, itemGuids, completed);
         }
@@ -821,6 +830,7 @@ namespace ACE.Server.Market
             {
                 // the database has the item either in the pack or in the Vault; putting it back here could make a second copy, so the next login shows which
                 log.Error($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} may or may not have been saved; the object is dropped and the database decides at the next login");
+                WarnIfPackGone(player, item, name);
                 player.SendRemovedForVault(item);
                 Finish(player, VaultOutcome.Unconfirmed, name, item.Guid.ClientGUID, completed);
                 return;
@@ -841,9 +851,8 @@ namespace ACE.Server.Market
                 log.Warn($"[VAULT] Could not read the Vault size for {player.Name}'s failed deposit: {ex.Message}");
             }
 
-            // the database still has the item in the pack (the live item kept its container throughout). A player who has gone gets it back when they log in, so the object is just discarded.
-            if (!player.IsLoggingOut)
-                ReturnToPack(player, item, name);
+            // the database still has the item in the pack (the live item kept its container throughout)
+            ReturnToPack(player, item, name);
 
             Finish(player, outcome, name, item.Guid.ClientGUID, completed);
         }
@@ -852,9 +861,20 @@ namespace ACE.Server.Market
         /// A refused deposit's item goes back to the place it was taken from, which the live item still names. The client was never told it left.
         /// If that pack is gone, the client is told it left and gets it as a new item wherever there is room.
         /// With no room either, it is saved in the main pack for the next login: its row still names the old pack, which may now be another character's.
+        /// A player who has gone gets it from the database at the next login, in the pack it came from, or in the main pack if that pack is no longer theirs.
         /// </summary>
         private static void ReturnToPack(Player player, WorldObject item, string name)
         {
+            if (player.IsLoggingOut)
+            {
+                if (PackAt(player, (uint)(item.ContainerId ?? 0)) == null)
+                {
+                    log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed after its pack 0x{item.ContainerId:X8} left them; the database has it in the main pack for the next login");
+                    SaveInMainPack(player, item);
+                }
+                return;
+            }
+
             if (player.TryReturnFromVault(item, (uint)(item.ContainerId ?? 0), item.PlacementPosition ?? 0))
                 return;
 
@@ -863,12 +883,26 @@ namespace ACE.Server.Market
             if (player.TryCreateInInventoryWithNetworking(item))
                 return;
 
+            SaveInMainPack(player, item);
+
+            log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed and the pack has no room for it; the database has it in the main pack for the next login");
+        }
+
+        private static void SaveInMainPack(Player player, WorldObject item)
+        {
             item.ContainerId = player.Guid.ClientGUID;
             item.OwnerId = player.Guid.ClientGUID;
             item.PlacementPosition = 0;
             item.SaveBiotaToDatabase();
+        }
 
-            log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed and the pack has no room for it; the database has it in the main pack for the next login");
+        /// <summary>
+        /// An Unknown deposit's item may already be in the Vault, so it is never saved anywhere; if its pack has left the player, an admin may have to sort out who holds it
+        /// </summary>
+        private static void WarnIfPackGone(Player player, WorldObject item, string name)
+        {
+            if (PackAt(player, (uint)(item.ContainerId ?? 0)) == null)
+                log.Error($"[VAULT] Unconfirmed deposit of {name} (0x{item.Guid}) for {player.Name}: its pack 0x{item.ContainerId:X8} is no longer theirs, so if the deposit was not saved, the pack's new owner has the item");
         }
 
         private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed, PackPlace? place)

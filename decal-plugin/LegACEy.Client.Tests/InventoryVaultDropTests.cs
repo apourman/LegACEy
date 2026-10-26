@@ -35,7 +35,7 @@ public sealed class InventoryVaultDropTests
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
         using var inventory = AvaloniaPanel.Create(() => new InventoryWindow(port, new InventorySample.NoArt(),
-            new InventorySettings(InventoryLayout.Vertical, showSlots: true), drag), 360, 530);
+            new InventorySettings(showSlots: true), drag), 360, 530);
         inventory.ApplyTheme(new DerethClientTheme());
         windows.Open(new WindowDefinition("inventory", "Inventory", 360, 530), new Point(0, 0));
         contents["inventory"] = inventory.Content;
@@ -76,7 +76,7 @@ public sealed class InventoryVaultDropTests
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
         using var inventory = AvaloniaPanel.Create(() => new InventoryWindow(port, new InventorySample.NoArt(),
-            new InventorySettings(InventoryLayout.Vertical, showSlots: true), drag), 360, 530);
+            new InventorySettings(showSlots: true), drag), 360, 530);
         inventory.ApplyTheme(new DerethClientTheme());
         windows.Open(new WindowDefinition("inventory", "Inventory", 360, 530), new Point(0, 0));
         contents["inventory"] = inventory.Content;
@@ -120,7 +120,7 @@ public sealed class InventoryVaultDropTests
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
         using var inventory = AvaloniaPanel.Create(() => new InventoryWindow(port, new InventorySample.NoArt(),
-            new InventorySettings(InventoryLayout.Vertical, showSlots: true)), 360, 530);
+            new InventorySettings(showSlots: true)), 360, 530);
         inventory.ApplyTheme(new DerethClientTheme());
         windows.Open(new WindowDefinition("inventory", "Inventory", 360, 530), VaultOrigin);
         contents["inventory"] = inventory.Content;

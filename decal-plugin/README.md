@@ -120,8 +120,8 @@ dragged onto a pack's tile or into its slots, the set moves there one item after
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
 paperdoll alone, which drags to turn. The client reads every object's look from the game's own messages, so Inspect and the inventory's
 doll work on any server; only objects outside the world (Vault items) ask a LegACEy server (`paperdoll.inspect`). The expand button in the
-inventory's doll area opens the same window on your own character, from its first view each time. The inventory's doll stands still,
-facing front without what it holds, and fills the panel above the Slots row. A click, drag, right-click or double-click on it acts on the
+inventory's doll area opens the same window on your own character, from its first view each time. The inventory's doll stands still in
+retail's paperdoll stance, facing front without what it holds, and takes the panel's height above the Slots row, its head beside the aetheria row. A click, drag, right-click or double-click on it acts on the
 worn item drawn under the pointer, as on that item's slot, and a drop on it wields the item; a weapon or shield dropped there first
 puts the one it replaces back in the main pack. While an item is dragged, the body parts
 it covers are outlined: gold where it can be worn, red where it can't, teal for a worn item being lifted. Which worn item draws which
@@ -145,9 +145,10 @@ Channels, Tells); each tab shows its own kinds of line, talks to its own target 
 tab to rename, edit, reorder or remove it, and use + to add one. Drag a tab out of the strip into a window of its own, and drag it back to
 merge it; tabs are kept per character in `chat-tabs.txt` and window places and sizes in `window-positions.txt`. Enter opens the input and
 Escape leaves it. Left alone for 15 seconds, the window fades to bare lines; hovering or pressing Enter brings it back. Settings sets the
-delay per character (Never, Instant as in retail, or 10 to 60 seconds), and the log backdrop's active and inactive opacity, as retail's
-General Chat Options do; with an inactive opacity above 0 the lines stay shown while idle. Names are drawn as in retail, in their line's
-colour except in a spell's words, where they are green; Name colour can pick Green, White or Gold for every name instead.
+delay per character (Never, Instant as in retail, or 10 to 60 seconds), and the whole window's active and inactive opacity, frame and
+backdrop alike, as retail's General Chat Options do; with an inactive opacity above 0 the lines stay shown while idle. Names are drawn as
+in retail, in their line's colour except in a spell's words, where they are green; Name colour can pick Green, White or Gold for every
+name instead.
 Retail's chat keeps running out of sight, so Decal plugins see chat as before. Creating an empty file named `retail-chat-native` beside
 the main DLL gives retail's chat back within a second; deleting it takes the chat over again, with the lines that came meanwhile in its log. In the chat box, Up and Down bring back what you sent, Ctrl+V pastes, and Ctrl+C and Ctrl+X copy. A drag
 in the log selects across lines and copies as you let go; Ctrl+C copies it again without the game seeing the key, until you click
@@ -156,10 +157,11 @@ any other; Settings → Windows → Chat → Text size sets the size of its text
 
 Retail's Lock UI locks every LegACEy window too: while it is on, none moves or resizes, and none shows resize grips or corners.
 
-The Dereth vitals window replaces retail's vitals, at retail's place. Health, stamina and mana show current / max in retail's colours; a
-drop leaves a pale trail, and health pulses under a quarter. The gear shown on hover switches between the stacked window and a slim
-side-by-side strip; each layout keeps its own size, and the choice is kept per character. Settings → Windows → Vitals → Retail-style
-bars drops the vital glyphs and value plaques and shows each value in the middle of its bar, as retail does, in either layout. Drag the corner grip or the bottom edge to
+The Dereth vitals window replaces retail's vitals, at retail's place. It draws retail's window: a thin bronze edge around retail's three
+bars, touching, in retail's colours, with each vital's current/max in the middle of its bar in bold outlined numbers. A drop leaves a pale
+trail, and health pulses under a quarter. The gear shown on hover switches between the stacked window and a slim side-by-side strip; each
+layout keeps its own size, and the choice is kept per character. Turning off Settings → Windows → Vitals → Retail-style bars gives a
+character the gilded Dereth frame instead, with glyphs and value plaques. Drag the corner grip or the bottom edge to
 draw the window larger or smaller (up to twice its size), and a side edge to stretch its bars longer. Creating an empty file named `retail-vitals-native` beside the main DLL gives retail's vitals back within
 a second; deleting it takes them over again.
 
@@ -182,16 +184,24 @@ again.
 The Dereth attack bar replaces retail's attack panel in melee and missile combat, centred over retail's place the first time. Click the
 groove to set the power (accuracy with a bow; hover it for the percentage), a plaque to pick High, Medium or Low, and a gem to switch
 Repeat Attacks, Auto Target or Keep in View; retail's keys still work and the bar follows them. The charge fills the groove as retail
-builds it. With the UI unlocked, hovering the bar shows gold corners: drag a side edge to make the bar longer or the bottom edge to
-give it more height (up to 960 by 150 DIPs); the text keeps its size, and Ctrl+wheel scales the whole bar. In peace and magic the bar closes and retail's panels are left as retail draws them. Creating an empty file named
+builds it. With the UI unlocked, hovering the bar shows gold corners: drag the bottom edge to draw the whole bar larger, text and buttons
+with it, as far as its width allows, or a side edge to make the bar longer (up to 960 by 150 DIPs); Ctrl+wheel also scales the whole bar. In peace and magic the bar closes and retail's panels are left as retail draws them. Creating an empty file named
 `retail-attack-native` beside the main DLL (or the Settings window's Attack bar row) gives retail's panel back within a second.
+
+Retail's yellow game messages at the top of the screen ("You can't move that!", "In Portal Space - Please Wait...") show as Dereth bands
+instead, from character select on: one line on a dark band, up to three at once with the newest on top, each for 4 seconds; a repeat moves
+back to the top. Chat is untouched. Settings → Windows → Game messages turns them off entirely, sets their text size (60 to 200 percent,
+with a preview), and moves them: Move shows a sample band to drag anywhere, Reset puts them back at the top centre. These are kept for
+every character in `plugin-settings.txt`, since the messages show before a character is chosen. Creating an empty file named
+`retail-game-messages-native` beside the main DLL (or the card's Retail switch) gives retail's yellow text back.
 
 The Settings window's Windows tab has a Dereth / Retail switch on each window's card, and an All windows switch above them that
 writes or deletes every `retail-*-native` file at once. It lights neither choice while the windows differ.
 
 The LegACEy menu's UI size row scales every LegACEy window and the toolbar with its shortcut rows, from 60 to 150 percent (85 to start),
 for every character. Ctrl and the wheel over a window or the toolbar scales it on its own, in 5 percent steps from 50 to 200 percent,
-per character, and shows its size over it while it changes. Item icons scale with their window like the rest of it. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
+per character, and shows its size over it while it changes. Without a wheel, each window's card in Settings → Windows has a Size row whose − and +
+do the same. Item icons scale with their window like the rest of it. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.
 
 The LegACEy menu's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the
@@ -313,6 +323,21 @@ release PRs, versions, tags, and changelogs. Its shared configuration is in
 3. The [plugin publishing workflow](../.github/workflows/release-decal-plugin.yml)
    builds and tests that exact release commit, attaches the DLL, runtime ZIP and
    setup.exe, then publishes the draft.
+
+The publishing workflow's build is
+[`build/Build-Release.ps1`](build/Build-Release.ps1): the Release tests, the stub
+build, the trimmed win-x86 runtime, the hook check, the package and setup.exe.
+The promote pull request (`next` into `master`) runs the same script on
+`windows-2022`, so a Windows-only or Release-only failure turns it red instead of
+breaking the release; the fix then lands on `next` before the promote merges. To run it by hand on Windows (.NET 10,
+Python and Inno Setup 6), from PowerShell 7:
+
+```powershell
+./decal-plugin/build/Build-Release.ps1
+```
+
+or start the pull-request workflow on a branch with
+`gh workflow run pull-request.yml --ref <branch>`.
 
 Work on other branches creates no official release. Only changes under
 `decal-plugin/` contribute to the plugin release PR. The root/server package

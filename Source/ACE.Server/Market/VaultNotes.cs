@@ -35,7 +35,8 @@ namespace ACE.Server.Market
 
         /// <summary>
         /// Banks every whole stack of trade notes in the player's packs (not ones in the trade window). The stacks leave the packs in memory,
-        /// then one save deletes their rows and credits the balance. On success the objects are forgotten; on failure they go back to the pack.
+        /// then one save deletes their rows and credits the balance. A player save goes ahead of it, so a split note stack left in the trade window
+        /// never keeps its old size once its split part is banked (see Vault.Deposit). On success the objects are forgotten; on failure they go back to the pack.
         /// </summary>
         public static void DepositNotes(Player player, Action<VaultResult> completed = null)
         {
@@ -94,6 +95,8 @@ namespace ACE.Server.Market
 
             var amount = notes.Sum(n => (long)(n.StackSize ?? 1));
             var stacks = notes.Select(n => new NoteStack(n.Guid.ClientGUID, n.StackSize ?? 1)).ToList();
+
+            player.SavePlayerToDatabase();
 
             inFlight.Add(player.Guid.ClientGUID);
 
@@ -234,18 +237,19 @@ namespace ACE.Server.Market
                 // the database has the notes either in the pack or banked; putting them back here could double them, so the next login shows which
                 log.Error($"[VAULT] Note deposit of {amount:N0} MMD for {player.Name} may or may not have been saved; the notes are dropped and the database decides at the next login");
                 foreach (var note in notes)
+                {
+                    WarnIfPackGone(player, note, note.Name);
                     player.SendRemovedForVault(note);
+                }
                 FinishNotes(player, VaultOutcome.Unconfirmed, amount, balance, completed);
                 return;
             }
 
             log.Warn($"[VAULT] Note deposit of {amount:N0} MMD for {player.Name} failed ({result}); nothing was saved");
 
-            // the database still has the notes in the pack (the live notes kept their container throughout). A player who has gone gets them back when they log in, so the objects are just discarded.
-            // they go back last first, to the places they were taken from
-            if (!player.IsLoggingOut)
-                for (var index = notes.Count - 1; index >= 0; index--)
-                    ReturnToPack(player, notes[index], notes[index].Name);
+            // the database still has the notes in the pack (the live notes kept their container throughout); they go back last first, to the places they were taken from
+            for (var index = notes.Count - 1; index >= 0; index--)
+                ReturnToPack(player, notes[index], notes[index].Name);
 
             FinishNotes(player, VaultOutcome.SaveFailed, amount, balance, completed);
         }

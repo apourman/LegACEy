@@ -134,6 +134,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailRadarSwitchFile = "retail-radar-native";
     // Beside the DLL: while this file exists, retail's attack panel stays retail's. Without it the Dereth attack bar replaces it in melee and missile.
     private const string RetailAttackSwitchFile = "retail-attack-native";
+    // Present: retail's yellow game messages stay retail's; absent: LegACEy's bands show them.
+    private const string RetailGameMessagesSwitchFile = "retail-game-messages-native";
     // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
     // Runtime only, so the next session reads the file again.
     private readonly Dictionary<string, bool> _switchHeld = new(StringComparer.Ordinal);
@@ -220,6 +222,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _toolbarFailed;
     // The offset from the toolbar's corner to the pointer while its frame is dragged; null when it is not.
     private Size? _toolbarDragOffset;
+    // Where a drag of the toolbar's bottom edge, which shows and hides shortcut row 2, last showed or hid it: the screen Y.
+    private int? _toolbarRowDragY;
     private bool _toolbarSwitch;
     private bool _toolbarReleaseLogged;
     // The Dereth toolbar's surface id. It is not a managed window, so drops reach it by its surface.
@@ -394,6 +398,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _uiSize = Math.Clamp(size, UiSizeChoice.Smallest, UiSizeChoice.Largest);
         if (_settingsStore.Load("", "", WaterKey) is { Location: var water })
             _water = new WaterChoice(water.Y != 0, Math.Clamp(water.X, 0, WaterChoice.Most));
+        if (_settingsStore.Load("", "", GameMessageTextSizeKey) is { Location.X: var messageSize and > 0 })
+            _gameMessageTextSize = Math.Clamp(messageSize, DerethMessageBands.SmallestTextSize, DerethMessageBands.LargestTextSize);
+        _gameMessagesHidden = _settingsStore.Load("", "", GameMessagesHiddenKey) is { Location.X: 1 };
+        if (_settingsStore.Load("", "", GameMessagePlaceKey) is { Location: var place, Size: not null }) _gameMessagePlace = place;
+        _gameMessagesRetail = !SwitchCustom(IOPath.Combine(PluginDirectory, RetailGameMessagesSwitchFile));
     }
 
     public void Startup()
@@ -427,6 +436,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
             try { _retailExamine = new RetailExamine(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Switching the appraisal window to retail won't reopen the item in retail's: {exception.Message}"); }
+            try { _gameMessages = new RetailGameMessages(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Retail's yellow game messages stay retail's: {exception.Message}"); }
             try { _busyCursor = new RetailBusyCursor(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"The busy cursor while an appraisal loads is off: {exception.Message}"); }
             try { _textMode = new RetailTextMode(NativeUi.ReadMemory, Log); }
@@ -467,6 +478,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             PortalDat.Overlay = null;
             _datOverlay?.Dispose();
             _datOverlay = null;
+            _gameMessages?.Dispose();
+            _gameMessages = null;
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
@@ -913,6 +926,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toast?.Hide();
         ReleaseFeatureWindow(ToastWindowId);
         DropUpdateToast();
+        DropGameMessageToast();
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -1047,6 +1061,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
             TestWeather = _worldEffects != null ? new OptionChoice<WeatherKind>(_worldEffects.TestWeather, SetTestWeather) : null,
             TestFog = _worldEffects != null ? new OptionChoice<bool>(_worldEffects.TestFog, SetTestFog) : null,
+            // Without the hook (a client that doesn't match, or bands that failed) the card has only its switch.
+            GameMessagesShown = _gameMessages != null ? new OptionChoice<bool>(!_gameMessagesHidden, SetGameMessagesShown) : null,
+            GameMessageTextSize = _gameMessages != null ? new OptionChoice<int>(_gameMessageTextSize, SetGameMessageTextSize) : null,
+            GameMessagePlace = _gameMessages != null ? GameMessagePlaceOption() : null,
             ResetPositions = () => _positionsResetRequested = true,
         };
         _settings = settings;
@@ -1054,6 +1072,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         window.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(SettingsWindowId);
+            // Placing the game messages ends with the window that started it.
+            SetGameMessagesMoving(false);
             _settings = null;
         };
         // First opened beside the launcher (260 + its 220 width), not over it.
@@ -1079,18 +1099,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private IReadOnlyList<UiWindowChoice> WindowChoices() => new[]
     {
-        Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default),
-        Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }),
-        Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default),
-        Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default),
-        Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default),
-        Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default),
-        Choice("Attack bar", RetailAttackSwitchFile, () => _lastAttackSwitchCheck = default)
+        Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default, InventoryWindowId),
+        Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }, AppraisalFeature.WindowId),
+        Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default, ToolbarSurfaceId),
+        Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default, ChatWindowId),
+        Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default, DerethVitalsWindow.StackedId, DerethVitalsWindow.SideBySideId),
+        Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default, RadarWindowId),
+        Choice("Attack bar", RetailAttackSwitchFile, () => _lastAttackSwitchCheck = default, DerethAttackBarWindow.WindowId),
+        Choice("Game messages", RetailGameMessagesSwitchFile, () =>
+        {
+            _gameMessagesRetail = !SwitchCustom(IOPath.Combine(PluginDirectory, RetailGameMessagesSwitchFile));
+            if (_gameMessagesRetail) SetGameMessagesMoving(false);
+        })
     };
 
-    private UiWindowChoice Choice(string title, string file, Action recheck)
+    // The Inventory plugin's window, as the plugin registry names it (plugin name/window id). Plugins load at runtime, so it is spelled out.
+    private const string InventoryWindowId = "Inventory/inventory-vertical";
+
+    /// <summary>
+    /// A window's card: its switch file, and the ids of the windows its Size row scales, the first of which it reads the size from. A window
+    /// that is not open has its size saved for when it opens.
+    /// </summary>
+    private UiWindowChoice Choice(string title, string file, Action recheck, params string[] sizeIds)
     {
         var path = IOPath.Combine(PluginDirectory, file);
+        var size = sizeIds.Length == 0 ? null : new WindowSizeChoice(
+            () => _windows?.SizePercentOf(PlaceIdOf(sizeIds[0])) ?? 100,
+            steps => Guard(() => { if (_windows != null) foreach (var id in sizeIds) RescaleWindow(id, steps); }));
         return new UiWindowChoice(title, () => SwitchCustom(path), custom =>
         {
             try
@@ -1106,7 +1141,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _switchHeld[path] = custom;
             }
             recheck();
-        });
+        }, size);
     }
 
     /// <summary>Whether a switch's window is on LegACEy's: the file's absence, unless a write this session could not change it.</summary>
@@ -1219,6 +1254,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void FrameCore()
     {
+        // Retail's yellow game messages are ours whenever our bands can be drawn, from character select and the portal space at login on;
+        // otherwise retail's spew box shows them.
+        if (_gameMessages != null)
+            _gameMessages.Taking = !_failed && !_gameMessagesRetail && NativeUi.Ready && CharacterSelectToastHost() && _postUiDrawHook!.HasRun;
         // Once the whole UI has failed, a give-back of retail's toolbar that failed is retried each frame until it lands; logged once per streak.
         if (_failed && _toolbarTakeover != null)
         {
@@ -1332,6 +1371,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _dragIconSurface.Location = new Point(_pointer.X - 16, _pointer.Y - 16);
         });
 
+        // Before the windows too: the portal space at login has its messages.
+        ShowGameMessages();
         // Every window's state is up to date: one Avalonia step lays out, paints and captures them all, then each uploads.
         // Guard's work, without a delegate allocated every frame.
         if (_failed) return;
@@ -1370,6 +1411,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_featureSurfaces.ContainsKey(pair.Key) && PrepareSurface(pair.Value) is { } windowError) _windowFailures[pair.Key](windowError);
         }
         if (PrepareSurface(_updateToastSurface) is { } toastError) UpdateToastFailed(toastError);
+        if (PrepareSurface(_gameMessageSurface) is { } messageError) GameMessagesFailed(messageError);
         if (PrepareSurface(_dragIconSurface) is { } dragIconError) Disable(dragIconError);
         _phaseTimes.Add("upload", start);
     }
@@ -1507,6 +1549,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
         if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
+        try { _gameMessageSurface?.DrawNow(); }
+        catch (Exception exception) { GameMessagesFailed(exception); }
         if (windows || !_loggedIn)
         {
             try { _updateToastSurface?.DrawNow(); }
@@ -2440,11 +2484,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (surface.Visible)
             {
                 var scale = surface.Panel.Scale;
-                // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
-                if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toast);
-                toast.Measure(Avalonia.Size.Infinity);
-                int width = WholePixels(toast.DesiredSize.Width * scale), height = WholePixels(toast.DesiredSize.Height * scale);
-                if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
+                var (width, height) = FitToast(toast, surface, shown);
                 var screen = GameDevice.ViewportSize(_device);
                 var spot = new Rectangle((screen.Width - width) / 2, screen.Height - height - (int)Math.Round(UpdateToastLift * scale), width, height);
                 var bars = _toolbarSurface is { Visible: true } bar ? new[] { bar.Bounds } : Array.Empty<Rectangle>();
@@ -2453,6 +2493,167 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
         }
         catch (Exception exception) { UpdateToastFailed(exception); }
+    }
+
+    /// <summary>Sizes a toast's surface to the toast at the UI size; its width and height in pixels.</summary>
+    private static (int Width, int Height) FitToast(Control toast, ScreenSurface surface, bool shown)
+    {
+        var scale = surface.Panel.Scale;
+        // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
+        if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toast);
+        toast.Measure(Avalonia.Size.Infinity);
+        int width = WholePixels(toast.DesiredSize.Width * scale), height = WholePixels(toast.DesiredSize.Height * scale);
+        if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
+        return (width, height);
+    }
+
+    // Retail's yellow game messages ("You can't move that!") as Dereth soft bands at the top centre, where retail's stood. They are their own
+    // surface, as the update toast is, drawn under it, and not an input surface: the pointer goes through them to the game, as through
+    // retail's text. Unlike the windows they show before world entry too, through the portal space at login. A logoff drops them.
+    private const int GameMessageDrop = 48;
+    private const string GameMessagesSurfaceId = "game-messages";
+    // Their options, kept for every character since they show before one is chosen: the text size in percent, hidden (1) or shown (0), and
+    // their top centre in pixels once moved (a row with a size; none, or no size, is the first place).
+    private const string GameMessageTextSizeKey = "game-message-text-size", GameMessagesHiddenKey = "game-messages-hidden", GameMessagePlaceKey = "game-message-place";
+    private RetailGameMessages? _gameMessages;
+    private DerethMessageBands? _gameMessageBands;
+    private ScreenSurface? _gameMessageSurface;
+    private int _gameMessageTextSize = DerethMessageBands.DefaultTextSize;
+    private bool _gameMessagesHidden;
+    private Point? _gameMessagePlace;
+    // The Game messages card's switch is on Retail: retail's spew box keeps its lines.
+    private bool _gameMessagesRetail;
+    // Placing them from the Settings window: the sample band shows and takes the pointer; a press on it drags it.
+    private bool _gameMessagesMoving;
+    private Size? _gameMessageDragOffset;
+
+    /// <summary>Shows the game messages that came since the last frame, runs their time, and places them while any shows.</summary>
+    private void ShowGameMessages()
+    {
+        if (_gameMessages is not { } messages) return;
+        try
+        {
+            // Hidden from the Settings window: taken from retail all the same, and shown nowhere.
+            foreach (var line in messages.Poll())
+                if (!_gameMessagesHidden) EnsureGameMessageBands().Show(line);
+            if (_gameMessageBands is not { } shownBands || _gameMessageSurface is not { } surface) return;
+            shownBands.Tick();
+            var shown = surface.Visible;
+            surface.Visible = shownBands.IsVisible;
+            if (!surface.Visible) return;
+            var (width, height) = FitToast(shownBands, surface, shown);
+            // While dragged, the pointer places them.
+            if (_gameMessageDragOffset != null) return;
+            var screen = GameDevice.ViewportSize(_device);
+            var place = _gameMessagePlace ?? new Point(screen.Width / 2, (int)Math.Round(GameMessageDrop * surface.Panel.Scale));
+            surface.Location = new Point(Math.Max(0, Math.Min(screen.Width - width, place.X - width / 2)), Math.Max(0, Math.Min(screen.Height - height, place.Y)));
+        }
+        catch (Exception exception) { GameMessagesFailed(exception); }
+    }
+
+    private DerethMessageBands EnsureGameMessageBands()
+    {
+        if (_gameMessageBands is { } shown) return shown;
+        var bands = new DerethMessageBands { TextScale = _gameMessageTextSize / 100.0 };
+        var panel = ObservePanel(AvaloniaPanel.Create(() => bands, 1, 1, WindowScale), GameMessagesFailed);
+        panel.ApplyTheme(new DerethClientTheme());
+        _gameMessageSurface = new ScreenSurface(_device, panel);
+        return _gameMessageBands = bands;
+    }
+
+    private GameMessagePlaceChoice GameMessagePlaceOption() => new(_gameMessagesMoving, _gameMessagePlace != null, SetGameMessagesMoving, ResetGameMessagePlace);
+
+    private void SetGameMessagesShown(bool shown)
+    {
+        _gameMessagesHidden = !shown;
+        _settingsStore.Save("", "", GameMessagesHiddenKey, (new Point(shown ? 0 : 1, 0), null));
+        if (_settings != null) _settings.GameMessagesShown = new OptionChoice<bool>(shown, SetGameMessagesShown);
+    }
+
+    /// <summary>The text size set from the Settings window, snapped to the step and within the bounds: saved, and the bands draw at it at once.</summary>
+    private void SetGameMessageTextSize(int percent)
+    {
+        var step = DerethMessageBands.TextSizeStep;
+        var size = Math.Clamp((int)Math.Round((double)percent / step) * step, DerethMessageBands.SmallestTextSize, DerethMessageBands.LargestTextSize);
+        _gameMessageTextSize = size;
+        _settingsStore.Save("", "", GameMessageTextSizeKey, (new Point(size, 0), null));
+        if (_gameMessageBands != null) _gameMessageBands.TextScale = size / 100.0;
+        if (_settings != null) _settings.GameMessageTextSize = new OptionChoice<int>(size, SetGameMessageTextSize);
+    }
+
+    /// <summary>Starts or ends placing the game messages: the sample band shows, and takes the pointer, until it ends.</summary>
+    private void SetGameMessagesMoving(bool moving)
+    {
+        if (moving == _gameMessagesMoving) return;
+        _gameMessageDragOffset = null;
+        try
+        {
+            if (moving && (_device == IntPtr.Zero || _gameMessages == null)) return;
+            _gameMessagesMoving = moving;
+            if (moving) EnsureGameMessageBands().Moving = true;
+            else if (_gameMessageBands != null) _gameMessageBands.Moving = false;
+        }
+        catch (Exception exception) { GameMessagesFailed(exception); }
+        if (_settings != null) _settings.GameMessagePlace = GameMessagePlaceOption();
+    }
+
+    private void ResetGameMessagePlace()
+    {
+        _gameMessagePlace = null;
+        _settingsStore.Save("", "", GameMessagePlaceKey, (new Point(0, 0), null));
+        if (_settings != null) _settings.GameMessagePlace = GameMessagePlaceOption();
+    }
+
+    /// <summary>The sample band follows the pointer, kept on screen.</summary>
+    private void DragGameMessages(Point pointer)
+    {
+        if (_gameMessageSurface is not { } surface)
+        {
+            _gameMessageDragOffset = null;
+            return;
+        }
+        var screen = GameDevice.ViewportSize(_device);
+        var size = surface.Bounds.Size;
+        var offset = _gameMessageDragOffset!.Value;
+        surface.Location = new Point(
+            Math.Max(0, Math.Min(screen.Width - size.Width, pointer.X - offset.Width)),
+            Math.Max(0, Math.Min(screen.Height - size.Height, pointer.Y - offset.Height)));
+    }
+
+    /// <summary>The button went up: the game messages stay where they were dropped, kept by their top centre for every character.</summary>
+    private void EndGameMessageDrag()
+    {
+        _gameMessageDragOffset = null;
+        if (_gameMessageSurface is not { } surface) return;
+        var place = new Point(surface.Location.X + surface.Bounds.Width / 2, surface.Location.Y);
+        _gameMessagePlace = place;
+        _settingsStore.Save("", "", GameMessagePlaceKey, (place, new Size(1, 1)));
+        if (_settings != null) _settings.GameMessagePlace = GameMessagePlaceOption();
+    }
+
+    /// <summary>A failed toast is dropped and retail's spew box gets its messages back for the rest of the session.</summary>
+    private void GameMessagesFailed(Exception exception)
+    {
+        Log($"The game message toast failed; retail shows its yellow messages again: {exception}");
+        DropGameMessageToast();
+        _gameMessages?.Dispose();
+        _gameMessages = null;
+        if (_settings != null)
+        {
+            _settings.GameMessagesShown = null;
+            _settings.GameMessageTextSize = null;
+            _settings.GameMessagePlace = null;
+        }
+    }
+
+    private void DropGameMessageToast()
+    {
+        if (_hovered == _gameMessageSurface) _hovered = null;
+        _gameMessageSurface?.Dispose();
+        _gameMessageSurface = null;
+        _gameMessageBands = null;
+        _gameMessagesMoving = false;
+        _gameMessageDragOffset = null;
     }
 
     /// <summary>
@@ -2734,7 +2935,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // added inside it changed it. A shown window's layout pass catches it up; the toolbar's is hidden until its first draw.
         Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toolbar);
         toolbar.Measure(Avalonia.Size.Infinity);
-        surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
+        // Its width is retail's, rounded as a window's is, so at the same scale it stays as wide as the inventory.
+        surface.Panel.Resize((int)Math.Round(RetailToolbar.RetailWidth * scale), WholePixels(toolbar.DesiredSize.Height * scale));
         var size = surface.Bounds.Size;
         var lower = before.Top + before.Height / 2 > GameDevice.ViewportSize(_device).Height / 2;
         var kept = OnScreen(new Point(before.X, lower ? before.Bottom - size.Height : before.Y), size);
@@ -2760,10 +2962,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool OnToolbarMoveEdge(Point point) =>
         _toolbarSurface is { } surface && _toolbarTakeover?.Holds == true && point.Y - surface.Location.Y < WindowManager.ResizeBand;
 
-    /// <summary>The toolbar's frame was pressed: it follows the pointer until the button goes up. Refused while retail's UI is locked.</summary>
+    /// <summary>
+    /// Whether a screen point is on the toolbar's bottom edge, where a drag shows and hides shortcut row 2, as retail's does. Never while
+    /// retail's UI is locked.
+    /// </summary>
+    private bool OnToolbarRowEdge(Point point) =>
+        _toolbarSurface is { } surface && _toolbarTakeover?.CanDrag == true && _shortcutBar != null
+        && surface.Location.Y + surface.Bounds.Height - point.Y <= WindowManager.ResizeBand;
+
+    /// <summary>
+    /// The toolbar's frame was pressed: it follows the pointer until the button goes up, or on its bottom edge the drag shows and hides
+    /// shortcut row 2. Refused while retail's UI is locked.
+    /// </summary>
     private void BeginToolbarDrag()
     {
         if (_toolbarTakeover?.CanDrag != true || _toolbarSurface is not { } surface) return;
+        if (OnToolbarRowEdge(_pointer))
+        {
+            _toolbarRowDragY = _pointer.Y;
+            return;
+        }
         _toolbarDragOffset = new Size(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
     }
 
@@ -2783,6 +3001,31 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         surface.Location = new Point(
             Math.Max(0, Math.Min(screen.Width - size.Width, wanted.X)),
             Math.Max(0, Math.Min(screen.Height - size.Height, wanted.Y)));
+    }
+
+    /// <summary>
+    /// The bottom edge is dragged: half a row up hides row 2, half a row down shows it, and the toolbar's top edge stays. The choice is
+    /// kept for the character, as Settings keeps it.
+    /// </summary>
+    private void DragToolbarRows(Point pointer)
+    {
+        if (_toolbarTakeover?.CanDrag != true || _toolbarSurface is not { } surface || _toolbarRowDragY is not int from)
+        {
+            _toolbarRowDragY = null;
+            return;
+        }
+        var row = (int)Math.Round(ItemCellSize.Standard.Icon * surface.Panel.Scale);
+        var show = _shortcutRow2 == null && pointer.Y - from > row / 2;
+        var hide = _shortcutRow2 != null && from - pointer.Y > row / 2;
+        if (!show && !hide) return;
+        var top = surface.Location;
+        try
+        {
+            SetShortcutRow2(show);
+            _toolbarTakeover.MoveTo(OnScreen(top, surface.Bounds.Size));
+        }
+        catch (Exception exception) { ToolbarFailed(exception); }
+        _toolbarRowDragY = from + (show ? row : -row);
     }
 
     /// <summary>
@@ -2939,6 +3182,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void ReleaseRetailToolbar()
     {
         _inventory.Split = null;
+        // The next toolbar (Custom again, after Native) starts from the saved place, not from where retail's stands. Cleared first, so
+        // the refit as the rows close, which shrinks the toolbar and moves its top down, is not saved as its place.
+        _toolbarPlaceLoaded = false;
         CloseShortcutBar();
         if (_toolbarTakeover != null)
         {
@@ -2952,8 +3198,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             _toolbarTakeover = null;
             _toolbarPlace = null;
-            // The next toolbar (Custom again, after Native) starts from the saved place, not from where retail's stands.
-            _toolbarPlaceLoaded = false;
             _toolbarReleaseLogged = false;
         }
         _toolbarSurface?.Dispose();
@@ -3684,7 +3928,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// The chat log backdrop's active opacity set from the Settings window: applied to the open chat, or kept for the chat to open with when it is
+    /// The chat window's active opacity set from the Settings window: applied to the open chat, or kept for the chat to open with when it is
     /// closed; either way the value is published back to the Settings window.
     /// </summary>
     private void SetChatActiveOpacity(int percent)
@@ -3695,7 +3939,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_settings != null) _settings.ChatActiveOpacity = new OptionChoice<int>(opacity, SetChatActiveOpacity);
     }
 
-    /// <summary>The chat log backdrop's inactive opacity set from the Settings window; see <see cref="SetChatActiveOpacity"/>.</summary>
+    /// <summary>The chat window's inactive opacity set from the Settings window; see <see cref="SetChatActiveOpacity"/>.</summary>
     private void SetChatInactiveOpacity(int percent)
     {
         var opacity = RetailChatWindows.ClampOpacity(percent);
@@ -3836,6 +4080,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     }
                     else if (_toolbarDragOffset != null)
                         DragToolbar(point);
+                    else if (_toolbarRowDragY != null)
+                        DragToolbarRows(point);
+                    else if (_gameMessageDragOffset != null)
+                        DragGameMessages(point);
                     else
                     {
                         var handingOff = _handOff == null;
@@ -3864,6 +4112,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                         eat = route.Eat;
                         break;
                     }
+                    // Being placed, the game messages move wherever they are pressed.
+                    if (route.SurfaceId == GameMessagesSurfaceId)
+                    {
+                        _gameMessageDragOffset = new Size(_pointer.X - target.Location.X, _pointer.Y - target.Location.Y);
+                        eat = route.Eat;
+                        break;
+                    }
                     target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
                     eat = route.Eat;
                     break;
@@ -3883,6 +4138,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     }
                     if (_toolbarDragOffset != null)
                         EndToolbarDrag();
+                    _toolbarRowDragY = null;
+                    if (_gameMessageDragOffset != null)
+                        EndGameMessageDrag();
                     eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
@@ -3964,11 +4222,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private IntPtr WindowCursorAt(Point point)
     {
-        if (_toolbarDragOffset != null || _windows?.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
+        if (_toolbarDragOffset != null || _gameMessageDragOffset != null || _windows?.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
         // The pointer goes to a capture, else to the topmost surface under it, as the router decides. Only the window that owns
         // it gets the move or resize cursor, so the retail bar and any other surface keep the game's cursor.
         var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
+        if (_toolbarRowDragY != null) return RetailCursor(DatCursorNS, IdcSizeNS);
         if (owner == ToolbarSurfaceId && OnToolbarMoveEdge(point)) return RetailCursor(DatCursorMove, IdcSizeAll);
+        if (owner == ToolbarSurfaceId && OnToolbarRowEdge(point)) return RetailCursor(DatCursorNS, IdcSizeNS);
+        if (owner == GameMessagesSurfaceId) return RetailCursor(DatCursorMove, IdcSizeAll);
         if (_windows == null) return IntPtr.Zero;
         if (owner != null && _windows.MoveEdgeAt(point) == owner) return RetailCursor(DatCursorMove, IdcSizeAll);
         var hover = _windows.HoverAt(point);
@@ -4067,8 +4328,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             surfaces.Add(new InputSurface(SplitTabSurfaceId, split.Location.X, split.Location.Y, split.Bounds.Width, split.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 1, split.Panel.WantsKeyboard));
         // The update toast is above them all. A press on it leaves the focus where it was, so typing goes on where it was going.
         if (_updateToastSurface is { Visible: true } toast)
-            surfaces.Add(new InputSurface(UpdateToastSurfaceId, toast.Location.X, toast.Location.Y, toast.Bounds.Width, toast.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 2,
+            surfaces.Add(new InputSurface(UpdateToastSurfaceId, toast.Location.X, toast.Location.Y, toast.Bounds.Width, toast.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 3,
                 takesFocus: false));
+        // The game messages take the pointer only while they are being placed; otherwise it goes through them to the game.
+        if (_gameMessagesMoving && _gameMessageSurface is { Visible: true } messages)
+            surfaces.Add(new InputSurface(GameMessagesSurfaceId, messages.Location.X, messages.Location.Y, messages.Bounds.Width, messages.Bounds.Height,
+                (_windows?.ZOrder.Count ?? 0) + 2, takesFocus: false));
         if (_windows != null)
         {
             var z = _windows.ZOrder.Count;
@@ -4088,6 +4353,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (id == ToolbarSurfaceId) return _toolbarSurface;
         if (id == SplitTabSurfaceId) return _splitTabSurface;
         if (id == UpdateToastSurfaceId) return _updateToastSurface;
+        if (id == GameMessagesSurfaceId) return _gameMessageSurface;
         if (id != null && _featureSurfaces.TryGetValue(id, out var surface)) return surface;
         return null;
     }
@@ -4099,6 +4365,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _hovered?.Panel.PointerLeave();
         _hovered = null;
         _toolbarDragOffset = null;
+        _toolbarRowDragY = null;
+        _gameMessageDragOffset = null;
         _windows?.Release();
     }
 
@@ -4123,6 +4391,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         ? _toolbarTakeover?.Holds == true
         : id != null && _windows?.Get(id) != null;
 
+    /// <summary>The id a surface's size is saved under: the toolbar's place, or the window's own id.</summary>
+    private static string PlaceIdOf(string id) => id == ToolbarSurfaceId ? ToolbarPlaceId : id;
+
     // How long a window's size shows over it after a wheel notch.
     private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);
 
@@ -4133,7 +4404,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void RescaleWindow(string id, int steps)
     {
         if (!AvaloniaPanel.CanScale || _windows!.Locked) return;
-        var placeId = id == ToolbarSurfaceId ? ToolbarPlaceId : id;
+        var placeId = PlaceIdOf(id);
         if (_windows.Rescale(placeId, steps))
         {
             if (id == ToolbarSurfaceId) ScaleToolbar();
@@ -4205,6 +4476,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Plugin windows are not in the client UI framework; release them here too.
         ReleaseFeatureWindows();
         DropUpdateToast();
+        DropGameMessageToast();
     }
 
     private void ReleaseFeatureWindows()
@@ -4340,6 +4612,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _windows = null;
         ReleaseFeatureWindows();
         DropUpdateToast();
+        DropGameMessageToast();
         _windowFailures.Clear();
         _windowsEnabled = false;
         _portal?.Dispose();

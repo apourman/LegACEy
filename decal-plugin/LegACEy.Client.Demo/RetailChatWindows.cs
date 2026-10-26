@@ -46,7 +46,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public const int FadesInstantly = -1;
     public static readonly IReadOnlyList<int> FadeChoices = new[] { NeverFades, FadesInstantly, 10, RetailChatFade.DefaultIdleAfterSeconds, 30, 60 };
     private int _fadeSeconds = RetailChatFade.DefaultIdleAfterSeconds;
-    // The log backdrop's opacity in percent while a chat window is awake and once it is idle, kept per character in the position store.
+    // A chat window's opacity (frame and backdrop) in percent while it is awake and once it is idle, kept per character in the position store.
     public const string ActiveOpacityKey = "dereth-chat-active-opacity", InactiveOpacityKey = "dereth-chat-inactive-opacity";
     public const int DefaultActiveOpacity = 60, DefaultInactiveOpacity = 0;
     public const int OpacityStep = 5;
@@ -328,10 +328,10 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public static void SaveTextSize(IWindowPositionStore positions, string server, string character, int percent) =>
         positions.Save(server, character, TextSizeKey, (new Point(ClampTextSize(percent), 0), null));
 
-    /// <summary>Sets the log backdrop's opacity in percent when every chat window is awake, and keeps it for the character.</summary>
+    /// <summary>Sets the window's opacity in percent when every chat window is awake, and keeps it for the character.</summary>
     public void SetActiveOpacity(int percent) => SetOpacity(ActiveOpacityKey, ref _activeOpacity, percent, (window, opacity) => window.ActiveOpacity = opacity);
 
-    /// <summary>Sets the log backdrop's opacity in percent when every chat window is idle, and keeps it for the character.</summary>
+    /// <summary>Sets the window's opacity in percent when every chat window is idle, and keeps it for the character.</summary>
     public void SetInactiveOpacity(int percent) => SetOpacity(InactiveOpacityKey, ref _inactiveOpacity, percent, (window, opacity) => window.InactiveOpacity = opacity);
 
     private void SetOpacity(string key, ref int current, int percent, Action<RetailChatWindow, int> apply)

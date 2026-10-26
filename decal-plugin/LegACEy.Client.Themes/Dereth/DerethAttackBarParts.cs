@@ -11,9 +11,10 @@ namespace LegACEy.Client.Themes;
 public readonly record struct DerethAttackFace(bool Accuracy, double SetPoint, double Charge, int LitPlaque, bool RepeatAttacks, bool AutoTarget, bool KeepInView);
 
 /// <summary>
-/// Where the attack bar's parts sit for a size in DIPs. At the design size, 320 by 58, it is the mockup's layout. Width added lengthens the bar,
-/// carrying its right label, the divider and the plaques with the right edge, and spreads the option gems. Height added thickens the bar and
-/// spreads the rows: the bar keeps to the top, the gems to the bottom, and the plaques grow and space out down the divider. Text stays its size.
+/// Where the attack bar's parts sit for a size in DIPs. At the design size, 320 by 58, it is the mockup's layout. A taller window draws the
+/// whole bar larger, text and controls with it, by <see cref="Scale"/>; the parts are placed in the unscaled <see cref="Size"/>. Width
+/// beyond that lengthens the bar, carrying its right label, the divider and the plaques with the right edge, and spreads the option gems. Height
+/// beyond it, in a window too narrow to scale up further, thickens the bar and spreads the rows.
 /// </summary>
 public sealed class DerethAttackLayout
 {
@@ -21,13 +22,18 @@ public sealed class DerethAttackLayout
 
     public DerethAttackLayout(Size size)
     {
-        Size = size;
-        _wide = size.Width - DerethAttackBarArt.DesignWidth;
-        _tall = Math.Max(0, size.Height - DerethAttackBarArt.DesignHeight);
+        // The bar scales up with its height, as far as its width allows without going below its narrowest layout.
+        Scale = Math.Max(1, Math.Min(size.Height / DerethAttackBarArt.DesignHeight, size.Width / DerethAttackBarArt.MinimumWidth));
+        Size = new Size(size.Width / Scale, size.Height / Scale);
+        _wide = Size.Width - DerethAttackBarArt.DesignWidth;
+        _tall = Math.Max(0, Size.Height - DerethAttackBarArt.DesignHeight);
         Groove = new Rect(46, 14 + _tall * 0.15, Math.Max(40, 168 + _wide), Math.Min(18, 10 + _tall * 0.3));
         GrooveHit = new Rect(Groove.X - 4, Groove.Y - 7, Groove.Width + 8, Groove.Height + 12);
     }
 
+    /// <summary>How much larger than its design the bar draws: 1 at the design height, growing with the height as far as the width allows.</summary>
+    public double Scale { get; }
+    /// <summary>The size the parts are placed in, before <see cref="Scale"/>; every rectangle and point below is in it.</summary>
     public Size Size { get; }
     /// <summary>The groove: the bar's glass, whose middle line is the bar's centre.</summary>
     public Rect Groove { get; }
@@ -126,6 +132,7 @@ public sealed class DerethAttackBarArt : Control
     {
         var face = _face;
         var layout = new DerethAttackLayout(Bounds.Size);
+        using var scaled = context.PushTransform(Matrix.CreateScale(layout.Scale, layout.Scale));
         var middle = layout.Groove.Center.Y;
         Text(context, "Speed", 9, DerethPalette.MutedBrush, 12, middle, centred: false);
         Text(context, face.Accuracy ? "Accuracy" : "Power", 9, DerethPalette.MutedBrush, layout.RightLabelX, middle, centred: false);
