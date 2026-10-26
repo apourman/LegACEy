@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.17.0...decal-plugin-v0.18.0) (2026-10-26)
+
+
+### Features
+
+* **client:** Dereth character window ([#184](https://github.com/apourman/LegACEy/issues/184)) ([bf17547](https://github.com/apourman/LegACEy/commit/bf17547f63c51ac7d4d42ea4c8c541339b8efd96))
+
+
+### Bug Fixes
+
+* inventory pack column selection ([#183](https://github.com/apourman/LegACEy/issues/183)) ([2f6f617](https://github.com/apourman/LegACEy/commit/2f6f61770e868687704cde5ba175d92afc39f4b8))
+
 ## [0.17.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.16.1...decal-plugin-v0.17.0) (2026-10-26)
 
 
