@@ -199,6 +199,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
     private DateTime _lastMeasurementLog = DateTime.UtcNow;
+    private uint _sampleCell;
+    private DateTime _arrivalSampleAt = DateTime.MaxValue;
     private DateTime _lastTestFailureCheck;
     private readonly FrameSamples _uiFrameTimes = new();
     private readonly FrameSamples _postUiDrawTimes = new();
@@ -1455,12 +1457,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void RecordPerformanceMeasurement()
     {
         var now = DateTime.UtcNow;
-        if (now - _lastMeasurementLog < TimeSpan.FromSeconds(30)) return;
+        // Leaving portal space (a teleport, or the login): one extra sample once the new landblocks have loaded, since portalling after
+        // hours in game is when the 32-bit client runs out of address space.
+        var cell = _worldEffects != null ? WorldEffects.PlayerCell() : 0;
+        if (_sampleCell == 0 && cell != 0) _arrivalSampleAt = now + TimeSpan.FromSeconds(5);
+        _sampleCell = cell;
+        var arrival = now >= _arrivalSampleAt;
+        if (!arrival && now - _lastMeasurementLog < TimeSpan.FromSeconds(30)) return;
+        if (arrival) _arrivalSampleAt = DateTime.MaxValue;
         _lastMeasurementLog = now;
         try
         {
             using var process = Process.GetCurrentProcess();
-            Log($"UI performance sample: frames={_uiFrameTimes.Count} uiFrame={_uiFrameTimes.TakeSummary()}ms postUiDraw={_postUiDrawTimes.TakeSummary()}ms surfaces={_featureSurfaces.Count} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)} gen0={GC.CollectionCount(0)} gen1={GC.CollectionCount(1)} gen2={GC.CollectionCount(2)}.");
+            var (freeBytes, largestFreeBytes) = FreeAddressSpace();
+            Log($"UI performance sample{(arrival ? " after portal space" : "")}: freeAddressMB={freeBytes >> 20} largestFreeMB={largestFreeBytes >> 20} frames={_uiFrameTimes.Count} uiFrame={_uiFrameTimes.TakeSummary()}ms postUiDraw={_postUiDrawTimes.TakeSummary()}ms surfaces={_featureSurfaces.Count} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)} gen0={GC.CollectionCount(0)} gen1={GC.CollectionCount(1)} gen2={GC.CollectionCount(2)}.");
             LogGcSample();
             Log($"UI performance phases: {_phaseTimes.TakeSummary()} betweenFrames={_betweenFrameBytes / 1024}KB.");
             _betweenFrameBytes = 0;
@@ -1476,6 +1486,38 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             Log($"Could not collect a UI performance sample: {exception.Message}");
         }
     }
+
+    /// <summary>Free 32-bit address space and its largest block, as the stub's FreeAddressSpace walks it: what predicts an out-of-memory crash.</summary>
+    private static unsafe (long Free, long Largest) FreeAddressSpace()
+    {
+        long free = 0, largest = 0, address = 0;
+        while (address <= uint.MaxValue && VirtualQuery(new IntPtr(unchecked((int)(uint)address)), out var region, (IntPtr)sizeof(MemoryRegion)) != IntPtr.Zero)
+        {
+            var size = (long)(uint)region.RegionSize;
+            if (size == 0) break;
+            if (region.State == MemFree)
+            {
+                free += size;
+                largest = Math.Max(largest, size);
+            }
+            address = (uint)region.BaseAddress + size;
+        }
+        return (free, largest);
+    }
+
+    private const uint MemFree = 0x10000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryRegion
+    {
+        public IntPtr BaseAddress, AllocationBase;
+        public uint AllocationProtect;
+        public IntPtr RegionSize;
+        public uint State, Protect, Type;
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr VirtualQuery(IntPtr address, out MemoryRegion region, IntPtr length);
 
     /// <summary>
     /// Why the GC runs: what was allocated and how long the game was paused since the last line, the memory load against the
