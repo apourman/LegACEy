@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.17.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.16.1...decal-plugin-v0.17.0) (2026-10-26)
+
+
+### Features
+
+* chat opacity fades the whole window ([#169](https://github.com/apourman/LegACEy/issues/169)) ([e3e8da2](https://github.com/apourman/LegACEy/commit/e3e8da2f7fab13862eccd5d4f2b0f3bb2f30c60a))
+* **client:** retail vitals window ([#172](https://github.com/apourman/LegACEy/issues/172)) ([e5c67cc](https://github.com/apourman/LegACEy/commit/e5c67cc28a5e2bf55c38c910dca75a990da412d7))
+* **client:** window size buttons in Settings ([#173](https://github.com/apourman/LegACEy/issues/173)) ([d24c3b0](https://github.com/apourman/LegACEy/commit/d24c3b0a5f8dba956578d42253a2e8a1576aad75))
+* Dereth toolbar and inventory at retail's width ([#170](https://github.com/apourman/LegACEy/issues/170)) ([bad933c](https://github.com/apourman/LegACEy/commit/bad933c0f1a6e22e806702c3cee2a35e2935ffb8))
+* game messages as toasts ([#168](https://github.com/apourman/LegACEy/issues/168)) ([eb35a1c](https://github.com/apourman/LegACEy/commit/eb35a1ca32795aa2a8ef6135f1f2be580071235a))
+
+
+### Bug Fixes
+
+* attack bar scales up with the window ([#177](https://github.com/apourman/LegACEy/issues/177)) ([020aa23](https://github.com/apourman/LegACEy/commit/020aa234ef054029fa2ee11c78babf73d16ab649))
+* check the release build before promoting ([#174](https://github.com/apourman/LegACEy/issues/174)) ([8f00a58](https://github.com/apourman/LegACEy/commit/8f00a583c0dfd4b332180fc86bc821fafd5b9996))
+* **client:** inventory doll in retail's stance, filling its panel ([#178](https://github.com/apourman/LegACEy/issues/178)) ([c9fbf9c](https://github.com/apourman/LegACEy/commit/c9fbf9c6bba589303e1be1f549e6e2fd1f4f62c3))
+* **client:** inventory title in the header row ([#176](https://github.com/apourman/LegACEy/issues/176)) ([63db0c2](https://github.com/apourman/LegACEy/commit/63db0c27fcfd9051958d840cbb969b6ff3d5b023))
+* **client:** tighter chat window padding ([#175](https://github.com/apourman/LegACEy/issues/175)) ([71bbcb3](https://github.com/apourman/LegACEy/commit/71bbcb3f7206565cc1d720f4cab3b05a5471a370))
+* retail key-number tabs on toolbar shortcuts ([#179](https://github.com/apourman/LegACEy/issues/179)) ([8ccb662](https://github.com/apourman/LegACEy/commit/8ccb6621d0dfc767019ae07414bc623a4667e1ac))
+* smaller window headers ([#171](https://github.com/apourman/LegACEy/issues/171)) ([0165c72](https://github.com/apourman/LegACEy/commit/0165c72255e0da15c8b5e80ea4f2f0469d0c0d1e))
+
 ## [0.16.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.16.0...decal-plugin-v0.16.1) (2026-10-25)
 
 
