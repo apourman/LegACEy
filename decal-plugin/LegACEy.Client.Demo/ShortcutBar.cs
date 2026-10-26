@@ -19,7 +19,7 @@ public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 
 /// <summary>
 /// One shortcut row inside the toolbar: nine item slots at the icon size, touching, as retail's are. A slot
-/// shows its item's icon and stack count, with its key number in a white tab at the top-left (blank on row 2), or only its key number when empty. A click selects and uses
+/// shows its item's icon and stack count, under retail's key-number tab, or only its key number when empty. A click selects and uses
 /// the slot's item, and a slot whose item is selected is lit, so the slot last clicked stays marked. A press on a slot never moves the
 /// toolbar. A drag from a slot moves the shortcut to the slot it is released on, or takes it off the bars when no LegACEy window takes it.
 /// A drop of an item from outside binds it to the slot it is released on.
@@ -33,8 +33,10 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private bool _refreshPending;
 
     private static readonly IBrush EmptyKey = DerethPalette.Brush(Color.Parse("#3E3626"));
-    private static readonly IBrush KeyTab = Brushes.White;
-    private static readonly IBrush KeyTabNumber = Brushes.Black;
+    // Retail's shortcut tabs (layout 0x21000037, element 0x1000034A, property 0x10000042): a white tab with the key number and a
+    // dithered gold corner for row 1, a blank tab for row 2, drawn over the icon as its top layer.
+    private const uint FirstKeyTab = 0x0600109E;
+    private const uint RowTwoTab = 0x060074D3;
 
     private readonly IRetailToolbarPort _port;
     private readonly Func<uint, ShortcutItem?> _itemOf;
@@ -294,23 +296,14 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         }
         layers.Children.Add(Icon(item.Visual, position));
         if (item.StackCount > 1) layers.Children.Add(DerethItemCells.StackCount(item.StackCount));
-        // A filled slot keeps its key number in a white tab over the icon's top-left corner, as retail does; row 2 has no
-        // number keys, so its tab is left blank at the same size.
-        var number = DerethItemCells.Label(key.ToString(), KeyTabNumber, 10);
-        number.FontWeight = FontWeight.SemiBold;
-        if (_firstIndex > 0) number.Opacity = 0;
-        layers.Children.Add(new Border
-        {
-            Child = number, Background = KeyTab, CornerRadius = new CornerRadius(0, 0, 3, 0), Padding = new Thickness(3, 0, 3, 1),
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top
-        });
         return layers;
     }
 
     private Control Icon(ItemVisual visual, int position)
     {
         var bitmap = _art == null ? null
-            : GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects, visual.Plate));
+            : GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay,
+                _firstIndex == 0 ? FirstKeyTab + (uint)position : RowTwoTab, visual.UiEffects, visual.Plate));
         if (bitmap == null)
             return new TextBlock { Text = "?", FontFamily = DerethPalette.Body, FontSize = 12, Foreground = DerethPalette.MutedBrush,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
