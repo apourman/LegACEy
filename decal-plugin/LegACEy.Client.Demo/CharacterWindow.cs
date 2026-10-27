@@ -33,7 +33,7 @@ public interface ICharacterGame
 /// <summary>
 /// The Dereth character window, retail's Attributes, Skills and Titles tabs in retail's order: a plaque with the name, level and
 /// experience, the list, and a plate at the bottom with the credits and experience to spend. A click on a row drops its cost and its Raise
-/// and +10 (or Train) down under it; a second click folds it away. Every group (attributes, vitals and each skill group) folds, and the folds are
+/// and +10 (or Train) down under it; a second click folds it away. Every group but the vitals (attributes and each skill group) folds, and the folds are
 /// remembered. One instance serves the session; <see cref="Refresh"/> redraws what changed.
 /// </summary>
 public sealed class CharacterWindow
@@ -163,7 +163,7 @@ public sealed class CharacterWindow
         body.Children.Add(_tabs);
         Grid.SetRow(_page, 1);
         body.Children.Add(_page);
-        Window = new DerethWindow("Character", null, body);
+        Window = new DerethWindow(string.Empty, null, body);
         Window.CloseRequested += (_, _) => Close?.Invoke();
         Show();
     }
@@ -297,12 +297,15 @@ public sealed class CharacterWindow
         _drawnRows = _rows;
         _drawnInline = InlineKey;
         _list.Children.Clear();
-        // Every group folds from its band: the attributes and vitals as the skill groups do.
+        // Every group folds from its band but the vitals, which follow the attributes with no band, as in retail.
         var height = _tab == 0 ? AttributeRowHeight : SkillRowHeight;
         foreach (var group in _rows.GroupBy(row => row.Group))
         {
-            _list.Children.Add(Band(group.Key, group.Count()));
-            if (_folded.Contains(group.Key)) continue;
+            if (group.Key != CharacterGroup.Vitals)
+            {
+                _list.Children.Add(Band(group.Key, group.Count()));
+                if (_folded.Contains(group.Key)) continue;
+            }
             foreach (var row in group)
             {
                 _list.Children.Add(Row(row, height));
@@ -545,7 +548,7 @@ public sealed class CharacterWindow
         };
         var groove = new Border
         {
-            Height = 4, CornerRadius = new CornerRadius(2), Background = DerethPalette.GrooveBrush, BorderBrush = LineBrush,
+            Height = 8, CornerRadius = new CornerRadius(2), Background = DerethPalette.GrooveBrush, BorderBrush = LineBrush,
             BorderThickness = new Thickness(1), Margin = new Thickness(0, 2, 0, 0), Child = fill
         };
         groove.SizeChanged += (_, e) => fill.Width = Math.Max(0, (e.NewSize.Width - 2) * fraction);
