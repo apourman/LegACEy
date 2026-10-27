@@ -51,7 +51,6 @@ public sealed class CharacterWindow
     private static readonly Dictionary<CharacterGroup, Color> GroupColours = new()
     {
         [CharacterGroup.Attributes] = DerethPalette.Gold,
-        [CharacterGroup.Vitals] = Color.FromRgb(176, 48, 42),
         [CharacterGroup.Specialized] = Color.FromRgb(140, 96, 220),
         [CharacterGroup.Trained] = Color.FromRgb(63, 160, 170),
         [CharacterGroup.Untrained] = Color.FromRgb(200, 150, 60),
@@ -60,7 +59,6 @@ public sealed class CharacterWindow
     private static readonly Dictionary<CharacterGroup, string> GroupNames = new()
     {
         [CharacterGroup.Attributes] = "Attributes",
-        [CharacterGroup.Vitals] = "Vitals",
         [CharacterGroup.Specialized] = "Specialized Skills",
         [CharacterGroup.Trained] = "Trained Skills",
         [CharacterGroup.Untrained] = "Untrained Skills",
