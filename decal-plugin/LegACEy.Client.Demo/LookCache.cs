@@ -51,6 +51,21 @@ public sealed class LookCache
         _held.Clear();
     }
 
+    /// <summary>
+    /// Forgets every object <paramref name="keep"/> refuses, and what it held. ACE sends no DeleteObject for objects left behind on a
+    /// teleport or out of sight; the client ages them out itself, so the host asks it which it still has.
+    /// </summary>
+    public void Prune(Func<uint, bool> keep)
+    {
+        foreach (var id in new List<uint>(_looks.Keys))
+        {
+            if (keep(id)) continue;
+            _looks.Remove(id);
+            _held.Remove(id);
+            DropHeldBy(id);
+        }
+    }
+
     /// <summary>Reads one server message, as Decal's ServerDispatch raises it. Anything malformed is left out.</summary>
     public void Receive(int messageType, ReadOnlySpan<byte> raw)
     {

@@ -27,7 +27,7 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
     // How often an object Decal had no name for is asked again, in milliseconds.
     private const long NameRetryMs = 1000;
     // ponytail: names are kept for the session, one short string per object seen (no WorldFilter call per frame); an empty one is asked
-    // again at most once a second, so a name Decal learns late shows. Nothing is pruned; prune on landblock change if memory shows it.
+    // again at most once a second, so a name Decal learns late shows. The host forgets them once a minute (ForgetNames).
     private readonly Dictionary<uint, (string Name, long RetryAt)> _names = new();
 
     /// <param name="natives">Which HUD features the running client matched.</param>
@@ -108,6 +108,9 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
         var player = smartBox == null ? null : Pointer(smartBox, RetailHudCatalogue.SmartBoxPlayer);
         return player == null || *(uint*)(player + RetailHudCatalogue.ObjectCell) == 0 ? null : player;
     }
+
+    /// <summary>Forgets the names, so objects long gone do not pile up; those still shown are asked again once.</summary>
+    public void ForgetNames() => _names.Clear();
 
     private string Name(uint id)
     {

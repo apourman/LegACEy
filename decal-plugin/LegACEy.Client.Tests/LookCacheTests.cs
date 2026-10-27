@@ -113,6 +113,25 @@ public sealed class LookCacheTests
         Assert.Empty(cache.Look(Player)!.Held);
     }
 
+    [Fact]
+    public void Pruning_forgets_objects_the_client_let_go_and_what_they_held()
+    {
+        const uint Shield = 0x80000011, Drudge = 0x80000020;
+        var cache = new LookCache();
+        cache.Receive(LookCache.CreateObject, Created(Player, setup: 0x02000001));
+        cache.Receive(LookCache.CreateObject, Created(Sword, setup: 0x02000A00, parent: (Player, 1)));
+        cache.Receive(LookCache.CreateObject, Created(Drudge, setup: 0x02000B00));
+        cache.Receive(LookCache.CreateObject, Created(Shield, setup: 0x02000C00, parent: (Drudge, 3)));
+
+        cache.Prune(id => id is Player or Sword or Shield);
+
+        Assert.Null(cache.Look(Drudge));
+        Assert.Single(cache.Look(Player)!.Held);
+        // Seen again, the drudge does not hold the shield it held before.
+        cache.Receive(LookCache.CreateObject, Created(Drudge, setup: 0x02000B00));
+        Assert.Empty(cache.Look(Drudge)!.Held);
+    }
+
     /// <summary>A CreateObject as ACE writes it, with only the parts the cache reads (no weenie description after them).</summary>
     internal static byte[] Created(uint id, uint setup, bool moving = false, (uint Holder, uint Location)? parent = null, float? scale = null,
         Action<BinaryWriter>? objDesc = null) => Message(LookCache.CreateObject, w =>
