@@ -2900,7 +2900,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _windows?.Close(id);
     }
 
-    /// <summary>Shows the LegACEy menu's open state on the toolbar's menu button.</summary>
+    /// <summary>Shows whether the Settings window is open on the toolbar's LegACEy button.</summary>
     private void SetMenuRing(bool open) => _toolbar?.SetMenuOpen(open);
 
     /// <summary>
@@ -3151,6 +3151,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var panel = ObservePanel(AvaloniaPanel.Create(() => toolbar, 1, 1, scale), ToolbarFailed);
         panel.ApplyTheme(new DerethClientTheme());
         _toolbar = toolbar;
+        // A rebuild reopens Settings before the toolbar is back, so the ring starts from the window.
+        SetMenuRing(_windows?.Get(SettingsWindowId) != null);
         _toolbarSurface = new ScreenSurface(_device, panel);
         FitToolbar();
         _splitTab = new StackSplitTab(_toolbarPort);
