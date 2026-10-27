@@ -62,6 +62,7 @@ public sealed class ClientSettings
     private LockUiChoice? _lockUi;
     private OptionChoice<VitalsLayout>? _vitals;
     private OptionChoice<bool>? _vitalsRetailBars;
+    private OptionChoice<bool>? _appraisalRetailLayout;
     private OptionChoice<bool>? _shortcutRow2;
     private OptionChoice<int>? _chatTextSize;
     private OptionChoice<int>? _chatFade;
@@ -104,6 +105,9 @@ public sealed class ClientSettings
 
     /// <summary>Whether the Vitals window's bars are retail-style, for this character. Null hides its row.</summary>
     public OptionChoice<bool>? VitalsRetailBars { get => _vitalsRetailBars; set => Moved(ref _vitalsRetailBars, value); }
+
+    /// <summary>Whether the appraisal window draws the retail layout instead of its sections, for this character. Null hides its row.</summary>
+    public OptionChoice<bool>? AppraisalRetailLayout { get => _appraisalRetailLayout; set => Moved(ref _appraisalRetailLayout, value); }
 
     /// <summary>Whether the toolbar's second shortcut row is shown, for this character. Null hides its row.</summary>
     public OptionChoice<bool>? ShortcutRow2 { get => _shortcutRow2; set => Moved(ref _shortcutRow2, value); }
@@ -438,6 +442,7 @@ public sealed class SettingsPanel : UserControl
     private List<Control> OptionRows(string window)
     {
         var rows = new List<Control>();
+        if (window == "Appraisal" && _settings.AppraisalRetailLayout != null) rows.Add(AppraisalLayoutRow());
         if (window == "Toolbar" && _settings.ShortcutRow2 != null) rows.Add(ToggleRow("Second shortcut row", () => _settings.ShortcutRow2));
         if (window == "Chat" && _settings.ChatTextSize != null) rows.Add(ChatTextSizeRow());
         if (window == "Chat" && _settings.ChatFade != null) rows.Add(ChatFadeRow());
@@ -520,6 +525,16 @@ public sealed class SettingsPanel : UserControl
         var layout = new DerethSegmented(new[] { "Stacked", "Side by side" });
         void Show() => layout.Selected = _settings.Vitals is { Value: VitalsLayout.SideBySide } ? 1 : 0;
         layout.Chosen += index => _settings.Vitals?.Set(index == 1 ? VitalsLayout.SideBySide : VitalsLayout.Stacked);
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Layout", layout);
+    }
+
+    private Control AppraisalLayoutRow()
+    {
+        var layout = new DerethSegmented(new[] { "Sections", "Retail" });
+        void Show() => layout.Selected = _settings.AppraisalRetailLayout is { Value: true } ? 1 : 0;
+        layout.Chosen += index => _settings.AppraisalRetailLayout?.Set(index == 1);
         _redraws.Add(Show);
         Show();
         return OptionRow("Layout", layout);

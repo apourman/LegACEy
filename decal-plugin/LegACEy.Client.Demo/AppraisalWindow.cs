@@ -16,6 +16,8 @@ namespace LegACEy.Client.Demo;
 /// summary, then the sections (each a gold heading over a rule), then the long description in italics under a rule. The body scrolls
 /// when it does not fit, and the inscription stays pinned under it. The window opens fitted to its content (up to <see cref="MaxHeight"/>)
 /// and resizes from its edges. One instance serves the session: <see cref="Show"/> swaps in the next appraisal at the window's size.
+/// The retail layout (<see cref="RetailAppraisalLayout"/>) draws the same content as retail's examination panel does, in the Dereth frame:
+/// no icon, a creature's header box pinned over its lines with its figure standing behind them, and a parchment inscription box.
 /// </summary>
 public sealed class AppraisalWindow
 {
@@ -32,6 +34,12 @@ public sealed class AppraisalWindow
     private const int Chrome = DerethWindow.IconTitleBarHeight + 5 + 6 + 8;
     // The frame and the window's side margins, and the body's padding, around the text.
     private const int BodyInset = 40;
+    // The retail layout's line height, a blank line's height, and the parchment inscription box's height, as in retail's panel.
+    private const double RetailLineHeight = 19;
+    private const int ParchmentHeight = 78;
+    // The retail body's side margins, and the space kept between the figure and the words either side of it.
+    private const double BodySide = 6, FigureGap = 6;
+    private static readonly IBrush ParchmentInkBrush = DerethPalette.Brush(Color.Parse("#2A2014"));
 
     // The inventory's figure glyph, for the Inspect button.
     private const string FigureGlyph = "M7,1.5 A2.2,2.2 0 1 1 6.99,1.5 Z M2.5,13 V9.5 Q2.5,6.8 7,6.8 Q11.5,6.8 11.5,9.5 V13 Z";
@@ -39,20 +47,27 @@ public sealed class AppraisalWindow
     private readonly DerethWindow _window;
     private readonly ScrollViewer _scroll;
     private readonly ContentControl _foot;
+    // The retail layout's creature header box, and the figure behind the body; empty otherwise.
+    private readonly ContentControl _top;
+    private readonly ContentControl _behind;
     private readonly Button _inspectButton;
     private AppraisalContent _content;
+    private bool _retail;
     // Opens the Inspect window for the shown object; null hides the button.
     private Action<AppraisalContent>? _inspect;
     // The inscription field in the foot, and the item it writes for. Null when the foot holds no field.
     private InscriptionField? _field;
     private uint _footObject;
 
-    private AppraisalWindow(DerethWindow window, ScrollViewer scroll, ContentControl foot, int height, InscriptionField? field, uint footObject,
-        Button inspectButton, AppraisalContent content)
+    private AppraisalWindow(DerethWindow window, ScrollViewer scroll, ContentControl foot, ContentControl top, ContentControl behind, int height,
+        InscriptionField? field, uint footObject, Button inspectButton, AppraisalContent content, bool retail)
     {
         _window = window;
         _scroll = scroll;
         _foot = foot;
+        _top = top;
+        _behind = behind;
+        _retail = retail;
         _inspectButton = inspectButton;
         _content = content;
         inspectButton.Click += (_, _) => _inspect?.Invoke(_content);
@@ -73,23 +88,26 @@ public sealed class AppraisalWindow
     /// The window for an appraisal, at the height its content needs. <paramref name="inscribe"/> saves an inscription on an item and returns
     /// whether it was sent. <paramref name="measure"/> measures a control as the window draws it, at the UI size: there each line rounds to whole
     /// pixels, so the unscaled measure used without it can come out short and scroll the last line. <paramref name="inspect"/> opens the
-    /// Inspect window for an object; null leaves the Inspect button out.
+    /// Inspect window for an object; null leaves the Inspect button out. <paramref name="retail"/> draws the retail layout, where
+    /// <paramref name="figure"/> gives a creature's figure to stand behind its lines (null for none).
     /// </summary>
     public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe,
-        Func<Control, Size, Size>? measure = null, Action<AppraisalContent>? inspect = null)
+        Func<Control, Size, Size>? measure = null, Action<AppraisalContent>? inspect = null, bool retail = false, Func<AppraisalContent, Control?>? figure = null)
     {
-        var layout = Layout(content, inscribe);
+        var layout = Layout(content, inscribe, retail);
         var scroll = Scroll(layout.Body);
         var foot = new ContentControl { Content = layout.Foot };
+        var top = new ContentControl { Content = layout.Top };
+        var behind = new ContentControl { Content = Figure(content, retail, figure), IsHitTestVisible = false, Margin = layout.Room };
         var glyph = new DerethPathGlyph(FigureGlyph) { Stroke = DerethPalette.MutedBrush };
         var button = new DerethHeaderButton(glyph) { Name = "InspectButton" };
         ToolTip.SetTip(button, "Inspect");
-        var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot), button, iconHeader: true);
+        var window = new DerethWindow(content.Name, retail ? null : Icon(content.Visual, art), Frame(top, behind, scroll, foot), button, iconHeader: true);
         // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels.
         var height = measure == null
             ? layout.Height
             : Math.Min(MaxHeight, (int)Math.Ceiling(measure(window, new Size(Width, double.PositiveInfinity)).Height - 0.001));
-        var view = new AppraisalWindow(window, scroll, foot, height, layout.Field, content.ObjectId, button, content);
+        var view = new AppraisalWindow(window, scroll, foot, top, behind, height, layout.Field, content.ObjectId, button, content, retail);
         view.SetInspect(inspect);
         window.CloseRequested += (_, _) => view.Close?.Invoke();
         return view;
@@ -98,17 +116,24 @@ public sealed class AppraisalWindow
     /// <summary>
     /// Shows another appraisal in this window, at the size the window has (the player's to set): the body scrolls when it does not fit. The
     /// inscription field with unsaved text is kept only for the same item, and then it takes the refreshed saved text (Escape restores that).
-    /// Another item's appraisal replaces the field: the typed text is dropped, unsent.
+    /// Another item's appraisal replaces the field: the typed text is dropped, unsent, and so does a change of layout. The figure of the
+    /// creature already shown stays, turned as it was.
     /// </summary>
-    public void Show(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe, Action<AppraisalContent>? inspect = null)
+    public void Show(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe, Action<AppraisalContent>? inspect = null,
+        bool retail = false, Func<AppraisalContent, Control?>? figure = null)
     {
-        var layout = Layout(content, inscribe);
+        var layout = Layout(content, inscribe, retail);
+        var sameLayout = retail == _retail;
+        if (!(sameLayout && content.ObjectId == _content.ObjectId && _behind.Content != null)) _behind.Content = Figure(content, retail, figure);
         _content = content;
+        _retail = retail;
         SetInspect(inspect);
         _window.Title = content.Name;
-        _window.SetIcon(Icon(content.Visual, art));
+        _window.SetIcon(retail ? null : Icon(content.Visual, art));
         _scroll.Content = layout.Body;
-        if (_field is { Unsaved: true } kept && layout.Field != null && content.ObjectId == _footObject)
+        _behind.Margin = layout.Room;
+        _top.Content = layout.Top;
+        if (_field is { Unsaved: true } kept && layout.Field != null && content.ObjectId == _footObject && sameLayout)
         {
             kept.Rebase(content.Inscription?.Text ?? string.Empty);
             return;
@@ -128,8 +153,30 @@ public sealed class AppraisalWindow
     /// <summary>The window is replaced by a new one: its inscription field no longer saves what is typed in it.</summary>
     public void Retire() => _field?.Detach();
 
-    /// <summary>The body and the inscription for the content, and the height the window needs to show all of it.</summary>
-    private static (Control Body, Control? Foot, int Height, InscriptionField? Field) Layout(AppraisalContent content, Func<uint, string, bool> inscribe)
+    /// <summary>
+    /// The body, the header box and the inscription for the content, the height the window needs to show all of it, and the figure's margin
+    /// within the body (<see cref="RetailBody"/>).
+    /// </summary>
+    private static (Control Body, Control? Top, Control? Foot, int Height, InscriptionField? Field, Thickness Room) Layout(AppraisalContent content,
+        Func<uint, string, bool> inscribe, bool retail)
+    {
+        var room = default(Thickness);
+        var body = retail ? RetailBody(content, out room) : SectionsBody(content);
+        var top = retail && content.Creature is { } creature ? HeaderBox(creature) : null;
+        InscriptionField? field = null;
+        var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, retail, out field) : null;
+        // A window measured before it is shown has no template yet, so the parts are measured and the chrome added to them.
+        var needed = Chrome + new[] { body, top, foot }.Sum(part =>
+        {
+            if (part == null) return 0;
+            part.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
+            return (int)Math.Ceiling(part.DesiredSize.Height);
+        });
+        return (body, top, foot, Math.Min(MaxHeight, needed), field, room);
+    }
+
+    /// <summary>The sections layout: the summary, then each section under its heading, then the description under a rule.</summary>
+    private static Control SectionsBody(AppraisalContent content)
     {
         var body = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         Grid.SetIsSharedSizeScope(body, true);
@@ -150,21 +197,109 @@ public sealed class AppraisalWindow
                 TextWrapping = TextWrapping.Wrap
             });
         }
-        InscriptionField? field = null;
-        var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, out field) : null;
-        // A window measured before it is shown has no template yet, so the parts are measured and the chrome added to them.
-        body.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
-        foot?.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
-        var needed = Chrome + (int)Math.Ceiling(body.DesiredSize.Height) + (foot == null ? 0 : (int)Math.Ceiling(foot.DesiredSize.Height));
-        return (body, foot, Math.Min(MaxHeight, needed), field);
+        return body;
     }
 
-    /// <summary>The frame's content: the scrolling body, and the inscription pinned under it.</summary>
-    private static Grid Frame(Control scroll, Control foot)
+    /// <summary>
+    /// The retail layout's lines in Palatino, a blank line between groups. An item's lines wrap across the window in one colour. A
+    /// creature's labels sit on the left with the values at the right edge, each value coloured by its tone; a label too long for a narrow
+    /// window is cut short before a value is. <paramref name="room"/> is the figure's margin: clear of the widest label and the widest value,
+    /// since the game draws the 3D view over the window's text, so the figure narrows with the window and is gone before it covers a word.
+    /// </summary>
+    private static Control RetailBody(AppraisalContent content, out Thickness room)
     {
-        var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        var creature = content.Creature != null;
+        var body = new StackPanel { Margin = new Thickness(BodySide, 4, BodySide, 6) };
+        if (creature) body.Effect = new DropShadowEffect { BlurRadius = 2, OffsetX = 0, OffsetY = 1, Color = Colors.Black, Opacity = 1 };
+        double labels = 0, values = 0;
+        var first = true;
+        foreach (var group in RetailAppraisalLayout.Groups(content))
+        {
+            if (!first) body.Children.Add(new Border { Height = RetailLineHeight * group.BlankLinesBefore });
+            first = false;
+            foreach (var line in group.Lines)
+            {
+                if (!creature)
+                {
+                    body.Children.Add(RetailText(line.Value, DerethPalette.TextBrush, wrap: true));
+                    continue;
+                }
+                var label = RetailText(line.Label ?? string.Empty, DerethPalette.TextBrush);
+                label.HorizontalAlignment = HorizontalAlignment.Left;
+                var value = RetailText(line.Value, line.Tone == AppraisalTone.Normal ? DerethPalette.TextBrush : ToneBrush(line.Tone));
+                labels = Math.Max(labels, WidthOf(label));
+                values = Math.Max(values, WidthOf(value));
+                Grid.SetColumn(value, 1);
+                body.Children.Add(new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { label, value } });
+            }
+        }
+        room = creature ? new Thickness(BodySide + labels + FigureGap, 0, BodySide + values + FigureGap, 0) : default;
+        return body;
+    }
+
+    private static double WidthOf(TextBlock text)
+    {
+        text.Measure(Size.Infinity);
+        return text.DesiredSize.Width;
+    }
+
+    private static TextBlock RetailText(string text, IBrush brush, bool wrap = false) => new()
+    {
+        Text = text, Foreground = brush, FontFamily = DerethPalette.Title, FontSize = 13, LineHeight = RetailLineHeight,
+        TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap, TextTrimming = wrap ? TextTrimming.None : TextTrimming.CharacterEllipsis,
+    };
+
+    /// <summary>Retail's header box: the creature's lines centred, and its level under the caption in a cell on the right.</summary>
+    private static Control HeaderBox(AppraisalCreatureHeader header)
+    {
+        var lines = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 3, 4, 4) };
+        foreach (var text in header.Lines)
+        {
+            var line = RetailText(text, DerethPalette.TextBrush);
+            line.HorizontalAlignment = HorizontalAlignment.Center;
+            lines.Children.Add(line);
+        }
+        var caption = new TextBlock
+        {
+            Text = header.Character ? "Character Level" : "Level", Foreground = DerethPalette.TextBrush, FontFamily = DerethPalette.Title, FontSize = 11.5,
+            TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        var level = new TextBlock
+        {
+            Text = header.Level, Foreground = DerethPalette.TextBrush, FontFamily = DerethPalette.Title, FontSize = 15,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        var cell = new Border
+        {
+            BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(1, 0, 0, 0), Padding = new Thickness(2),
+            Child = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { caption, level } },
+        };
+        Grid.SetColumn(cell, 1);
+        return new Border
+        {
+            Margin = new Thickness(6, 3, 6, 0), BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(1),
+            Background = DerethPalette.Brush(DerethPalette.Groove.WithAlpha(0xCC)),
+            Child = new Grid { ColumnDefinitions = new ColumnDefinitions("*,70"), Children = { lines, cell } },
+        };
+    }
+
+    /// <summary>The retail layout's figure for a creature, standing still behind its lines; nothing for an item or the sections layout.</summary>
+    private static Control? Figure(AppraisalContent content, bool retail, Func<AppraisalContent, Control?>? figure) =>
+        retail && content.Creature != null ? figure?.Invoke(content) : null;
+
+    /// <summary>
+    /// The frame's content: the header box, the scrolling body over the figure, and the inscription pinned under it. As retail's, the
+    /// figure stands between the labels on the left and the values on the right, by its margin.
+    /// </summary>
+    private static Grid Frame(Control top, Control behind, Control scroll, Control foot)
+    {
+        var grid = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+        grid.Children.Add(top);
+        Grid.SetRow(behind, 1);
+        grid.Children.Add(behind);
+        Grid.SetRow(scroll, 1);
         grid.Children.Add(scroll);
-        Grid.SetRow(foot, 1);
+        Grid.SetRow(foot, 2);
         grid.Children.Add(foot);
         return grid;
     }
@@ -292,16 +427,28 @@ public sealed class AppraisalWindow
 
     /// <summary>
     /// The inscription at the foot: an editable field the character writes in, or the text and its scribe read only. A read-only item that
-    /// nobody inscribed says so.
+    /// nobody inscribed says so; in the retail layout its parchment box stays blank.
     /// </summary>
-    private static Control Inscription(AppraisalInscription inscription, uint itemId, Func<uint, string, bool> inscribe, out InscriptionField? field)
+    private static Control Inscription(AppraisalInscription inscription, uint itemId, Func<uint, string, bool> inscribe, bool retail,
+        out InscriptionField? field)
     {
         if (inscription.Mode == InscriptionMode.Editable)
         {
-            field = new InscriptionField(inscription.Text, text => inscribe(itemId, text));
+            var signer = inscription.Scribe.Length > 0 ? inscription.Scribe : inscription.Writer;
+            field = new InscriptionField(inscription.Text, text => inscribe(itemId, text), retail, signer);
             return field.Panel;
         }
         field = null;
+        // A long inscription scrolls inside the box, as the field does.
+        if (retail)
+        {
+            var text = new ScrollViewer
+            {
+                Content = ParchmentText(inscription.Text), HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            };
+            return Parchment(text, Signature(inscription.Scribe));
+        }
         var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         panel.Children.Add(new TextBlock
         {
@@ -317,7 +464,9 @@ public sealed class AppraisalWindow
     /// a send is remembered only so that leaving the field after Enter does not send the same text again, and the refreshed appraisal
     /// (the response to the silent ID) brings the field its new saved text, through <see cref="Rebase"/>. Escape puts back the saved text. A
     /// save that the game does not send keeps the typed text, so the next Enter tries again. Empty text erases the inscription. The
-    /// placeholder shows while it is empty. Once the window has replaced the field (<see cref="Detach"/>), it no longer saves.
+    /// placeholder shows while it is empty. Once the window has replaced the field (<see cref="Detach"/>), it no longer saves. The parchment
+    /// field works as retail's: Enter starts a new line, so only leaving the field saves, and the signer's name shows in its corner from the
+    /// moment the character enters it.
     /// </summary>
     private sealed class InscriptionField
     {
@@ -327,22 +476,54 @@ public sealed class AppraisalWindow
         private string? _sent;
         private bool _detached;
 
-        public InscriptionField(string saved, Func<string, bool> save)
+        /// <param name="parchment">Draws the field as retail's parchment box, with "&lt;Inscribe here&gt;" centred while it is empty and
+        /// unfocused, and <paramref name="signer"/> signed at the bottom right while it is focused or written on.</param>
+        public InscriptionField(string saved, Func<string, bool> save, bool parchment = false, string signer = "")
         {
             _saved = saved;
             _save = save;
-            _input = new TextBox
-            {
-                Text = saved, Watermark = "Inscribe here", MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Body,
-                FontSize = 12, Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, Background = DerethPalette.GrooveBrush,
-                BorderBrush = DerethPalette.GrooveEdgeBrush,
-            };
+            _input = parchment
+                ? new TextBox
+                {
+                    Text = saved, MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Title, FontSize = 13,
+                    Foreground = ParchmentInkBrush, CaretBrush = ParchmentInkBrush, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+                    Padding = new Thickness(0), MinHeight = 0, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top,
+                    AcceptsReturn = true, NewLine = "\n",
+                }
+                : new TextBox
+                {
+                    Text = saved, Watermark = "Inscribe here", MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Body,
+                    FontSize = 12, Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, Background = DerethPalette.GrooveBrush,
+                    BorderBrush = DerethPalette.GrooveEdgeBrush,
+                };
             _input.KeyDown += (_, e) =>
             {
-                if (e.Key == Key.Enter) { Save(); e.Handled = true; }
+                if (e.Key == Key.Enter && !parchment) { Save(); e.Handled = true; }
                 else if (e.Key == Key.Escape) { _input.Text = _saved; _sent = null; e.Handled = true; }
             };
             _input.LostFocus += (_, _) => Save();
+            if (parchment)
+            {
+                // The text box's own watermark follows its text to the top left; retail centres the placeholder in the box.
+                var placeholder = ParchmentText("<Inscribe here>");
+                placeholder.HorizontalAlignment = HorizontalAlignment.Center;
+                placeholder.VerticalAlignment = VerticalAlignment.Center;
+                placeholder.IsHitTestVisible = false;
+                var signature = Signature(signer);
+                void Show()
+                {
+                    var empty = string.IsNullOrEmpty(_input.Text);
+                    placeholder.IsVisible = empty && !_input.IsFocused;
+                    if (signature != null) signature.IsVisible = !empty || _input.IsFocused;
+                }
+                _input.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property == TextBox.TextProperty || e.Property == InputElement.IsFocusedProperty) Show();
+                };
+                Show();
+                Panel = Parchment(new Grid { Children = { _input, placeholder } }, signature);
+                return;
+            }
             var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2, Children = { _input } };
             panel.Children.Add(Text("Enter saves · Esc cancels", DerethPalette.MutedBrush, 11));
             Panel = panel;
@@ -371,6 +552,39 @@ public sealed class AppraisalWindow
             if (_save(text)) _sent = text;
         }
     }
+
+    /// <summary>
+    /// Retail's parchment inscription box at the window's foot: the text from its top left in dark ink, and the signature at its bottom
+    /// right.
+    /// </summary>
+    private static Control Parchment(Control text, TextBlock? signature)
+    {
+        var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Children = { text } };
+        if (signature != null)
+        {
+            signature.HorizontalAlignment = HorizontalAlignment.Right;
+            Grid.SetRow(signature, 1);
+            grid.Children.Add(signature);
+        }
+        return new Border
+        {
+            Height = ParchmentHeight, Margin = new Thickness(2, 4, 2, 0), BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(1),
+            Padding = new Thickness(5, 3), Child = grid,
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.Parse("#C9B48A"), 0), new GradientStop(Color.Parse("#A88F62"), 1) }
+            },
+        };
+    }
+
+    /// <summary>A name signed as retail signs an inscription, "--Name"; none without a name.</summary>
+    private static TextBlock? Signature(string name) => name.Length > 0 ? ParchmentText("--" + name) : null;
+
+    private static TextBlock ParchmentText(string text) => new()
+    {
+        Text = text, Foreground = ParchmentInkBrush, FontFamily = DerethPalette.Title, FontSize = 13, TextWrapping = TextWrapping.Wrap,
+    };
 
     /// <summary>Raised values are the theme's green, lowered ones its red (the invalid colour), and the rest the text colour.</summary>
     private static IBrush ToneBrush(AppraisalTone tone) => tone switch
