@@ -1622,6 +1622,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 var surface = SurfaceById(order[i].Id);
                 surface?.DrawNow();
                 DrawModelViews(surface);
+                // 3D views draw over the window's frame, so its note (the size while Ctrl and the wheel rescale it) goes over them again.
+                if (surface?.Panel.NoteArea is { } note) surface.DrawPart(note);
                 if (_firstPostUiWindow)
                 {
                     _firstPostUiWindow = false;
