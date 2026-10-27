@@ -390,7 +390,7 @@ public sealed class CharacterWindow
         : DerethPalette.TextBrush;
 
     /// <summary>
-    /// The plate at the bottom, as retail's. A row experience raises: its name and value, the Experience To Raise bar and the unassigned
+    /// The plate at the bottom, as retail's. A row experience raises: its name and value, the experience to raise it and the unassigned
     /// experience, beside the +10 and +1 triangles. An untrained or unusable skill: its name and the credits to train it, beside one triangle
     /// that trains it.
     /// </summary>
@@ -426,9 +426,7 @@ public sealed class CharacterWindow
         {
             stack.Children.Add(Heading(row));
             var next = row.NextCost;
-            var text = next is { } cost ? Number(cost) : row.AtMax ? "Max" : "–";
-            var fraction = row.AtMax ? 1 : next > 0 ? Math.Min(1, (double)unassigned / next.Value) : 0;
-            stack.Children.Add(Bar(fraction, "Experience To Raise", text, short_: next > unassigned));
+            stack.Children.Add(Pair("Experience To Raise", next is { } cost ? Number(cost) : row.AtMax ? "Max" : "–", short_: next > unassigned));
             stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
             side.Children.Add(Triangle("+10", row.TenCost is { } ten && ten > 0 && ten <= unassigned, "Raise 10 ranks", () => Raise(ten: true)));
             side.Children.Add(Triangle(null, next is { } one && one > 0 && one <= unassigned, "Raise 1 rank", () => Raise(ten: false)));
@@ -456,16 +454,17 @@ public sealed class CharacterWindow
     {
         var hit = new Grid
         {
-            Width = 28, Height = 22, Background = Transparent, Opacity = enabled ? 1 : 0.35,
+            Width = 34, Height = 28, Background = Transparent, Opacity = enabled ? 1 : 0.35,
             Cursor = new Cursor(enabled ? StandardCursorType.Hand : StandardCursorType.Arrow),
-            Children = { new DerethPathGlyph("M0,9 L5.5,0 L11,9 Z", 26) { Fill = DerethPalette.GoldBrush, Stroke = DerethPalette.GoldDarkBrush, StrokeThickness = 1.2 } }
+            Children = { new DerethPathGlyph("M0,9 L5.5,0 L11,9 Z", 32) { Fill = DerethPalette.GoldBrush, Stroke = DerethPalette.GoldDarkBrush, StrokeThickness = 1.2 } }
         };
         if (label != null)
         {
             // In dark ink along the wide base, where it fits inside the triangle.
             var text = Centred(Label(label, 9, DerethPalette.Brush(Color.FromRgb(0x24, 0x18, 0x08))));
             text.VerticalAlignment = VerticalAlignment.Bottom;
-            text.Margin = new Thickness(0, 0, 0, 1);
+            text.Margin = new Thickness(0, 0, 0, 2);
+            text.TextTrimming = TextTrimming.None;
             text.FontWeight = FontWeight.Bold;
             hit.Children.Add(text);
         }
@@ -559,10 +558,7 @@ public sealed class CharacterWindow
         return grid;
     }
 
-    private static Control Bar(double fraction) => Bar(fraction, null, null);
-
-    /// <summary>A gold bar; with a caption, retail's taller bar with its label and value drawn on it.</summary>
-    private static Control Bar(double fraction, string? label, string? value, bool short_ = false)
+    private static Control Bar(double fraction)
     {
         var fill = new Border
         {
@@ -575,16 +571,11 @@ public sealed class CharacterWindow
         };
         var groove = new Border
         {
-            Height = label == null ? 8 : 18, CornerRadius = new CornerRadius(2), Background = DerethPalette.GrooveBrush, BorderBrush = LineBrush,
+            Height = 8, CornerRadius = new CornerRadius(2), Background = DerethPalette.GrooveBrush, BorderBrush = LineBrush,
             BorderThickness = new Thickness(1), Margin = new Thickness(0, 2, 0, 0), Child = fill
         };
         groove.SizeChanged += (_, e) => fill.Width = Math.Max(0, (e.NewSize.Width - 2) * fraction);
-        if (label == null) return groove;
-        fill.Opacity = 0.55;
-        var caption = Pair(label, value ?? string.Empty, short_);
-        caption.Margin = new Thickness(5, 2, 5, 0);
-        caption.VerticalAlignment = VerticalAlignment.Center;
-        return new Grid { Children = { groove, caption } };
+        return groove;
     }
 
     private static TextBlock Centred(TextBlock text)
