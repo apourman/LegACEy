@@ -1640,7 +1640,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
         }
         // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
-        if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
+        // It fades with the toolbar it belongs to.
+        if (!_failed) Guard(() =>
+        {
+            if (_splitTabSurface == null) return;
+            _splitTabSurface.Opacity = _toolbarSurface?.Opacity ?? 1;
+            _splitTabSurface.DrawNow();
+        });
         try { _gameMessageSurface?.DrawNow(); }
         catch (Exception exception) { GameMessagesFailed(exception); }
         if (windows || !_loggedIn)
@@ -1704,7 +1710,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
                     Log($"3D view first drawn: {model.TriangleCount} triangles, height {model.Top - model.Bottom:0.00} m, at {area} on a {D3D9.Viewport(_device)} viewport.");
                 }
-                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour);
+                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour, surface.Opacity);
             }
             catch (Exception exception)
             {
