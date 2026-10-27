@@ -42,9 +42,10 @@ public sealed class CharacterWindow
     public const int Width = 310, Height = 640;
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(280, 360));
     private const double SkillRowHeight = 21, AttributeRowHeight = 27, BandHeight = 20;
-    // Retail's raise arrows in the portal dat, lit and dim: the plain one (+1, or train) and the +10 one. Each is 30 × 26 with clear edges.
+    // Retail's raise arrows in the portal dat, lit and dim: the plain one (+1, or train) and the +10 one. Each is 30 × 26 with clear edges,
+    // padded to a square because icons only scale square art.
     private const uint Arrow = 0x06004CB6, ArrowDim = 0x06004CB7, TenArrow = 0x0600712B, TenArrowDim = 0x0600712C;
-    private const double ArrowWidth = 30, ArrowHeight = 26;
+    private const double ArrowSide = 30;
 
     private static readonly IBrush Transparent = Brushes.Transparent;
     private static readonly IBrush HoverBrush = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x12));
@@ -419,7 +420,7 @@ public sealed class CharacterWindow
 
         var stack = new StackPanel { Spacing = 3 };
         // Retail's arrows sit beside the last rows, each overlapping the clear edge of the one above.
-        var side = new StackPanel { Spacing = -9, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, -5) };
+        var side = new StackPanel { Spacing = -13, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, -7) };
         if (row == null)
         {
             stack.Children.Add(Centred(Label(_tab == 0 ? "Select an Attribute to Improve" : "Select a Skill to Improve", 13.5, DerethPalette.CreamBrush, title: true)));
@@ -469,8 +470,8 @@ public sealed class CharacterWindow
     {
         var hit = new Border
         {
-            Width = ArrowWidth, Height = ArrowHeight, Background = Transparent,
-            Child = Icon(ten ? enabled ? TenArrow : TenArrowDim : enabled ? Arrow : ArrowDim),
+            Width = ArrowSide, Height = ArrowSide, Background = Transparent,
+            Child = Icon(ten ? enabled ? TenArrow : TenArrowDim : enabled ? Arrow : ArrowDim, square: true),
             Cursor = new Cursor(enabled ? StandardCursorType.Hand : StandardCursorType.Arrow)
         };
         ToolTip.SetTip(hit, tip);
@@ -538,13 +539,25 @@ public sealed class CharacterWindow
         Refresh();
     }
 
-    private Control? Icon(uint id)
+    private Control? Icon(uint id, bool square = false)
     {
         if (id == 0 || _art == null) return null;
         // Each art is decoded once; a control has one parent, so each row gets its own icon over the shared bitmap, at the art's own size.
-        if (!_icons.TryGetValue(id, out var bitmap)) _icons[id] = bitmap = GameArtImageExtension.CreateBitmap(_art.ReadImage(id));
+        if (!_icons.TryGetValue(id, out var bitmap))
+            _icons[id] = bitmap = GameArtImageExtension.CreateBitmap(square && _art.ReadImage(id) is { } image ? Square(image) : _art.ReadImage(id));
         return bitmap == null ? null
             : new DerethItemIcon(bitmap) { Width = bitmap.PixelSize.Width, Height = bitmap.PixelSize.Height, VerticalAlignment = VerticalAlignment.Center };
+    }
+
+    // The art centred on a clear square as wide as its longer side.
+    private static GameImage Square(GameImage image)
+    {
+        var side = Math.Max(image.Width, image.Height);
+        var pixels = new byte[side * side * 4];
+        int left = (side - image.Width) / 2, top = (side - image.Height) / 2;
+        for (var y = 0; y < image.Height; y++)
+            Buffer.BlockCopy(image.Pixels, y * image.Width * 4, pixels, ((top + y) * side + left) * 4, image.Width * 4);
+        return new GameImage(side, side, pixels);
     }
 
     private static Border Plate(Control child, double padding = 7) => new()
