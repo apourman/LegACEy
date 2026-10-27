@@ -54,7 +54,7 @@ internal sealed class RetailGameMessages : IDisposable
     };
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate bool InqStringFn(IntPtr stringInfo, ref IntPtr text, int flag);
+    private delegate byte InqStringFn(IntPtr stringInfo, ref IntPtr text, int flag);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void DeleteFn(IntPtr buffer, int flags);
@@ -111,6 +111,14 @@ internal sealed class RetailGameMessages : IDisposable
     {
         try
         {
+            // DIAGNOSTIC (backlog 102): every notice, until the missing "can't be split" line is found. Remove before shipping.
+            if (chatType == SpewType && _diagnosed < 40)
+            {
+                _diagnosed++;
+                var kind = Marshal.ReadByte(text, StringLiteral + 4);
+                var lit = Marshal.ReadIntPtr(text, StringLiteral);
+                _log($"Game message notice: chat type 0x{chatType:X}, taking {Taking}, kind {kind}, literal \"{(lit == IntPtr.Zero ? "(null)" : Marshal.PtrToStringUni(lit))}\", built \"{Built(text)}\" (InqString {_builtResult}).");
+            }
             if (chatType == SpewType && Taking)
             {
                 // A line with no literal points at retail's shared empty string rather than at nothing.
@@ -124,7 +132,7 @@ internal sealed class RetailGameMessages : IDisposable
                     _pending.Enqueue(line);
                     return;
                 }
-                LogOnce($"A game message could not be read (literal {literal}, InqString {(_inqString is null ? "missing" : _builtResult.ToString())}); it went to retail's spew box.");
+                LogOnce("A game message could not be read; it went to retail's spew box.");
             }
             _retail(handler, chatType, text, timestampPrefix, targetWindow);
         }
@@ -135,7 +143,9 @@ internal sealed class RetailGameMessages : IDisposable
         }
     }
 
-    private bool _loggedMiss, _builtResult;
+    private bool _loggedMiss;
+    private int _diagnosed;
+    private byte _builtResult;
 
     private void LogOnce(string message)
     {
