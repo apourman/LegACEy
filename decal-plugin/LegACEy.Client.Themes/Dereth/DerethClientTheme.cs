@@ -17,6 +17,8 @@ namespace LegACEy.Client.Themes;
 public sealed class DerethClientTheme : IClientTheme
 {
     private const double ScrollBarThickness = 9;
+    /// <summary>The shortest a thumb gets along its bar, so a long chat history still leaves one worth grabbing.</summary>
+    private const double ThumbMinLength = 28;
     private static readonly IBrush ThumbBrush = new LinearGradientBrush
     {
         StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative),
@@ -87,6 +89,8 @@ public sealed class DerethClientTheme : IClientTheme
         };
         track.Thumb = new Thumb
         {
+            // Track reads its minimum thumb length from the thumb's MinHeight or MinWidth, along the bar.
+            [vertical ? Layoutable.MinHeightProperty : Layoutable.MinWidthProperty] = ThumbMinLength,
             Template = new FuncControlTemplate<Thumb>((_, _) => new Border
             {
                 Background = ThumbBrush, CornerRadius = new CornerRadius(3), Margin = thumbMargin

@@ -53,6 +53,21 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void A_long_log_keeps_a_wide_thumb_long_enough_to_grab() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out _);
+        panel.ApplyTheme(new DerethClientTheme());
+        for (var i = 0; i < 500; i++) port.Say(Line(RetailChatKind.Local, $"Line {i}", "Mirra"));
+        panel.Tick();
+
+        var bar = panel.Content!.GetVisualDescendants().OfType<ScrollBar>().Single(b => b.Orientation == Orientation.Vertical && b.IsVisible);
+        var thumb = bar.GetVisualDescendants().OfType<Thumb>().Single();
+        Assert.Equal(14, bar.Bounds.Width);
+        Assert.True(thumb.Bounds.Height >= 28, $"Thumb is {thumb.Bounds.Height} px tall.");
+    });
+
+    [Fact]
     public void Picking_a_tab_sets_its_talk_target_and_the_chip_shows_it_in_its_colour() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
