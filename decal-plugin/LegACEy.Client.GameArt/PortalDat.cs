@@ -23,8 +23,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     private readonly FileStream _stream;
     private readonly uint _blockSize;
     private readonly uint _rootDirectory;
-    // ponytail: unbounded; holds the window art and every item icon shown this session. Add eviction if a session's
-    // icons ever reach a few MB.
+    // The window art and every item icon shown since login; the host forgets them at logoff (ForgetImages).
     private readonly Dictionary<uint, GameImage?> _images = new();
     private IReadOnlyDictionary<uint, SpellInfo>? _spells;
     private CharacterNames? _characterNames;
@@ -59,6 +58,9 @@ public sealed class PortalDat : IDisposable, IGameArtSource
             _images.Add(id, image = DecodeImage(id));
         return image;
     }
+
+    /// <summary>Drops the decoded images, so a session holds only what it showed. Whoever holds one keeps it.</summary>
+    public void ForgetImages() => _images.Clear();
 
     /// <summary>
     /// The spells' names and descriptions by spell id, read once. A spell table that is missing or cannot be read gives an empty table,

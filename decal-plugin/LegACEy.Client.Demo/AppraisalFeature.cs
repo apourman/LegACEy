@@ -32,6 +32,7 @@ public sealed class AppraisalFeature
     private readonly Func<CharacterNames> _names;
     private readonly IAppraisalGame _game;
     private readonly Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? _measure;
+    private readonly Func<bool> _retailLayout;
     private InspectWindow? _inspect;
     private readonly Dictionary<uint, AppraisalResponse> _responses = new();
     private uint _requested;
@@ -39,6 +40,8 @@ public sealed class AppraisalFeature
     private uint _shownId;
     // Whether the window shows a stored item (a Vault item), which is not in the world.
     private bool _shownStored;
+    // The response the window shows, and the stored item it is for when it is not in the world, to draw it again in another layout.
+    private (AppraisalResponse Response, InventoryObjectRead? Stored)? _shownResponse;
     // A plugin's selected stored item, examined in place of the game's selection; null when there is none.
     private Action? _storedSelection;
     private AppraisalWindow? _view;
@@ -50,10 +53,12 @@ public sealed class AppraisalFeature
     /// <param name="spells">The spell table's names and descriptions by id, read when a window is built. Null names no spells: each is shown by its id.</param>
     /// <param name="names">The creature type and title names, read when a window is built. Null names none.</param>
     /// <param name="measure">Measures a control as the window draws it, at the UI size; the window opens at the height that shows its content. Null measures it unscaled.</param>
+    /// <param name="retailLayout">Whether the window draws the retail layout, read each time it shows an appraisal. Null is the sections layout.</param>
     public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null, IAppraisalGame? game = null,
         Func<IReadOnlyDictionary<uint, SpellInfo>>? spells = null, Func<CharacterNames>? names = null,
-        Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? measure = null)
+        Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? measure = null, Func<bool>? retailLayout = null)
     {
+        _retailLayout = retailLayout ?? (() => false);
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _clock = clock ?? new Func<long>(() => Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency);
@@ -163,6 +168,7 @@ public sealed class AppraisalFeature
         _responses.Clear();
         _requested = 0;
         _shownId = 0;
+        _shownResponse = null;
         Shown = null;
         _view?.Retire();
         _view = null;
@@ -240,18 +246,19 @@ public sealed class AppraisalFeature
                 _game.CoverageOf(id), _game.WorldObjectOf(id), _game.PluralNameOf(id), _game.DescriptionFlagsOf(id));
         var art = _host.Art;
         var inspect = _host.Looks.Knows(id) ? Inspect : (Action<AppraisalContent>?)null;
+        var retail = _retailLayout();
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
         if (_view != null && !_hidden && !_host.IsWindowOpen(WindowId)) _view = null;
         // One window serves the session: it takes the next appraisal in place, at the size the player left it.
         if (_view == null)
         {
-            _view = AppraisalWindow.Create(content, art, Inscribe, _measure, inspect);
+            _view = AppraisalWindow.Create(content, art, Inscribe, _measure, inspect, retail, Figure);
             _hidden = false;
         }
         else
         {
-            _view.Show(content, art, Inscribe, inspect);
+            _view.Show(content, art, Inscribe, inspect, retail, Figure);
         }
         var view = _view;
         // An open window already shows the content. A hidden one comes back as it was, with the content just swapped in.
@@ -285,9 +292,27 @@ public sealed class AppraisalFeature
         }
         _shownId = response.ObjectId;
         _shownStored = stored != null;
+        _shownResponse = (response, stored);
         Shown = content;
         return true;
     }
+
+    /// <summary>The layout changed in Settings: the open window draws what it shows again, in the layout now chosen. Nothing thrown escapes.</summary>
+    public void Relayout()
+    {
+        if (_shownResponse is not { } shown || !_host.IsWindowOpen(WindowId)) return;
+        try { Show(shown.Response, shown.Stored); }
+        catch (Exception exception) { _log($"Could not redraw the appraisal window: {exception.Message}"); }
+    }
+
+    /// <summary>
+    /// The retail layout's figure, standing still behind the lines: always for a player, whose look the doll waits for when the game has not
+    /// sent it yet, and for another creature when the looks know it. No status line shows behind the text.
+    /// </summary>
+    private Avalonia.Controls.Control? Figure(AppraisalContent content) =>
+        content.Creature is { Character: true } || _host.Looks.Knows(content.ObjectId)
+            ? new PaperdollView(_host.Looks, _host.PortalPath, content.ObjectId) { Still = true, StatusShown = false }
+            : null;
 
     /// <summary>
     /// The switch turned to retail's examination window: closes the open window and returns the world object it showed, for retail to

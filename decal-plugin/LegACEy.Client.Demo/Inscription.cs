@@ -7,10 +7,11 @@ namespace LegACEy.Client.Demo;
 public enum InscriptionMode { ReadOnly, Editable }
 
 /// <summary>
-/// The inscription field at the foot of the appraisal window: its mode, the text on the item and the name of who wrote it. A null
-/// <see cref="AppraisalContent.Inscription"/> means there is no field.
+/// The inscription field at the foot of the appraisal window: its mode, the text on the item and the name of who wrote it, and for an
+/// editable field <see cref="Writer"/>, the character who would sign it. A null <see cref="AppraisalContent.Inscription"/> means there is
+/// no field.
 /// </summary>
-public sealed record AppraisalInscription(InscriptionMode Mode, string Text, string Scribe)
+public sealed record AppraisalInscription(InscriptionMode Mode, string Text, string Scribe, string Writer = "")
 {
     /// <summary>
     /// Retail's maximum inscription length, a constant confirmed against MaxCharacters (property 0x1E) of the inscription field, element
@@ -41,7 +42,9 @@ public sealed record AppraisalInscription(InscriptionMode Mode, string Text, str
         if (!inscribable && text.Length == 0 && scribe.Length == 0) return null;
         var editable = carried && inscribable
             && (string.IsNullOrWhiteSpace(scribe) || string.Equals(scribe, characterName, StringComparison.Ordinal));
-        return new AppraisalInscription(editable ? InscriptionMode.Editable : InscriptionMode.ReadOnly, text, scribe);
+        return editable
+            ? new AppraisalInscription(InscriptionMode.Editable, text, scribe, characterName)
+            : new AppraisalInscription(InscriptionMode.ReadOnly, text, scribe);
     }
 }
 

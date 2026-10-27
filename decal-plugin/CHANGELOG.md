@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.19.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.18.0...decal-plugin-v0.19.0) (2026-10-27)
+
+
+### Features
+
+* **client:** crash records in the tester log ([#194](https://github.com/apourman/LegACEy/issues/194)) ([d00797e](https://github.com/apourman/LegACEy/commit/d00797edd73da4aec3a0046d2d980d9abf2aa684))
+
+
+### Bug Fixes
+
+* **client:** bound the caches that grow all session ([#193](https://github.com/apourman/LegACEy/issues/193)) ([2cd2ff0](https://github.com/apourman/LegACEy/commit/2cd2ff052cd389e842dadad4bc2a3faded330a24))
+* **client:** log free address space after teleports ([#189](https://github.com/apourman/LegACEy/issues/189)) ([a9822e3](https://github.com/apourman/LegACEy/commit/a9822e3b99b3345bdf5b85cb361f5eada0047861))
+* radar tiles on portal arrival ([#190](https://github.com/apourman/LegACEy/issues/190)) ([514cd10](https://github.com/apourman/LegACEy/commit/514cd10817507921bdd8a4ec09669af3e9891baf))
+
+
+### Performance
+
+* **client:** reuse Direct3D state blocks within a frame ([#191](https://github.com/apourman/LegACEy/issues/191)) ([f1ad4f3](https://github.com/apourman/LegACEy/commit/f1ad4f32606093fba3cce4b700c08ff9138a2f12))
+
+
+### CI
+
+* instant release merges ([#187](https://github.com/apourman/LegACEy/issues/187)) ([48ed6e6](https://github.com/apourman/LegACEy/commit/48ed6e657f209e6b40d0d4d1b1563991554991d7))
+
 ## [0.18.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.17.0...decal-plugin-v0.18.0) (2026-10-26)
 
 

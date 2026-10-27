@@ -201,6 +201,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private DateTime _lastMeasurementLog = DateTime.UtcNow;
     private uint _sampleCell;
     private DateTime _arrivalSampleAt = DateTime.MaxValue;
+    private long _pruneAt;
+    private const long PruneIntervalMs = 60_000;
     private DateTime _lastTestFailureCheck;
     private readonly FrameSamples _uiFrameTimes = new();
     private readonly FrameSamples _postUiDrawTimes = new();
@@ -399,7 +401,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
-            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale));
+            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale),
+            retailLayout: AppraisalRetailLayout);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal,
             () => SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch));
         _row2Choice = new ShortcutRowChoice(_settingsStore);
@@ -421,6 +424,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         AssemblyLoadContext.Default.Resolving += ResolveFromClientDirectory;
         try
         {
+            SessionRecord.Open(Log);
+            SessionRecord.LogGraphics(Log);
             NativeUi.Initialize(Log);
             StartWorldUpdates();
             // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
@@ -509,7 +514,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _serverChannel?.Dispose();
             _serverChannel = null;
         }
-        finally { AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory; }
+        finally
+        {
+            AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory;
+            SessionRecord.Close();
+        }
     }
 
     /// <summary>
@@ -920,6 +929,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_toolbarPlace != null) _toolbarPlace.Location = null;
         _inventory.Clear();
         _lookCache.Clear();
+        _portal?.ForgetImages();
         Guard(() => _appraisal.Clear());
         Guard(() => _character?.Sheet.Clear());
         Guard(() => _busyCursor?.Show(false));
@@ -1077,6 +1087,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
             VitalsRetailBars = new OptionChoice<bool>(_vitalsLayouts.RetailBars(SessionServer(), SessionCharacter()), SetVitalsRetailBars),
+            AppraisalRetailLayout = new OptionChoice<bool>(AppraisalRetailLayout(), SetAppraisalRetailLayout),
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
             ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore, SessionServer(), SessionCharacter()), SetChatTextSize),
             ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
@@ -1269,6 +1280,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _noticeFailLogged = true;
             }
         }
+        if (_inGame) PruneSessionCaches();
         try { FrameCore(); }
         finally
         {
@@ -1909,6 +1921,29 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 (top == null || surface.ZOrder > top.ZOrder))
                 top = surface;
         return top?.Id;
+    }
+
+    /// <summary>
+    /// Once a minute, forgets the looks of objects Decal no longer has (ACE sends no DeleteObject for what a teleport leaves behind) and
+    /// the radar's names, so neither grows with play time.
+    /// </summary>
+    private void PruneSessionCaches()
+    {
+        var now = Environment.TickCount64;
+        if (now < _pruneAt) return;
+        _pruneAt = now + PruneIntervalMs;
+        // The character is always kept, with what it holds: Decal missing it for a moment (portal space, login) must not blank the paperdoll.
+        uint player;
+        try { player = (uint)Bridge.Fact(BridgeFact.CharacterId); }
+        catch (COMException) { return; }
+        var forgotten = _lookCache.Prune(id =>
+        {
+            if (id == player) return true;
+            try { return Bridge.Item(id) != null; }
+            catch (COMException) { return true; }
+        });
+        if (forgotten > 0) Log($"Forgot the looks of {forgotten} objects the client let go.");
+        _radarPort?.ForgetNames();
     }
 
     private static string ObjectName(uint id)
@@ -3973,6 +4008,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _vitalsLayouts.SaveRetailBars(SessionServer(), SessionCharacter(), on);
         _vitalsLayoutPicked = true;
         if (_settings != null) _settings.VitalsRetailBars = new OptionChoice<bool>(on, SetVitalsRetailBars);
+    }
+
+    // The appraisal window's layout for the character: 1 for retail's, else the sections (backlog 082).
+    private const string AppraisalLayoutKey = "dereth-appraisal-retail-layout";
+
+    private bool AppraisalRetailLayout() => _settingsStore.Load(SessionServer(), SessionCharacter(), AppraisalLayoutKey) is { Location.X: 1 };
+
+    /// <summary>Keeps the character's appraisal layout; an open appraisal window draws again in it.</summary>
+    private void SetAppraisalRetailLayout(bool on)
+    {
+        _settingsStore.Save(SessionServer(), SessionCharacter(), AppraisalLayoutKey, (new Point(on ? 1 : 0, 0), null));
+        if (_settings != null) _settings.AppraisalRetailLayout = new OptionChoice<bool>(on, SetAppraisalRetailLayout);
+        _appraisal.Relayout();
     }
 
     /// <summary>
