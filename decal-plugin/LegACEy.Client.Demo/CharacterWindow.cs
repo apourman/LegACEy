@@ -32,9 +32,9 @@ public interface ICharacterGame
 
 /// <summary>
 /// The Dereth character window, retail's Attributes, Skills and Titles tabs in retail's order: a plaque with the name, level and
-/// experience, the list, and a plate at the bottom with the credits and experience to spend. A click on a row drops its cost and its Raise
-/// and +10 (or Train) down under it; a second click folds it away. Every group but the vitals (attributes and each skill group) folds, and the folds are
-/// remembered. One instance serves the session; <see cref="Refresh"/> redraws what changed.
+/// experience, the list, and retail's plate at the bottom: the selected row's name and value, the experience to raise it beside retail's +10
+/// and +1 arrows (or its credit cost beside the arrow that trains it), and the credits and experience to spend. A click on a row selects it; a second click clears it. Each skill group
+/// folds from its band, and the folds are remembered; the attributes and vitals have no band. One instance serves the session; <see cref="Refresh"/> redraws what changed.
 /// </summary>
 public sealed class CharacterWindow
 {
@@ -42,6 +42,10 @@ public sealed class CharacterWindow
     public const int Width = 310, Height = 640;
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(280, 360));
     private const double SkillRowHeight = 21, AttributeRowHeight = 27, BandHeight = 20;
+    // Retail's raise arrows in the portal dat, lit and dim: the plain one (+1, or train) and the +10 one. Each is 30 × 26 with clear edges,
+    // padded to a square because icons only scale square art.
+    private const uint Arrow = 0x06004CB6, ArrowDim = 0x06004CB7, TenArrow = 0x0600712B, TenArrowDim = 0x0600712C;
+    private const double ArrowSide = 30;
 
     private static readonly IBrush Transparent = Brushes.Transparent;
     private static readonly IBrush HoverBrush = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x12));
@@ -50,7 +54,6 @@ public sealed class CharacterWindow
     private static readonly IBrush LineBrush = DerethPalette.Brush(DerethPalette.Line);
     private static readonly Dictionary<CharacterGroup, Color> GroupColours = new()
     {
-        [CharacterGroup.Attributes] = DerethPalette.Gold,
         [CharacterGroup.Specialized] = Color.FromRgb(140, 96, 220),
         [CharacterGroup.Trained] = Color.FromRgb(63, 160, 170),
         [CharacterGroup.Untrained] = Color.FromRgb(200, 150, 60),
@@ -58,7 +61,6 @@ public sealed class CharacterWindow
     };
     private static readonly Dictionary<CharacterGroup, string> GroupNames = new()
     {
-        [CharacterGroup.Attributes] = "Attributes",
         [CharacterGroup.Specialized] = "Specialized Skills",
         [CharacterGroup.Trained] = "Trained Skills",
         [CharacterGroup.Untrained] = "Untrained Skills",
@@ -92,9 +94,7 @@ public sealed class CharacterWindow
     private uint _titleSelected;
     private IReadOnlyList<CharacterRow> _rows = Array.Empty<CharacterRow>();
     private IReadOnlyList<CharacterRow>? _drawnRows;
-    private string? _drawnPlaque, _drawnFoot, _drawnTitles, _drawnInline;
-    // The untrained skill whose Train was pressed once: a second press spends the credits.
-    private uint _confirmTrain;
+    private string? _drawnPlaque, _drawnFoot, _drawnTitles;
 
     public CharacterWindow(CharacterSheet sheet, ICharacterGame game, IGameArtSource? art, Func<CharacterTables> tables,
         Func<IReadOnlyDictionary<uint, string>> titleNames, IEnumerable<CharacterGroup> folded, Action<IReadOnlyCollection<CharacterGroup>> foldsChanged)
@@ -112,7 +112,6 @@ public sealed class CharacterWindow
         {
             _tab = index;
             _selected = null;
-            _confirmTrain = 0;
             _scroll!.Offset = default;
             Show();
         };
@@ -123,7 +122,15 @@ public sealed class CharacterWindow
         {
             Content = _list,
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            Background = Transparent
+        };
+        // A click on the list's empty space clears the selection, as in retail; rows and bands handle their own clicks.
+        _scroll.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(_scroll).Properties.IsLeftButtonPressed) return;
+            e.Handled = true;
+            ClearSelection();
         };
         _foot = new ContentControl { Margin = new Thickness(1, 4, 1, 0) };
         _statsPage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
@@ -188,8 +195,15 @@ public sealed class CharacterWindow
     public void Select(StatKind kind, uint id)
     {
         _selected = (kind, id);
-        _confirmTrain = 0;
         // The highlight is drawn with the rows.
+        _drawnRows = null;
+        Refresh();
+    }
+
+    /// <summary>Clears the selection, as a click on the list's empty space does.</summary>
+    public void ClearSelection()
+    {
+        _selected = null;
         _drawnRows = null;
         Refresh();
     }
@@ -215,17 +229,10 @@ public sealed class CharacterWindow
         Refresh();
     }
 
-    /// <summary>The first press arms the train; the second spends the skill's credits.</summary>
+    /// <summary>Spends the selected skill's credits training it, as retail's triangle does.</summary>
     public void Train()
     {
         if (SelectedRow is not { TrainCost: > 0 } row || row.TrainCost > _sheet.SkillCredits) return;
-        if (_confirmTrain != row.Id)
-        {
-            _confirmTrain = row.Id;
-            Refresh();
-            return;
-        }
-        _confirmTrain = 0;
         if (_game.Train(row.Id, row.TrainCost)) _sheet.Train(row.Id, row.TrainCost);
         Refresh();
     }
@@ -254,7 +261,7 @@ public sealed class CharacterWindow
         }
         _rows = _tab == 0 ? CharacterRows.Attributes(_sheet, tables, _game.Value, _game.Current) : CharacterRows.Skills(_sheet, tables, _game.Value);
         DrawPlaque(tables);
-        if (_drawnRows == null || !_drawnRows.SequenceEqual(_rows) || _drawnInline != InlineKey) DrawList();
+        if (_drawnRows == null || !_drawnRows.SequenceEqual(_rows)) DrawList();
         DrawFoot();
     }
 
@@ -293,22 +300,17 @@ public sealed class CharacterWindow
     private void DrawList()
     {
         _drawnRows = _rows;
-        _drawnInline = InlineKey;
         _list.Children.Clear();
-        // Every group folds from its band but the vitals, which follow the attributes with no band, as in retail.
+        // The skill groups fold from their bands; the attributes and vitals are listed with no band, as in retail.
         var height = _tab == 0 ? AttributeRowHeight : SkillRowHeight;
         foreach (var group in _rows.GroupBy(row => row.Group))
         {
-            if (group.Key != CharacterGroup.Vitals)
+            if (group.Key is not (CharacterGroup.Attributes or CharacterGroup.Vitals))
             {
                 _list.Children.Add(Band(group.Key, group.Count()));
                 if (_folded.Contains(group.Key)) continue;
             }
-            foreach (var row in group)
-            {
-                _list.Children.Add(Row(row, height));
-                if (IsSelected(row)) _list.Children.Add(Inline(row));
-            }
+            foreach (var row in group) _list.Children.Add(Row(row, height));
         }
     }
 
@@ -376,13 +378,7 @@ public sealed class CharacterWindow
             if (!e.GetCurrentPoint(border).Properties.IsLeftButtonPressed) return;
             e.Handled = true;
             if (!IsSelected(row)) Select(row.Kind, row.Id);
-            else
-            {
-                _selected = null;
-                _confirmTrain = 0;
-                _drawnRows = null;
-                Refresh();
-            }
+            else ClearSelection();
         };
         return border;
     }
@@ -408,50 +404,85 @@ public sealed class CharacterWindow
         : row.Group is CharacterGroup.Untrained or CharacterGroup.Unusable ? DerethPalette.MutedBrush
         : DerethPalette.TextBrush;
 
-    /// <summary>The plate at the bottom: what the character has to spend.</summary>
+    /// <summary>
+    /// The plate at the bottom, as retail's. A row experience raises: its name and value, the experience to raise it and the unassigned
+    /// experience, beside the +10 and +1 triangles. An untrained or unusable skill: its name and the credits to train it, beside one triangle
+    /// that trains it.
+    /// </summary>
     private void DrawFoot()
     {
-        var key = $"{_tab}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}";
+        var row = SelectedRow;
+        var key = $"{_tab}|{row}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}";
         if (key == _drawnFoot) return;
         _drawnFoot = key;
+        var unassigned = _sheet.UnassignedExperience;
+        var credits = _sheet.SkillCredits.ToString(CultureInfo.InvariantCulture);
+
         var stack = new StackPanel { Spacing = 3 };
-        stack.Children.Add(Pair("Skill Credits Available", _sheet.SkillCredits.ToString(CultureInfo.InvariantCulture)));
-        stack.Children.Add(Pair("Unassigned Experience", Number(_sheet.UnassignedExperience)));
-        _foot.Content = Plate(stack);
+        // Retail's arrows sit beside the last rows, each overlapping the clear edge of the one above.
+        var side = new StackPanel { Spacing = -13, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, -7) };
+        if (row == null)
+        {
+            stack.Children.Add(Centred(Label(_tab == 0 ? "Select an Attribute to Improve" : "Select a Skill to Improve", 13.5, DerethPalette.CreamBrush, title: true)));
+            stack.Children.Add(Pair("Skill Credits Available", credits));
+            stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
+        }
+        else if (row.Group is CharacterGroup.Untrained or CharacterGroup.Unusable)
+        {
+            stack.Children.Add(Centred(Label(row.Name, 13.5, DerethPalette.CreamBrush, title: true)));
+            if (row.TrainCost > 0)
+            {
+                stack.Children.Add(Pair("Skill Credits To Train", row.TrainCost.ToString(CultureInfo.InvariantCulture), short_: row.TrainCost > _sheet.SkillCredits));
+                side.Children.Add(RaiseArrow(ten: false, row.TrainCost <= _sheet.SkillCredits,
+                    $"Train {row.Name} for {row.TrainCost} skill credits", Train));
+            }
+            stack.Children.Add(Pair("Skill Credits Available", credits));
+        }
+        else
+        {
+            stack.Children.Add(Heading(row));
+            var next = row.NextCost;
+            stack.Children.Add(Pair("Experience To Raise", next is { } cost ? Number(cost) : row.AtMax ? "Max" : "–", short_: next > unassigned));
+            stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
+            side.Children.Add(RaiseArrow(ten: true, row.TenCost is { } ten && ten > 0 && ten <= unassigned, "Raise 10 ranks", () => Raise(ten: true)));
+            side.Children.Add(RaiseArrow(ten: false, next is { } one && one > 0 && one <= unassigned, "Raise 1 rank", () => Raise(ten: false)));
+        }
+
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
+        grid.Children.Add(stack);
+        Grid.SetColumn(side, 1);
+        grid.Children.Add(side);
+        _foot.Content = Plate(grid);
     }
 
-    /// <summary>What drops down under the selected row: its cost, and Raise and +10, or Train.</summary>
-    private Control Inline(CharacterRow row)
+    // "Arcane Lore: 379 (+55)": the buff in the colour the list gives it.
+    private static Control Heading(CharacterRow row)
     {
-        var stack = new StackPanel { Spacing = 3 };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Right };
-        if (row.TrainCost > 0)
-        {
-            var affordable = row.TrainCost <= _sheet.SkillCredits;
-            var armed = _confirmTrain == row.Id;
-            var train = Button(armed ? $"Confirm · {row.TrainCost} credits" : "Train", affordable, Train);
-            ToolTip.SetTip(train, armed ? "Press again to spend the credits" : $"Spend {row.TrainCost} skill credits to train {row.Name}");
-            buttons.Children.Add(train);
-            stack.Children.Add(Pair("Credits To Train", row.TrainCost.ToString(CultureInfo.InvariantCulture), short_: !affordable));
-        }
-        else if (row.NextCost is { } next)
-        {
-            var unassigned = _sheet.UnassignedExperience;
-            buttons.Children.Add(Button("+10", row.TenCost is { } ten && ten > 0 && ten <= unassigned, () => Raise(ten: true)));
-            buttons.Children.Add(Button("Raise", next > 0 && next <= unassigned, () => Raise(ten: false)));
-            stack.Children.Add(Pair("Experience To Raise", Number(next), short_: next > unassigned));
-        }
-        else stack.Children.Add(Pair("Experience To Raise", row.AtMax ? "Max" : "–"));
-        if (buttons.Children.Count > 0) stack.Children.Add(buttons);
-        return new Border
-        {
-            Margin = new Thickness(26, 0, 2, 4), Padding = new Thickness(7, 5, 7, 6), Background = PlateBrush,
-            BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(2, 0, 0, 0), Child = stack
-        };
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Center };
+        line.Children.Add(Label($"{row.Name}: {row.Value.Buffed}", 13.5, DerethPalette.CreamBrush, title: true));
+        var buff = row.Value.Buffed - row.Value.Base;
+        if (buff != 0) line.Children.Add(Label($"({(buff > 0 ? "+" : "")}{buff})", 12.5, ValueBrush(row)));
+        return line;
     }
 
-    // What the drop-down under the selected row shows besides the row itself: redrawn when it changes.
-    private string InlineKey => $"{_selected}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}|{_confirmTrain}";
+    // One of retail's raise arrows, dim when the click cannot be afforded.
+    private Control RaiseArrow(bool ten, bool enabled, string tip, Action click)
+    {
+        var hit = new Border
+        {
+            Width = ArrowSide, Height = ArrowSide, Background = Transparent,
+            Child = Icon(ten ? enabled ? TenArrow : TenArrowDim : enabled ? Arrow : ArrowDim, square: true),
+            Cursor = new Cursor(enabled ? StandardCursorType.Hand : StandardCursorType.Arrow)
+        };
+        ToolTip.SetTip(hit, tip);
+        hit.PointerPressed += (_, e) =>
+        {
+            if (!enabled || !e.GetCurrentPoint(hit).Properties.IsLeftButtonPressed) return;
+            e.Handled = true;
+            click();
+        };
+        return hit;
+    }
 
     private void DrawTitles()
     {
@@ -508,13 +539,28 @@ public sealed class CharacterWindow
         Refresh();
     }
 
-    private Control? Icon(uint id)
+    private Control? Icon(uint id, bool square = false)
     {
         if (id == 0 || _art == null) return null;
         // Each art is decoded once; a control has one parent, so each row gets its own icon over the shared bitmap, at the art's own size.
-        if (!_icons.TryGetValue(id, out var bitmap)) _icons[id] = bitmap = GameArtImageExtension.CreateBitmap(_art.ReadImage(id));
+        if (!_icons.TryGetValue(id, out var bitmap))
+        {
+            var image = _art.ReadImage(id);
+            _icons[id] = bitmap = GameArtImageExtension.CreateBitmap(square && image != null ? Square(image) : image);
+        }
         return bitmap == null ? null
             : new DerethItemIcon(bitmap) { Width = bitmap.PixelSize.Width, Height = bitmap.PixelSize.Height, VerticalAlignment = VerticalAlignment.Center };
+    }
+
+    // The art centred on a clear square as wide as its longer side.
+    private static GameImage Square(GameImage image)
+    {
+        var side = Math.Max(image.Width, image.Height);
+        var pixels = new byte[side * side * 4];
+        int left = (side - image.Width) / 2, top = (side - image.Height) / 2;
+        for (var y = 0; y < image.Height; y++)
+            Buffer.BlockCopy(image.Pixels, y * image.Width * 4, pixels, ((top + y) * side + left) * 4, image.Width * 4);
+        return new GameImage(side, side, pixels);
     }
 
     private static Border Plate(Control child, double padding = 7) => new()
@@ -551,13 +597,6 @@ public sealed class CharacterWindow
         };
         groove.SizeChanged += (_, e) => fill.Width = Math.Max(0, (e.NewSize.Width - 2) * fraction);
         return groove;
-    }
-
-    private static DerethButton Button(string text, bool enabled, Action click)
-    {
-        var button = new DerethButton { Content = Label(text, 11.5, DerethPalette.CreamBrush), Padding = new Thickness(9, 2), MinHeight = 22, IsEnabled = enabled };
-        button.Click += (_, _) => click();
-        return button;
     }
 
     private static TextBlock Centred(TextBlock text)
