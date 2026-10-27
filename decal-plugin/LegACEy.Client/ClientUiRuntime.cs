@@ -242,6 +242,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Size? _splitTabDragOffset;
     // While an edge of the split tab is dragged: which (-1 left, 1 right), and the pointer, width and left edge it started from.
     private (int Edge, int PointerX, double Width, int Left)? _splitTabResize;
+    // Where and how wide the split tab was when the press began: a press that changes neither saves nothing.
+    private (Point Location, double Width) _splitTabDragFrom;
     private ScreenSurface? _splitTabSurface;
     // Shortcut rows 1 and 2, inside the toolbar under its buttons while the takeover holds, and their refresh on inventory changes.
     private ShortcutBar? _shortcutBar;
@@ -3054,6 +3056,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (NativeUi.IsUiLocked || _splitTab is not { } tab || _splitTabSurface is not { Visible: true } surface) return;
         var edge = SplitTabEdgeAt(_pointer);
         _splitTabResize = edge == 0 ? null : (edge, _pointer.X, tab.Width, surface.Location.X);
+        _splitTabDragFrom = (surface.Location, tab.Width);
         _splitTabDragOffset = new Size(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
     }
 
@@ -3078,9 +3081,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         if (_splitTabResize is { } resize && _splitTab is { } tab)
         {
-            // The panel takes the new width at the next placement; a left edge moves the tab so its right edge stays.
+            // The panel takes the new width at the next placement; a left edge moves the tab so its right edge stays. Neither edge leaves the screen.
             var scale = surface.Panel.Scale;
-            var width = Math.Max(StackSplitTab.NarrowestWidth, Math.Min(StackSplitTab.WidestWidth, resize.Width + resize.Edge * (pointer.X - resize.PointerX) / scale));
+            var room = resize.Edge < 0 ? resize.Left / scale + resize.Width : (GameDevice.ViewportSize(_device).Width - resize.Left) / scale;
+            var widest = Math.Max(StackSplitTab.NarrowestWidth, Math.Min(StackSplitTab.WidestWidth, room));
+            var width = Math.Max(StackSplitTab.NarrowestWidth, Math.Min(widest, resize.Width + resize.Edge * (pointer.X - resize.PointerX) / scale));
             tab.Width = width;
             if (resize.Edge < 0) surface.Location = new Point(resize.Left + (int)Math.Round((resize.Width - width) * scale), surface.Location.Y);
             return;
@@ -3097,7 +3102,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _splitTabDragOffset = null;
         _splitTabResize = null;
-        if (_splitTabSurface is not { } surface || _splitTab is not { } tab || !_inGame) return;
+        if (_splitTabSurface is not { } surface || _splitTab is not { } tab || !_inGame || (surface.Location, tab.Width) == _splitTabDragFrom) return;
         _splitTabPlace = surface.Location;
         _positionStore.Save(SessionServer(), SessionCharacter(), SplitTabPlaceId, (surface.Location, new Size((int)Math.Round(tab.Width), 0)));
         Log($"Moved the split tab to {surface.Location}, {tab.Width:0} wide.");
