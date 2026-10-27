@@ -385,7 +385,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// The player's cell id; zero while they are in no cell: in portal space, and before the world at login, where the storm and weather
     /// would be drawn into retail's portal warp.
     /// </summary>
-    private static uint PlayerCell()
+    internal static uint PlayerCell()
     {
         var player = *PlayerObject;
         return player != 0 && *(int*)(player + 0x90) != 0 ? *(uint*)(player + 0x4C) : 0;
@@ -724,10 +724,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         _masked = false;
     }
 
-    // Default-pool textures must be gone before the device resets, or the reset fails.
+    // Default-pool textures and state blocks must be gone before the device resets, or the reset fails.
     private int OnReset(IntPtr device, IntPtr parameters)
     {
         if (device == _device) ReleaseTextures();
+        ReleaseSpareStates();
         return _resetHook.OriginalFunction(device, parameters);
     }
 
