@@ -110,16 +110,19 @@ internal sealed unsafe class ScreenSurface : IDisposable
         if (!Visible || !_uploaded)
             return;
         var start = Stopwatch.GetTimestamp();
-        Draw(new Rectangle(0, 0, Panel.Frame.Width, Panel.Frame.Height));
+        Draw(FrameBounds);
         DrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
     }
 
-    /// <summary>Draw part of the prepared frame (in its pixels) again, in its place, such as the panel's note over the window's 3D views.</summary>
-    public void DrawPart(Rectangle part)
+    /// <summary>Draw the panel's note again, if one shows, in its place: 3D views draw over the window's frame and would hide it.</summary>
+    public void DrawNote()
     {
-        part.Intersect(new Rectangle(0, 0, Panel.Frame.Width, Panel.Frame.Height));
-        if (Visible && _uploaded && !part.IsEmpty) Draw(part);
+        if (!Visible || !_uploaded || Panel.NoteArea is not { } note) return;
+        note.Intersect(FrameBounds);
+        if (!note.IsEmpty) Draw(note);
     }
+
+    private Rectangle FrameBounds => new(0, 0, Panel.Frame.Width, Panel.Frame.Height);
 
     public void Dispose()
     {
