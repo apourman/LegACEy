@@ -52,6 +52,11 @@ public sealed class InventoryWindowTests
         var reading = Assert.Single(host.Host.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "111%");
         Assert.Same(DerethPalette.TextBrush, reading.Foreground);
 
+        // Past three times the limit the reading stops at 300%, as retail's does.
+        port.Push(InventorySample.Snapshot(burden: 33000));
+        InventoryDriver.Tick(host.Host);
+        Assert.Equal("300%", Assert.Single(host.Host.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text.EndsWith("%")).Text);
+
         // Just past the limit, the yellow band already shows over the full green one.
         port.Push(InventorySample.Snapshot(burden: 5460));
         InventoryDriver.Tick(host.Host);
