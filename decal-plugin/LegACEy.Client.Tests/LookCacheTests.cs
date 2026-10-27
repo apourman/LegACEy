@@ -123,7 +123,7 @@ public sealed class LookCacheTests
         cache.Receive(LookCache.CreateObject, Created(Drudge, setup: 0x02000B00));
         cache.Receive(LookCache.CreateObject, Created(Shield, setup: 0x02000C00, parent: (Drudge, 3)));
 
-        cache.Prune(id => id is Player or Sword or Shield);
+        Assert.Equal(1, cache.Prune(id => id is Player or Sword or Shield));
 
         Assert.Null(cache.Look(Drudge));
         Assert.Single(cache.Look(Player)!.Held);

@@ -1919,11 +1919,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var now = Environment.TickCount64;
         if (now < _pruneAt) return;
         _pruneAt = now + 60_000;
-        _lookCache.Prune(static id =>
+        var forgotten = _lookCache.Prune(static id =>
         {
             try { return Bridge.Item(id) != null; }
             catch (COMException) { return true; }
         });
+        if (forgotten > 0) Log($"Forgot the looks of {forgotten} objects the client let go.");
         _radarPort?.ForgetNames();
     }
 
