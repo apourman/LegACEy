@@ -170,29 +170,6 @@ namespace ACE.Server.Tests.Market
         }
 
         [TestMethod]
-        public void SplitInTheMainPack_WhileOverburdened_StillSplits()
-        {
-            var account = VaultTestWorld.NewAccountId();
-            var player = VaultTestWorld.NewPlayer(account);
-            var notes = GiveNotes(player, 10);
-            var splitPart = VaultTestWorld.NewItem(TradeNoteWcid);
-            splitPart.SetStackSize(4);
-
-            var split = false;
-            VaultTestWorld.OnWorldThread(() =>
-            {
-                // a split within the player's own packs carries nothing new, so the burden limit does not refuse it
-                player.EncumbranceVal = player.GetEncumbranceCapacity() * 3 + 1;
-                split = (bool)typeof(Player).GetMethod("DoHandleActionStackableSplitToContainer", BindingFlags.NonPublic | BindingFlags.Instance)
-                    .Invoke(player, new object[] { notes, player, player, player, player, splitPart, 0, 4 });
-            });
-
-            Assert.IsTrue(split);
-            Assert.AreEqual(6, notes.StackSize);
-            Assert.AreEqual(10, NotesInPacks(player));
-        }
-
-        [TestMethod]
         public void DepositNotes_WhileTrading_IsRefused()
         {
             var account = VaultTestWorld.NewAccountId();

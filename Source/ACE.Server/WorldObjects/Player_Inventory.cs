@@ -2545,10 +2545,7 @@ namespace ACE.Server.WorldObjects
                 return false;
             }
 
-            // A split within the player's own packs carries nothing new, so only a part from outside them counts against the burden limit
-            var burdenCheck = stackRootOwner != this;
-
-            if (!container.TryAddToInventory(newStack, placementPosition, true, burdenCheck))
+            if (!container.TryAddToInventory(newStack, placementPosition, true))
             {
                 AdjustStack(stack, amount, stackFoundInContainer, stackRootOwner);
 
