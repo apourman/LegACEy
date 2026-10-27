@@ -185,7 +185,10 @@ public sealed class StackSplitTab : Decorator
         Apply(int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var typed) ? typed : _port.SplitAmount, null);
     }
 
-    /// <summary>A dark track with a gold thumb, as the retail amount slider draws.</summary>
+    /// <summary>
+    /// A dark groove with a gold thumb, as the retail amount slider draws. The track takes the thumb's full height, and its clear buttons
+    /// either side of the thumb are what Slider moves the thumb to a press on.
+    /// </summary>
     private static FuncControlTemplate<Slider> SliderTemplate() => new((_, scope) =>
     {
         var track = new Track
@@ -194,16 +197,28 @@ public sealed class StackSplitTab : Decorator
             Orientation = Orientation.Horizontal,
             [!RangeBase.MinimumProperty] = new TemplateBinding(RangeBase.MinimumProperty),
             [!RangeBase.MaximumProperty] = new TemplateBinding(RangeBase.MaximumProperty),
-            [!RangeBase.ValueProperty] = new Binding(nameof(RangeBase.Value)) { Mode = BindingMode.TwoWay, RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) }
+            [!RangeBase.ValueProperty] = new Binding(nameof(RangeBase.Value)) { Mode = BindingMode.TwoWay, RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) },
+            DecreaseButton = TrackButton("PART_DecreaseButton"),
+            IncreaseButton = TrackButton("PART_IncreaseButton"),
+            Thumb = new Thumb { Template = new FuncControlTemplate<Thumb>((_, _) => new Border { Width = 9, Height = 16, CornerRadius = new CornerRadius(2), Background = ThumbBrush, BorderBrush = AmountEdge, BorderThickness = new Thickness(1) }) }
         };
-        track.Thumb = new Thumb { Template = new FuncControlTemplate<Thumb>((_, _) => new Border { Width = 9, Height = 16, CornerRadius = new CornerRadius(2), Background = ThumbBrush, BorderBrush = AmountEdge, BorderThickness = new Thickness(1) }) };
         scope.Register(track.Name, track);
-        return new Border
+        scope.Register(track.DecreaseButton.Name!, track.DecreaseButton);
+        scope.Register(track.IncreaseButton.Name!, track.IncreaseButton);
+        var groove = new Border
         {
             Height = 6, CornerRadius = new CornerRadius(3), Background = TrackBrush, BorderBrush = DerethPalette.GrooveEdgeBrush,
-            BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center, Child = track
+            BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center
         };
+        return new Panel { Children = { groove, track } };
     });
+
+    /// <summary>A clear button filling the track beside the thumb, so a press anywhere along it reaches the slider.</summary>
+    private static RepeatButton TrackButton(string name) => new()
+    {
+        Name = name, Focusable = false,
+        Template = new FuncControlTemplate<RepeatButton>((_, _) => new Border { Background = Brushes.Transparent })
+    };
 
     /// <summary>The value held within [<paramref name="low"/>, <paramref name="high"/>]. netstandard2.0 has no Math.Clamp.</summary>
     private static int Between(int value, int low, int high) => Math.Min(Math.Max(value, low), high);
