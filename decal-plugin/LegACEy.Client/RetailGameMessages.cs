@@ -113,8 +113,10 @@ internal sealed class RetailGameMessages : IDisposable
         {
             if (chatType == SpewType && Taking)
             {
+                // A line with no literal points at retail's shared empty string rather than at nothing.
                 var literal = Marshal.ReadIntPtr(text, StringLiteral);
-                var raw = literal != IntPtr.Zero ? Marshal.PtrToStringUni(literal) : Built(text);
+                var raw = literal != IntPtr.Zero ? Marshal.PtrToStringUni(literal) : null;
+                if (string.IsNullOrEmpty(raw)) raw = Built(text);
                 // Retail's text escapes ("You're too busy\!") are drawn, as chat's are, without the backslash; a line break joins the band's one line.
                 var line = raw is null ? null : NativeRetailChatPort.RetailChatTypes.Unescape(raw).Replace('\n', ' ').Trim();
                 if (!string.IsNullOrEmpty(line))
@@ -122,13 +124,24 @@ internal sealed class RetailGameMessages : IDisposable
                     _pending.Enqueue(line);
                     return;
                 }
+                LogOnce("A game message could not be read; it went to retail's spew box.");
             }
             _retail(handler, chatType, text, timestampPrefix, targetWindow);
         }
-        catch
+        catch (Exception exception)
         {
             // A line that cannot be read or shown is dropped; the client keeps running.
+            LogOnce($"A game message could not be read: {exception.Message}");
         }
+    }
+
+    private bool _loggedMiss;
+
+    private void LogOnce(string message)
+    {
+        if (_loggedMiss) return;
+        _loggedMiss = true;
+        _log(message);
     }
 
     /// <summary>A line retail builds from its string table and variables, as its spew box shows it; null when it can't.</summary>
