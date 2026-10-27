@@ -506,11 +506,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
             _worldEffects = null;
-            if (_ground is { } ground) DisposeWhenLoaded(ground);
-            _ground = null;
             // With both hooks gone, nothing else frees the last frame's spare state blocks before the game's next device reset.
             D3D9.ReleaseSpareStates();
             TearDown();
+            // The shared ground goes last, once the radar and world effects that read it are gone.
+            if (_ground is { } ground) DisposeWhenLoaded(ground);
+            _ground = null;
             _serverChannel?.Dispose();
             _serverChannel = null;
         }
@@ -3644,7 +3645,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_radarTakeover != null && (!canDraw || _radarFailed || !switchOn))
                 ReleaseRetailRadar();
             // Switched off, the indoor plans' DATs go too once no radar reads them; switching on loads them again.
-            if (!switchOn && _radar == null && (_radarTiles != null || _radarIndoorLoad != null)) DisposeRadarGround();
+            if (!switchOn && _radar == null && (_radarTiles != null || _radarIndoorLoad != null)) DisposeRadarTiles();
             if (!canDraw || !switchOn || _radarFailed) return;
             if (_radarTakeover == null && !HoldRetailRadar()) return;
             _radarTakeover!.Tick(GameDevice.ViewportSize(_device));
@@ -3789,7 +3790,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// Drops the radar's tiles and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone; the shared ground
     /// stays. A load still running is disposed when it lands; the plans' DAT is disposed once their reads in flight have finished.
     /// </summary>
-    private void DisposeRadarGround()
+    private void DisposeRadarTiles()
     {
         if (_radarPlans != null) _radarPlans.Dispose();
         else if (_radarIndoorLoad is { } indoors) DisposeWhenLoaded(indoors);
@@ -4719,7 +4720,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_attack?.Holds == true) Log("Retail's attack panel is still held after two tries at unload; it stays hidden until the client restarts.");
         // Kept while still held, so a disabled UI's frames go on retrying the give-back.
         else _attack = null;
-        DisposeRadarGround();
+        DisposeRadarTiles();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
         _itemDragActive = false;

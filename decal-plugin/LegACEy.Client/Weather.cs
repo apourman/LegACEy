@@ -139,7 +139,7 @@ internal sealed unsafe class Weather : IDisposable
     {
         if ((cell & 0xFFFF) < 0x100) return true;
         if (!_seenOutside.TryGetValue(cell, out var seen))
-            _seenOutside[cell] = seen = Ground() is { } ground && Read(() => ground.SeesOutside(cell), false);
+            _seenOutside[cell] = seen = _ground.Result is { } ground && Read(() => ground.SeesOutside(cell), false);
         return seen;
     }
 
@@ -147,11 +147,11 @@ internal sealed unsafe class Weather : IDisposable
     /// The box, in global game space, around the building the player is in: the one whose doors lead to their room, or else the one they
     /// stand in. Drops do not fall in it.
     /// ponytail: one box round the whole model, so an L-shaped building's box takes in a little outside in its corner. The DATs are read on
-    /// the game thread, once per landblock entered (and opened on the first room): a short hitch; read ahead on a task if it shows.
+    /// the game thread, once per landblock entered (waiting on the first room for the shared ground to open): a short hitch; read ahead on a task if it shows.
     /// </summary>
     private (Vector3 Min, Vector3 Max)? Building(uint cell, Vector3 player)
     {
-        if (Ground() is not { } ground) return null;
+        if (_ground.Result is not { } ground) return null;
         var landblock = cell >> 16;
         if (!_buildings.TryGetValue(landblock, out var buildings))
             _buildings[landblock] = buildings = Read(() => ground.ReadBuildings((int)(cell >> 24), (int)(landblock & 0xFF)), (IReadOnlyList<GroundBuilding>)Array.Empty<GroundBuilding>());
@@ -168,12 +168,6 @@ internal sealed unsafe class Weather : IDisposable
 
     private static bool Inside(Vector3 point, (Vector3 Min, Vector3 Max) box) =>
         point.X >= box.Min.X && point.Y >= box.Min.Y && point.Z >= box.Min.Z && point.X <= box.Max.X && point.Y <= box.Max.Y && point.Z <= box.Max.Z;
-
-    /// <summary>
-    /// The shared ground's DATs; null when they did not open. The first indoor cell waits on the game thread for them to open, as it did
-    /// when the weather opened its own.
-    /// </summary>
-    private GroundDat? Ground() => _ground.Result;
 
     /// <summary>Forgets the cells and buildings of landblocks more than one away, once per landblock entered, so the caches hold the 3 × 3 around the player.</summary>
     private void Trim(uint landblock)
