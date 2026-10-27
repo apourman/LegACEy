@@ -188,6 +188,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The chat tabs each window of each character has: a row per server, character and window, missing means the six defaults.
     private readonly FileRetailChatTabStore _chatTabs = new(IOPath.Combine(PluginDirectory, "chat-tabs.txt"), Log);
     private readonly ShortcutRowChoice _row2Choice;
+    private readonly WindowOpacities _opacities;
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
@@ -404,6 +405,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal,
             () => SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch));
         _row2Choice = new ShortcutRowChoice(_settingsStore);
+        _opacities = new WindowOpacities(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
             _uiSize = Math.Clamp(size, UiSizeChoice.Smallest, UiSizeChoice.Largest);
@@ -1086,6 +1088,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ChatActiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.ActiveOpacityKey, RetailChatWindows.DefaultActiveOpacity), SetChatActiveOpacity),
             ChatInactiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, RetailChatWindows.DefaultInactiveOpacity), SetChatInactiveOpacity),
             ChatNameColour = new OptionChoice<int>(RetailChatWindows.LoadNameColour(_positionStore, SessionServer(), SessionCharacter()), SetChatNameColour),
+            WindowsOpacity = new OptionChoice<int>(_opacities.All(SessionServer(), SessionCharacter()), SetWindowsOpacity),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
             TestWeather = _worldEffects != null ? new OptionChoice<WeatherKind>(_worldEffects.TestWeather, SetTestWeather) : null,
             TestFog = _worldEffects != null ? new OptionChoice<bool>(_worldEffects.TestFog, SetTestFog) : null,
@@ -1141,7 +1144,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// A window's card: its switch file, and the ids of the windows its Size row scales, the first of which it reads the size from. A window
-    /// that is not open has its size saved for when it opens.
+    /// that is not open has its size saved for when it opens. Its Opacity row is saved under its first id; chat has its own opacity.
     /// </summary>
     private UiWindowChoice Choice(string title, string file, Action recheck, params string[] sizeIds)
     {
@@ -1149,6 +1152,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var size = sizeIds.Length == 0 ? null : new WindowSizeChoice(
             () => _windows?.SizePercentOf(PlaceIdOf(sizeIds[0])) ?? 100,
             steps => Guard(() => { if (_windows != null) foreach (var id in sizeIds) RescaleWindow(id, steps); }));
+        var opacity = sizeIds.Length == 0 || RetailChatWindows.IsChat(sizeIds[0]) ? null : new WindowOpacityChoice(
+            () => _opacities.Of(SessionServer(), SessionCharacter(), sizeIds[0]),
+            percent => _opacities.Set(SessionServer(), SessionCharacter(), sizeIds[0], percent));
         return new UiWindowChoice(title, () => SwitchCustom(path), custom =>
         {
             try
@@ -1164,7 +1170,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _switchHeld[path] = custom;
             }
             recheck();
-        }, size);
+        }, size, opacity);
+    }
+
+    /// <summary>All windows' opacity set from the Settings window: every card's window takes it, and so does every window without a card.</summary>
+    private void SetWindowsOpacity(int percent)
+    {
+        _opacities.SetAll(SessionServer(), SessionCharacter(), percent);
+        if (_settings == null) return;
+        foreach (var window in _settings.Windows) window.Opacity?.Set(percent);
+        _settings.WindowsOpacity = new OptionChoice<int>(_opacities.All(SessionServer(), SessionCharacter()), SetWindowsOpacity);
     }
 
     /// <summary>Whether a switch's window is on LegACEy's: the file's absence, unless a write this session could not change it.</summary>
@@ -1594,7 +1609,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_failed) return;
         ThrowIfTestFailureRequested();
         // Drawn after retail's UI, under the LegACEy windows: drawn before it, retail's portal space would paint over it on a teleport.
-        Guard(() => _toolbarSurface?.DrawNow());
+        var (server, character) = (SessionServer(), SessionCharacter());
+        Guard(() =>
+        {
+            if (_toolbarSurface == null) return;
+            _toolbarSurface.Opacity = DrawOpacity(server, character, ToolbarSurfaceId, _toolbarDragOffset != null || _toolbarRowDragY != null);
+            _toolbarSurface.DrawNow();
+        });
         var windows = !_failed && _windowsEnabled && _windows != null;
         if (windows)
         {
@@ -1603,6 +1624,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             for (var i = order.Count - 1; i >= 0; i--)
             {
                 var surface = SurfaceById(order[i].Id);
+                if (surface != null) surface.Opacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Moving || order[i] == _windows.Resizing);
                 surface?.DrawNow();
                 DrawModelViews(surface);
                 // The note (the size while Ctrl and the wheel rescale the window) goes over its 3D views.
@@ -1618,7 +1640,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
         }
         // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
-        if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
+        // It fades with the toolbar it belongs to.
+        if (!_failed) Guard(() =>
+        {
+            if (_splitTabSurface == null) return;
+            _splitTabSurface.Opacity = _toolbarSurface?.Opacity ?? 1;
+            _splitTabSurface.DrawNow();
+        });
         try { _gameMessageSurface?.DrawNow(); }
         catch (Exception exception) { GameMessagesFailed(exception); }
         if (windows || !_loggedIn)
@@ -1629,6 +1657,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // An item dragged out of a LegACEy window draws above everything.
         if (windows) Guard(() => _dragIconSurface?.DrawNow());
     }
+
+    /// <summary>
+    /// How opaque a window or the toolbar draws, from its Opacity setting: whole while it is moved or resized, so it can be found. Chat has
+    /// its own opacity, and Settings and toasts always draw whole. Vitals keeps one value for both its layouts.
+    /// </summary>
+    private double DrawOpacity(string server, string character, string id, bool moving) =>
+        moving || id is SettingsWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
+            : _opacities.Of(server, character, id == DerethVitalsWindow.SideBySideId ? DerethVitalsWindow.StackedId : id) / 100.0;
 
     /// <summary>
     /// A tester creates a file named fail-post-ui-draw beside the DLL to make the next post-UI draw fail in game,
@@ -1674,7 +1710,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
                     Log($"3D view first drawn: {model.TriangleCount} triangles, height {model.Top - model.Bottom:0.00} m, at {area} on a {D3D9.Viewport(_device)} viewport.");
                 }
-                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour);
+                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour, surface.Opacity);
             }
             catch (Exception exception)
             {

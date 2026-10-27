@@ -219,6 +219,11 @@ every character in `plugin-settings.txt`, since the messages show before a chara
 The Settings window's Windows tab has a Dereth / Retail switch on each window's card, and an All windows switch above them that
 writes or deletes every `retail-*-native` file at once. It lights neither choice while the windows differ.
 
+Each window's card but chat's also has an Opacity slider, from 10 to 100 percent per character, and an Opacity slider under All
+windows sets every card at once; plugin windows such as the Vault and Market follow it. Chat keeps its own active and inactive opacity,
+and the Settings window and toasts always show whole. A window being moved or resized shows whole until it is let go. These
+are kept in `plugin-settings.txt`.
+
 The Settings window's UI size row scales every LegACEy window and the toolbar with its shortcut rows, from 60 to 150 percent (85 to start),
 for every character. Ctrl and the wheel over a window or the toolbar scales it on its own, in 5 percent steps from 50 to 200 percent,
 per character, and shows its size over it while it changes. Without a wheel, each window's card in Settings → Windows has a Size row whose − and +
