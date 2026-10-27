@@ -88,7 +88,7 @@ run) asks first and works only in peace stance; it then downloads the release
 into `update\<version>\`, checks it against its `SHA256SUMS.txt`, unpacks it,
 starts the updater, and logs out and closes the game. The updater applies it
 once every client has exited; start the game again from the launcher. The
-LegACEy menu shows the installed version and a Check button, which checks now
+Settings window shows the installed version and a Check button, which checks now
 past the shared gap (at most once a minute) and shows Checking, then the
 outcome, as a toast and in chat; it is greyed out on a checkout build or with
 `no-auto-update`. The checksum guards against a corrupt download, not a
@@ -102,8 +102,16 @@ next post-UI draw fail in game. The file is deleted, the failure is logged to
 that removal path. With several clients sharing the directory, whichever client
 checks first takes the file; the `[pid N]` prefix shows which one.
 
+Each start logs retail's graphics settings (`Retail graphics`: the `[Render]` and `[Display]` lines of
+`Documents\Asheron's Call\UserPreferences.ini`, which retail saves when the game closes). Each running client also leaves a marker
+in `sessions\<pid>` beside the log and removes it at a clean shutdown. A marker whose client is gone means that client crashed or
+was killed: the next client to start writes `A client before this one (pid N, …)` with what Windows recorded about it (exception
+code, module and offset, or .NET's record), or says Windows recorded nothing. A tester's log alone then tells which crash they hit.
+
 Every 30 s in game, `legacey-avalonia.log` gets a set of `UI performance` lines; times are median/95th percentile/worst in
-milliseconds. `sample` covers the whole UI frame and the post-UI draw, with memory and GC counts. `gc` gives what was allocated and how
+milliseconds. `sample` covers the whole UI frame and the post-UI draw, with memory and GC counts and the free address space with its
+largest block (`freeAddressMB`, `largestFreeMB`: what runs out first in the 32-bit client). One extra set, marked `after portal space`,
+follows 5 s after each teleport and the login. `gc` gives what was allocated and how
 long the GC paused the game since the last line, memory load, and the last full and background pauses. `phases` times each part of
 the frame (game state, each retail takeover, panels, windows) with the KB it allocated, and what the game thread allocated between frames.
 `avalonia` is Avalonia's one step per frame for every window (its jobs, layout, render tick and each window's capture) and `upload` the
@@ -127,7 +135,9 @@ puts the one it replaces back in the main pack. While an item is dragged, the bo
 it covers are outlined: gold where it can be worn, red where it can't, teal for a worn item being lifted. Which worn item draws which
 part is worked out on the client from portal.dat's clothing tables, so this too works on any server. The appraisal window lists an item's lines in the order retail's examination
 text does (tinkering, set and ratings, combat, spells, properties, use, requirements, the rest, then spellcraft, mana and each
-spell's description), under Dereth headings. Creating an empty file named `retail-inventory-native` beside the main DLL
+spell's description), under Dereth headings. Its Layout row on the Settings Appraisal card (per character) switches it to
+retail's layout inside the Dereth frame: no headings, groups split by blank lines, a creature's header box with its level and its
+figure behind the stats, and a parchment inscription box for items. Creating an empty file named `retail-inventory-native` beside the main DLL
 gives retail's inventory panel back, and `retail-appraisal-native` gives retail's examination panel back; deleting a file
 takes its panel over again. Settings → Windows switches both (Inventory and Appraisal); switching Appraisal to Retail with an item open hands that item to retail's
 window. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
@@ -137,8 +147,8 @@ The Dereth character window replaces retail's character panel (its key and toolb
 and Skills share a plaque with the name, heritage, title, player-killer status, experience and level, and a plate at the bottom with the
 credits and experience to spend. Click a row and its next rank's cost drops down under it with Raise and +10; click it again to fold it
 away. An untrained skill drops down Train with its credit cost; the first press asks, the
-second spends the credits. Every group (Attributes, Vitals, and the Specialized, Trained, Untrained and Unusable skills) folds from its
-band, remembered per character.
+second spends the credits. Every group (Attributes, and the Specialized, Trained, Untrained and Unusable skills) folds from its
+band, remembered per character; the vitals follow the attributes with no band, as in retail.
 Titles lists every title the character holds and sets the display title. Values come from Decal, buffs included: green when raised, red
 when lowered, with base and bonus in the tooltip. Ranks, costs and credits come from the server's own messages and portal.dat's skill and
 experience tables, and raises go out as retail's own actions, so it works on any server. `retail-character-native` beside the main DLL
@@ -211,18 +221,18 @@ writes or deletes every `retail-*-native` file at once. It lights neither choice
 
 Each window's card but chat's also has an Opacity slider, from 10 to 100 percent per character, and an Opacity slider under All
 windows sets every card at once; plugin windows such as the Vault and Market follow it. Chat keeps its own active and inactive opacity,
-and the Settings window, the menu and toasts always show whole. A window being moved or resized shows whole until it is let go. These
+and the Settings window and toasts always show whole. A window being moved or resized shows whole until it is let go. These
 are kept in `plugin-settings.txt`.
 
-The LegACEy menu's UI size row scales every LegACEy window and the toolbar with its shortcut rows, from 60 to 150 percent (85 to start),
+The Settings window's UI size row scales every LegACEy window and the toolbar with its shortcut rows, from 60 to 150 percent (85 to start),
 for every character. Ctrl and the wheel over a window or the toolbar scales it on its own, in 5 percent steps from 50 to 200 percent,
 per character, and shows its size over it while it changes. Without a wheel, each window's card in Settings → Windows has a Size row whose − and +
 do the same. Item icons scale with their window like the rest of it. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.
 
-The LegACEy menu's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the
+The Settings window's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the
 default) and retail's (Native). It creates or deletes that window's switch file above, so the choice holds for every character on the
-install. `/legacey` in chat opens or closes the menu, so it can be reached with retail's toolbar too.
+install. The toolbar's LegACEy button opens Settings, and `/legacey` in chat opens or closes it, so it can be reached with retail's toolbar too.
 
 ## Worlds
 

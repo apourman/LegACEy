@@ -34,11 +34,18 @@ public sealed class PanelHostRenderingTests
         panel.Tick();
         Assert.Same(content, panel.Content);
         Assert.True(panel.Frame.Pixels.Any(value => value != 0), "The note drew nothing.");
+        // The host draws the note's area again over 3D views, so it holds every pixel the note drew.
+        var area = Assert.IsType<System.Drawing.Rectangle>(panel.NoteArea);
+        var frame = panel.Frame;
+        for (var y = 0; y < frame.Height; y++)
+            for (var x = 0; x < frame.Width; x++)
+                if (frame.Pixels[y * frame.Stride + x * 4 + 3] != 0) Assert.True(area.Contains(x, y), $"({x}, {y}) is outside the note's area {area}.");
 
         panel.ShowNote("85%", System.TimeSpan.Zero);
         panel.Tick();
         panel.Tick();
         Assert.All(panel.Frame.Pixels, value => Assert.Equal(0, value));
+        Assert.Null(panel.NoteArea);
     });
 
     [Fact]

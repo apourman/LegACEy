@@ -158,8 +158,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
     // The release build stamps the client with the plugin version, so the menu shows which release is installed.
-    private static readonly string MenuTitle = $"LegACEy {typeof(ClientUiRuntime).Assembly.GetName().Version?.ToString(3)}";
-    private const string MenuWindowId = "plugin-menu";
     private const string SettingsWindowId = "dereth-settings";
     // The Settings window's last tab, kept for the install like the UI size.
     private const string SettingsTabKey = "settings-tab";
@@ -200,6 +198,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
     private DateTime _lastMeasurementLog = DateTime.UtcNow;
+    private uint _sampleCell;
+    private DateTime _arrivalSampleAt = DateTime.MaxValue;
+    private long _pruneAt;
+    private const long PruneIntervalMs = 60_000;
     private DateTime _lastTestFailureCheck;
     private readonly FrameSamples _uiFrameTimes = new();
     private readonly FrameSamples _postUiDrawTimes = new();
@@ -279,7 +281,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Point? _radarPlace;
     private RetailHeldWindows? _radarTakeover;
     private RetailRadarWindow? _radar;
-    private Task<GroundDat?>? _radarDatLoad;
+    // The ground's DATs, opened once off the UI thread and shared by the radar, weather and water; kept until the plugin unloads, as the
+    // world effects outlive a UI rebuild.
+    private Task<GroundDat?>? _ground;
     private GroundTiles? _radarTiles;
     private Task<IndoorDat?>? _radarIndoorLoad;
     private IndoorPlanCache? _radarPlans;
@@ -396,7 +400,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
-            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale));
+            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale),
+            retailLayout: AppraisalRetailLayout);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal,
             () => SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch));
         _row2Choice = new ShortcutRowChoice(_settingsStore);
@@ -419,6 +424,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         AssemblyLoadContext.Default.Resolving += ResolveFromClientDirectory;
         try
         {
+            SessionRecord.Open(Log);
+            SessionRecord.LogGraphics(Log);
             NativeUi.Initialize(Log);
             StartWorldUpdates();
             // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
@@ -499,11 +506,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
             _worldEffects = null;
+            // With both hooks gone, nothing else frees the last frame's spare state blocks before the game's next device reset.
+            D3D9.ReleaseSpareStates();
             TearDown();
+            // The shared ground goes last, once the radar and world effects that read it are gone.
+            if (_ground is { } ground) DisposeWhenLoaded(ground);
+            _ground = null;
             _serverChannel?.Dispose();
             _serverChannel = null;
         }
-        finally { AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory; }
+        finally
+        {
+            AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory;
+            SessionRecord.Close();
+        }
     }
 
     /// <summary>
@@ -549,7 +565,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void ContainerOpened() => _inventory.MarkStale();
 
     /// <summary>
-    /// /legacey (or @legacey) opens or closes the LegACEy menu, so it can be reached without the Dereth toolbar. /water on, off or a percent
+    /// /legacey (or @legacey) opens or closes the Settings window, so it can be reached without the Dereth toolbar. /water on, off or a percent
     /// (0 to 200) sets the water effect, and /water alone says how it is set; the line is eaten either way, so the server never sees it.
     /// </summary>
     public bool CommandLine(string text)
@@ -558,7 +574,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var command = text.Trim();
         if (command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) || command.Equals("@legacey", StringComparison.OrdinalIgnoreCase))
         {
-            Guard(ToggleMenuWindow);
+            Guard(ToggleSettings);
             return true;
         }
         var space = command.IndexOf(' ');
@@ -914,6 +930,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_toolbarPlace != null) _toolbarPlace.Location = null;
         _inventory.Clear();
         _lookCache.Clear();
+        _portal?.ForgetImages();
         Guard(() => _appraisal.Clear());
         Guard(() => _character?.Sheet.Clear());
         Guard(() => _busyCursor?.Show(false));
@@ -971,7 +988,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         EnsurePostUiDrawHook();
         try
         {
-            _worldEffects ??= WorldEffects.Create(_device, _portal, NativeUi.ReadMemory, Log);
+            _worldEffects ??= WorldEffects.Create(_device, Ground(), NativeUi.ReadMemory, Log);
             if (_worldEffects != null) _worldEffects.WaterStrength = _water.Strength;
             ShowRemembered();
         }
@@ -1028,31 +1045,24 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private IClientTheme CurrentTheme() => _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();
 
-    /// <summary>Opens or closes the LegACEy launcher window: the plugins' menu entries and a Settings… button.</summary>
-    private void ToggleMenuWindow()
+    /// <summary>The toolbar's LegACEy button and /legacey: opens the Settings window, or closes it when it is open.</summary>
+    private void ToggleSettings()
     {
-        if (!_windowsEnabled || _windows == null || _clientUi == null)
-            return;
-        if (_postUiDrawHook?.HasRun != true)
-        {
+        if (_windows?.Get(SettingsWindowId) != null)
+            CloseSettings();
+        else if (_postUiDrawHook?.HasRun != true)
             Log("LegACEy windows unavailable: the installed retail EndScene hook has not run.");
-            return;
-        }
-        if (_windows.Get(MenuWindowId) != null)
-        {
-            _clientUi.CloseWindow(MenuWindowId);
-            SetMenuRing(false);
-            return;
-        }
-        var window = new DerethWindow(MenuTitle, null, new PluginMenuPanel(_plugins!, _portal, () => OpenSettings(LoadSettingsTab())));
-        window.CloseRequested += (_, _) =>
-        {
-            _clientUi?.CloseWindow(MenuWindowId);
-            SetMenuRing(false);
-        };
-        _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight,
-            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
-        SetMenuRing(true);
+        else
+            OpenSettings(LoadSettingsTab());
+    }
+
+    private void CloseSettings()
+    {
+        _clientUi?.CloseWindow(SettingsWindowId);
+        SetMenuRing(false);
+        // Placing the game messages ends with the window that started it.
+        SetGameMessagesMoving(false);
+        _settings = null;
     }
 
     /// <summary>
@@ -1071,6 +1081,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
             VitalsRetailBars = new OptionChoice<bool>(_vitalsLayouts.RetailBars(SessionServer(), SessionCharacter()), SetVitalsRetailBars),
+            AppraisalRetailLayout = new OptionChoice<bool>(AppraisalRetailLayout(), SetAppraisalRetailLayout),
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
             ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore, SessionServer(), SessionCharacter()), SetChatTextSize),
             ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
@@ -1089,16 +1100,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         };
         _settings = settings;
         var window = new DerethWindow("Settings", null, new SettingsPanel(settings, tab, SaveSettingsTab, _plugins));
-        window.CloseRequested += (_, _) =>
-        {
-            _clientUi?.CloseWindow(SettingsWindowId);
-            // Placing the game messages ends with the window that started it.
-            SetGameMessagesMoving(false);
-            _settings = null;
-        };
-        // First opened beside the launcher (260 + its 220 width), not over it.
+        window.CloseRequested += (_, _) => CloseSettings();
         _clientUi.OpenWindow(new WindowDefinition(SettingsWindowId, "Settings", SettingsPanel.WindowWidth, SettingsPanel.WindowHeight,
-            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(500, 120));
+            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
+        SetMenuRing(true);
     }
 
     private SettingsTab LoadSettingsTab() =>
@@ -1226,7 +1231,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void Rebuild(bool resetPositions)
     {
-        var menuOpen = _windows?.Get(MenuWindowId) != null;
         var settingsOpen = _windows?.Get(SettingsWindowId) != null;
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
@@ -1234,7 +1238,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (resetPositions) ForgetWindowPlaces();
         _carriedChatHistory = chatHistory;
         LoginComplete();
-        if (menuOpen) Guard(ToggleMenuWindow);
         // The Settings window comes back on the tab it was on, which the tab store keeps; after a reset, on General.
         if (settingsOpen) Guard(() => OpenSettings(resetPositions ? SettingsTab.General : LoadSettingsTab()));
     }
@@ -1276,6 +1279,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _noticeFailLogged = true;
             }
         }
+        if (_inGame) PruneSessionCaches();
         try { FrameCore(); }
         finally
         {
@@ -1468,12 +1472,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void RecordPerformanceMeasurement()
     {
         var now = DateTime.UtcNow;
-        if (now - _lastMeasurementLog < TimeSpan.FromSeconds(30)) return;
+        // Leaving portal space (a teleport, or the login): one extra sample once the new landblocks have loaded, since portalling after
+        // hours in game is when the 32-bit client runs out of address space.
+        var cell = _worldEffects != null ? WorldEffects.PlayerCell() : 0;
+        if (_sampleCell == 0 && cell != 0) _arrivalSampleAt = now + TimeSpan.FromSeconds(5);
+        _sampleCell = cell;
+        var arrival = now >= _arrivalSampleAt;
+        if (!arrival && now - _lastMeasurementLog < TimeSpan.FromSeconds(30)) return;
+        if (arrival) _arrivalSampleAt = DateTime.MaxValue;
         _lastMeasurementLog = now;
         try
         {
             using var process = Process.GetCurrentProcess();
-            Log($"UI performance sample: frames={_uiFrameTimes.Count} uiFrame={_uiFrameTimes.TakeSummary()}ms postUiDraw={_postUiDrawTimes.TakeSummary()}ms surfaces={_featureSurfaces.Count} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)} gen0={GC.CollectionCount(0)} gen1={GC.CollectionCount(1)} gen2={GC.CollectionCount(2)}.");
+            var (freeBytes, largestFreeBytes) = FreeAddressSpace();
+            Log($"UI performance sample{(arrival ? " after portal space" : "")}: freeAddressMB={freeBytes >> 20} largestFreeMB={largestFreeBytes >> 20} frames={_uiFrameTimes.Count} uiFrame={_uiFrameTimes.TakeSummary()}ms postUiDraw={_postUiDrawTimes.TakeSummary()}ms surfaces={_featureSurfaces.Count} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)} gen0={GC.CollectionCount(0)} gen1={GC.CollectionCount(1)} gen2={GC.CollectionCount(2)}.");
             LogGcSample();
             Log($"UI performance phases: {_phaseTimes.TakeSummary()} betweenFrames={_betweenFrameBytes / 1024}KB.");
             _betweenFrameBytes = 0;
@@ -1489,6 +1501,38 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             Log($"Could not collect a UI performance sample: {exception.Message}");
         }
     }
+
+    /// <summary>Free 32-bit address space and its largest block, as the stub's FreeAddressSpace walks it: what predicts an out-of-memory crash.</summary>
+    private static unsafe (long Free, long Largest) FreeAddressSpace()
+    {
+        long free = 0, largest = 0, address = 0;
+        while (address <= uint.MaxValue && VirtualQuery(new IntPtr(unchecked((int)(uint)address)), out var region, (IntPtr)sizeof(MemoryRegion)) != IntPtr.Zero)
+        {
+            var size = (long)(uint)region.RegionSize;
+            if (size == 0) break;
+            if (region.State == MemFree)
+            {
+                free += size;
+                largest = Math.Max(largest, size);
+            }
+            address = (uint)region.BaseAddress + size;
+        }
+        return (free, largest);
+    }
+
+    private const uint MemFree = 0x10000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryRegion
+    {
+        public IntPtr BaseAddress, AllocationBase;
+        public uint AllocationProtect;
+        public IntPtr RegionSize;
+        public uint State, Protect, Type;
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr VirtualQuery(IntPtr address, out MemoryRegion region, IntPtr length);
 
     /// <summary>
     /// Why the GC runs: what was allocated and how long the game was paused since the last line, the memory load against the
@@ -1553,7 +1597,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         var start = Stopwatch.GetTimestamp();
         try { DrawAfterRetailUiCore(); }
-        finally { _postUiDrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds); }
+        finally
+        {
+            D3D9.ReleaseSpareStates();
+            _postUiDrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        }
     }
 
     private void DrawAfterRetailUiCore()
@@ -1579,6 +1627,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 if (surface != null) surface.Opacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Moving || order[i] == _windows.Resizing);
                 surface?.DrawNow();
                 DrawModelViews(surface);
+                // The note (the size while Ctrl and the wheel rescale the window) goes over its 3D views.
+                surface?.DrawNote();
                 if (_firstPostUiWindow)
                 {
                     _firstPostUiWindow = false;
@@ -1604,10 +1654,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// How opaque a window or the toolbar draws, from its Opacity setting: whole while it is moved or resized, so it can be found. Chat has
-    /// its own opacity, and Settings, the menu and toasts always draw whole. Vitals keeps one value for both its layouts.
+    /// its own opacity, and Settings and toasts always draw whole. Vitals keeps one value for both its layouts.
     /// </summary>
     private double DrawOpacity(string server, string character, string id, bool moving) =>
-        moving || id is SettingsWindowId or MenuWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
+        moving || id is SettingsWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
             : _opacities.Of(server, character, id == DerethVitalsWindow.SideBySideId ? DerethVitalsWindow.StackedId : id) / 100.0;
 
     /// <summary>
@@ -1887,6 +1937,29 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 (top == null || surface.ZOrder > top.ZOrder))
                 top = surface;
         return top?.Id;
+    }
+
+    /// <summary>
+    /// Once a minute, forgets the looks of objects Decal no longer has (ACE sends no DeleteObject for what a teleport leaves behind) and
+    /// the radar's names, so neither grows with play time.
+    /// </summary>
+    private void PruneSessionCaches()
+    {
+        var now = Environment.TickCount64;
+        if (now < _pruneAt) return;
+        _pruneAt = now + PruneIntervalMs;
+        // The character is always kept, with what it holds: Decal missing it for a moment (portal space, login) must not blank the paperdoll.
+        uint player;
+        try { player = (uint)Bridge.Fact(BridgeFact.CharacterId); }
+        catch (COMException) { return; }
+        var forgotten = _lookCache.Prune(id =>
+        {
+            if (id == player) return true;
+            try { return Bridge.Item(id) != null; }
+            catch (COMException) { return true; }
+        });
+        if (forgotten > 0) Log($"Forgot the looks of {forgotten} objects the client let go.");
+        _radarPort?.ForgetNames();
     }
 
     private static string ObjectName(uint id)
@@ -2859,7 +2932,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _windows?.Close(id);
     }
 
-    /// <summary>Shows the LegACEy menu's open state on the toolbar's menu button.</summary>
+    /// <summary>Shows whether the Settings window is open on the toolbar's LegACEy button.</summary>
     private void SetMenuRing(bool open) => _toolbar?.SetMenuOpen(open);
 
     /// <summary>
@@ -3103,13 +3176,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
         _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
-        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack, BeginToolbarDrag, _portal);
+        var toolbar = new RetailToolbar(_toolbarPort, ToggleSettings, MoveToMainPack, BeginToolbarDrag, _portal);
         // Drawn at LegACEy's window scale, as the other LegACEy windows are. The Dereth theme makes it larger than it measures
         // without one, so it is measured again under the theme and the panel takes that size, rounded up so no edge is cut.
         var scale = WindowScale;
         var panel = ObservePanel(AvaloniaPanel.Create(() => toolbar, 1, 1, scale), ToolbarFailed);
         panel.ApplyTheme(new DerethClientTheme());
         _toolbar = toolbar;
+        // A rebuild reopens Settings before the toolbar is back, so the ring starts from the window.
+        SetMenuRing(_windows?.Get(SettingsWindowId) != null);
         _toolbarSurface = new ScreenSurface(_device, panel);
         FitToolbar();
         _splitTab = new StackSplitTab(_toolbarPort);
@@ -3586,8 +3661,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
             if (_radarTakeover != null && (!canDraw || _radarFailed || !switchOn))
                 ReleaseRetailRadar();
-            // Switched off, the ground's DATs go too once no radar reads them; switching on loads them again.
-            if (!switchOn && _radar == null && _radarDatLoad != null) DisposeRadarGround();
+            // Switched off, the indoor plans' DATs go too once no radar reads them; switching on loads them again.
+            if (!switchOn && _radar == null && (_radarTiles != null || _radarIndoorLoad != null)) DisposeRadarTiles();
             if (!canDraw || !switchOn || _radarFailed) return;
             if (_radarTakeover == null && !HoldRetailRadar()) return;
             _radarTakeover!.Tick(GameDevice.ViewportSize(_device));
@@ -3613,27 +3688,31 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _radarPlace = retail == IntPtr.Zero ? null : NativeUi.GetBounds(retail).Location;
         _radarTakeover = new RetailHeldWindows(RetailHudCatalogue.RadarWindows);
         // The ground's DATs open off the UI thread; the radar draws dots on dark until its first tiles are built.
-        _radarDatLoad ??= LoadRadarGround(_portal);
+        Ground();
         _radarIndoorLoad ??= LoadRadarIndoors(_portal.Path);
         Log("Retail's radar held.");
         return true;
     }
 
-    private static Task<GroundDat?> LoadRadarGround(PortalDat portal) => Task.Run(() =>
+    private Task<GroundDat?> Ground()
     {
-        try { return new GroundDat(portal); }
-        catch (Exception exception)
+        var portal = _portal!;
+        return _ground ??= Task.Run(() =>
         {
-            Log($"Dereth radar has no ground; it draws dots on dark: {exception.Message}");
-            return null;
-        }
-    });
+            try { return new GroundDat(portal); }
+            catch (Exception exception)
+            {
+                Log($"The ground's DATs did not open; the radar draws dots on dark, water is left as retail draws it and weather is hidden indoors: {exception.Message}");
+                return (GroundDat?)null;
+            }
+        });
+    }
 
     // The ground's tiles, once its DATs have opened; null before that or without them.
     private GroundTiles? RadarGround()
     {
         if (_radarTiles != null) return _radarTiles;
-        if (_radarDatLoad is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
+        if (_ground is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
         return _radarTiles = new GroundTiles(dat, Log);
     }
 
@@ -3725,15 +3804,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Drops the ground's and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone. A load still running is
-    /// disposed when it lands; the plans' DAT is disposed once their reads in flight have finished.
+    /// Drops the radar's tiles and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone; the shared ground
+    /// stays. A load still running is disposed when it lands; the plans' DAT is disposed once their reads in flight have finished.
     /// </summary>
-    private void DisposeRadarGround()
+    private void DisposeRadarTiles()
     {
-        if (_radarDatLoad is { } load) DisposeWhenLoaded(load);
         if (_radarPlans != null) _radarPlans.Dispose();
         else if (_radarIndoorLoad is { } indoors) DisposeWhenLoaded(indoors);
-        _radarDatLoad = null;
         _radarTiles = null;
         _radarIndoorLoad = null;
         _radarPlans = null;
@@ -3949,6 +4026,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _vitalsLayouts.SaveRetailBars(SessionServer(), SessionCharacter(), on);
         _vitalsLayoutPicked = true;
         if (_settings != null) _settings.VitalsRetailBars = new OptionChoice<bool>(on, SetVitalsRetailBars);
+    }
+
+    // The appraisal window's layout for the character: 1 for retail's, else the sections (backlog 082).
+    private const string AppraisalLayoutKey = "dereth-appraisal-retail-layout";
+
+    private bool AppraisalRetailLayout() => _settingsStore.Load(SessionServer(), SessionCharacter(), AppraisalLayoutKey) is { Location.X: 1 };
+
+    /// <summary>Keeps the character's appraisal layout; an open appraisal window draws again in it.</summary>
+    private void SetAppraisalRetailLayout(bool on)
+    {
+        _settingsStore.Save(SessionServer(), SessionCharacter(), AppraisalLayoutKey, (new Point(on ? 1 : 0, 0), null));
+        if (_settings != null) _settings.AppraisalRetailLayout = new OptionChoice<bool>(on, SetAppraisalRetailLayout);
+        _appraisal.Relayout();
     }
 
     /// <summary>
@@ -4647,7 +4737,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_attack?.Holds == true) Log("Retail's attack panel is still held after two tries at unload; it stays hidden until the client restarts.");
         // Kept while still held, so a disabled UI's frames go on retrying the give-back.
         else _attack = null;
-        DisposeRadarGround();
+        DisposeRadarTiles();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
         _itemDragActive = false;

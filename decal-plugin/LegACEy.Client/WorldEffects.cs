@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using Reloaded.Hooks;
@@ -177,13 +178,13 @@ internal sealed unsafe class WorldEffects : IDisposable
     private static readonly RenderState[] FogStates =
         { RenderState.FogEnable, RenderState.FogColor, RenderState.FogTableMode, RenderState.FogVertexMode, RenderState.FogDensity, RenderState.RangeFogEnable };
 
-    private WorldEffects(IntPtr device, PortalDat portal, bool landscape, Action<string> log)
+    private WorldEffects(IntPtr device, Task<GroundDat?> ground, bool landscape, Action<string> log)
     {
         _device = device;
         _log = log;
         _fog = new StormFog(device);
-        _weather = new Weather(device, _fog, portal, log);
-        _water = new Water(device, _fog, portal, log);
+        _weather = new Weather(device, _fog, ground, log);
+        _water = new Water(device, _fog, ground, log);
         _combat = new CombatText(device, log);
         _pings = new PingBeams(device);
         _root = GCHandle.Alloc(this);
@@ -204,7 +205,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>The effects, or null when the running client does not match their native entries.</summary>
-    public static WorldEffects? Create(IntPtr device, PortalDat portal, Func<uint, int, byte[]> readMemory, Action<string> log)
+    public static WorldEffects? Create(IntPtr device, Task<GroundDat?> ground, Func<uint, int, byte[]> readMemory, Action<string> log)
     {
         if (!NativeUiCatalogue.Validate(readMemory, log, Entries))
         {
@@ -213,7 +214,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         }
         var landscape = NativeUiCatalogue.Validate(readMemory, log, LandscapeEntries);
         if (!landscape) log("The storm and weather are not drawn with the camera indoors: the running client does not match their native entries.");
-        return new WorldEffects(device, portal, landscape, log);
+        return new WorldEffects(device, ground, landscape, log);
     }
 
     /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
@@ -385,7 +386,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// The player's cell id; zero while they are in no cell: in portal space, and before the world at login, where the storm and weather
     /// would be drawn into retail's portal warp.
     /// </summary>
-    private static uint PlayerCell()
+    internal static uint PlayerCell()
     {
         var player = *PlayerObject;
         return player != 0 && *(int*)(player + 0x90) != 0 ? *(uint*)(player + 0x4C) : 0;
@@ -724,10 +725,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         _masked = false;
     }
 
-    // Default-pool textures must be gone before the device resets, or the reset fails.
+    // Default-pool textures and state blocks must be gone before the device resets, or the reset fails.
     private int OnReset(IntPtr device, IntPtr parameters)
     {
         if (device == _device) ReleaseTextures();
+        ReleaseSpareStates();
         return _resetHook.OriginalFunction(device, parameters);
     }
 

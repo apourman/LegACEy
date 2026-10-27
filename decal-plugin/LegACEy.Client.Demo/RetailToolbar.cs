@@ -69,7 +69,7 @@ public interface IRetailToolbarPort
 
 /// <summary>
 /// The Dereth toolbar that replaces retail's, laid out as retail's is: the stance on the left and the backpack on the right; between them
-/// six window buttons and the LegACEy menu, over Use, a selection plaque and Examine; and the shortcut rows below, inside the same frame and
+/// six window buttons and the LegACEy (Settings) button, over Use, a selection plaque and Examine; and the shortcut rows below, inside the same frame and
 /// as wide as the part above. The rows set the width, so the toolbar is retail's: nine touching 32 DIP slots. Given game art, the stance and
 /// the backpack are retail's own buttons. It shows the port's state and asks the port for each change.
 /// </summary>
@@ -134,7 +134,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     // The part above the rows, then the shortcut rows in order, touching as retail's do.
     private readonly StackPanel _sections = new();
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
-    /// <param name="openMenu">Opens or closes the LegACEy menu. The caller shows the menu's state with <see cref="SetMenuOpen"/>.</param>
+    /// <param name="openMenu">Opens or closes the Settings window. The caller shows its state with <see cref="SetMenuOpen"/>.</param>
     /// <param name="moveToMainPack">Moves the items to the player's main pack, in order, as a drop on the backpack does. True when one moved.</param>
     /// <param name="startMove">Run on a press on the frame that no button or control takes, which starts the toolbar's move; null for none.</param>
     /// <param name="art">Game art for retail's stance and backpack buttons; null draws them as medallions.</param>
@@ -164,7 +164,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
             _windows.Add(panel, button);
             buttons.Children.Add(button);
         }
-        _menu = Medallion(DerethGlyph.LegACEy, 20, 13, "LegACEy menu");
+        _menu = Medallion(DerethGlyph.LegACEy, 20, 13, "Settings");
         _menu.Clicked += _openMenu;
         buttons.Children.Add(_menu);
         _use = Medallion(DerethGlyph.Use, 18, 14, "Use selected");
@@ -211,7 +211,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         port.Changed += Refresh;
     }
 
-    /// <summary>Shows the green ring on the LegACEy menu button while the menu is open.</summary>
+    /// <summary>Shows the green ring on the LegACEy button while the Settings window is open.</summary>
     public void SetMenuOpen(bool open) => _menu.IsOpen = open;
 
     /// <summary>

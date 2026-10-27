@@ -68,18 +68,19 @@ internal static class AppraisalOtherLines
     public static readonly OtherRule[] Properties =
     {
         new("Material", Material),
-        new("Imbued Effect", ImbueText),
         new("Gems", Gems),
         new(null, r => IntOf(r, UniqueInt) is int carry && carry > 0 ? Invariant($"You can only carry {carry} of these items.") : null),
         new("Cooldown When Used", r => FloatOf(r, CooldownFloat) is double seconds && seconds > 0 ? FormatCooldown(seconds) : null),
         new(null, r => IntOf(r, CleavingInt) is int cleave && cleave > 1 ? Invariant($"Cleave: {cleave} enemies in front arc.") : null),
+        // The rows retail writes as its one Properties line (RetailProperties), together where that line goes.
+        new("Imbued Effect", ImbueText),
         new("Properties", PropertiesRemaining),
-        new(null, r => ImbuedMask(r) != 0 ? "This item cannot be further imbued." : null),
-        new(null, r => BoolOf(r, AutowieldLeftBool) == true ? "This item is tethered to the left side." : null),
-        new(null, r => IntOf(r, CloakWeaveProcInt) == 2 ? "This cloak has a chance to reduce an incoming attack by 200 damage." : null),
         new(null, r => BoolOf(r, DyableBool) == true ? "Dyeable" : null),
         new(null, r => Bond(IntOf(r, BondedInt))),
         new(null, r => IntOf(r, AttunedInt) is 1 or 2 ? "Attuned" : null),
+        new(null, r => ImbuedMask(r) != 0 ? "This item cannot be further imbued." : null),
+        new(null, r => BoolOf(r, AutowieldLeftBool) == true ? "This item is tethered to the left side." : null),
+        new(null, r => IntOf(r, CloakWeaveProcInt) == 2 ? "This cloak has a chance to reduce an incoming attack by 200 damage." : null),
     };
 
     /// <summary>The level limits, before the wield lines.</summary>
@@ -212,13 +213,28 @@ internal static class AppraisalOtherLines
     /// </summary>
     private static string? PropertiesRemaining(AppraisalResponse response)
     {
+        var list = PropertyWords(response, retail: false);
+        return list.Count == 0 ? null : string.Join(", ", list);
+    }
+
+    /// <summary>
+    /// Retail's whole Properties line, as its examination text writes it (OpenAC's ItemAppraisalTextFormatter, MIT): the words above with
+    /// the imbues, Attuned, the bond and Dyeable in their places. The sections layout gives those their own lines instead.
+    /// </summary>
+    public static IReadOnlyList<string> RetailProperties(AppraisalResponse response) => PropertyWords(response, retail: true);
+
+    private static List<string> PropertyWords(AppraisalResponse response, bool retail)
+    {
         var list = new List<string>();
         if (IntOf(response, SlayerInt) is int slayer && slayer == 31) list.Add("Bael'Zharon's Hate");
         else if (IntOf(response, SlayerInt) is int creature && creature > 0 && creature < AppraisalNameTables.Creatures.Length)
             list.Add(Invariant($"{AppraisalNameTables.Creatures[creature]} slayer"));
         if (((IntOf(response, AttackTypeInt) ?? 0) & 0x79E0) != 0) list.Add("Multi-Strike");
+        if (retail) list.AddRange(ImbueNames.Where(name => (ImbuedMask(response) & name.Flag) != 0).Select(name => name.Name));
         if (FloatOf(response, AbsorbFloat) != null) list.Add("Magic Absorbing");
         if (IntOf(response, ResistMagicInt) is int magic && magic >= 9_999) list.Add("Unenchantable");
+        if (retail && IntOf(response, AttunedInt) is 1 or 2) list.Add("Attuned");
+        if (retail && Bond(IntOf(response, BondedInt)) is { } bond) list.Add(bond);
         if (BoolOf(response, RetainedBool) == true) list.Add("Retained");
         if (FloatOf(response, CrushingFloat) != null) list.Add("Crushing Blow");
         if (FloatOf(response, BitingFloat) != null) list.Add("Biting Strike");
@@ -227,7 +243,8 @@ internal static class AppraisalOtherLines
             list.Add(Invariant($"Resistance Cleaving: {DamageName(type)}"));
         if (response.Dids.ContainsKey(ProcSpellDid)) list.Add("Cast on Strike");
         if (BoolOf(response, IvoryableBool) == true) list.Add("Ivoryable");
-        return list.Count == 0 ? null : string.Join(", ", list);
+        if (retail && BoolOf(response, DyableBool) == true) list.Add("Dyeable");
+        return list;
     }
 
     /// <summary>The damage type a resistance cleaving names, from retail's damage type bits.</summary>
