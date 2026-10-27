@@ -26,9 +26,6 @@ internal sealed class RetailGameMessages : IDisposable
     // The notice's text is a StringInfo whose literal sits at +0x80.
     private const int StringLiteral = 0x80;
     private const uint PageReadWrite = 0x04;
-    // StringInfo::InqString (out PStringBase<ushort>&, bool), which builds a line from its string table entry and variables ("The Trade Notes
-    // (250,000) can't be split"), where no literal is set. The empty wide string's characters pointer, which a new PStringBase starts from.
-    private const uint InqString = 0x0042E6B0, EmptyWide = 0x00818340;
     private static readonly List<RetailGameMessages> Stranded = new();
 
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
@@ -44,21 +41,6 @@ internal sealed class RetailGameMessages : IDisposable
         Entry("StringInfo::SetLiteralValue stores the literal at +0x80", 0x0042CC34, "8B 03 89 86 80 00 00 00", "instruction reference (mov [esi+0x80], eax)")
     };
 
-    // Their own list, so a client that differs here still gets its literal lines.
-    internal static readonly IReadOnlyList<NativeUiEntry> StringEntries = new[]
-    {
-        Entry("StringInfo::InqString calls InqStringInternal (out, flag)", InqString, "8B 44 24 08 56 8B 74 24 08 50 56 E8 80 FB FF FF", "ThisCall (PStringBase<ushort>& out, bool), ret 8, returns bool"),
-        Entry("StringInfo::GetLogString starts its result from the empty wide string (0x00818340)", 0x0042E743, "A1 40 83 81 00", "instruction reference (mov eax, [0x818340])"),
-        Entry("PStringBase releases its buffer at characters − 0x14, refcount +4, deleting destructor at vtable +0", 0x0042E6E5, "8D 78 EC 8D 57 04 52 FF D5",
-            "instruction reference (lea edi,[eax-0x14]; lea edx,[edi+4]; push edx; call InterlockedDecrement)")
-    };
-
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate byte InqStringFn(IntPtr stringInfo, ref IntPtr text, int flag);
-
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate void DeleteFn(IntPtr buffer, int flags);
-
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void NoticeFn(IntPtr handler, uint chatType, IntPtr text, IntPtr timestampPrefix, uint targetWindow);
 
@@ -66,7 +48,6 @@ internal sealed class RetailGameMessages : IDisposable
     private readonly NoticeFn _retail = Marshal.GetDelegateForFunctionPointer<NoticeFn>(new IntPtr(SpewHandler));
     private readonly ConcurrentQueue<string> _pending = new();
     private readonly Action<string> _log;
-    private readonly InqStringFn? _inqString;
     private bool _patched;
 
     /// <summary>Points the spew box at our callback. Throws when the running client does not match, and nothing is changed.</summary>
@@ -75,8 +56,6 @@ internal sealed class RetailGameMessages : IDisposable
         _log = log;
         if (!NativeUiCatalogue.Validate(readMemory, log, Entries))
             throw new InvalidOperationException("the running client does not match its native entries.");
-        if (NativeUiCatalogue.Validate(readMemory, log, StringEntries)) _inqString = Marshal.GetDelegateForFunctionPointer<InqStringFn>(new IntPtr(unchecked((int)InqString)));
-        else log("Retail's game messages built from its string tables stay in retail's spew box: StringInfo::InqString does not match.");
         _callback = OnNotice;
         WriteSlot(Marshal.GetFunctionPointerForDelegate(_callback));
         _patched = true;
@@ -111,73 +90,24 @@ internal sealed class RetailGameMessages : IDisposable
     {
         try
         {
-            // DIAGNOSTIC (backlog 102): every notice, until the missing "can't be split" line is found. Remove before shipping.
-            if (chatType == SpewType && _diagnosed < 40)
-            {
-                _diagnosed++;
-                var kind = Marshal.ReadByte(text, StringLiteral + 4);
-                var lit = Marshal.ReadIntPtr(text, StringLiteral);
-                _log($"Game message notice: chat type 0x{chatType:X}, taking {Taking}, kind {kind}, literal \"{(lit == IntPtr.Zero ? "(null)" : Marshal.PtrToStringUni(lit))}\", built \"{Built(text)}\" (InqString {_builtResult}).");
-            }
             if (chatType == SpewType && Taking)
             {
-                // A line with no literal points at retail's shared empty string rather than at nothing.
                 var literal = Marshal.ReadIntPtr(text, StringLiteral);
-                var raw = literal != IntPtr.Zero ? Marshal.PtrToStringUni(literal) : null;
-                if (string.IsNullOrEmpty(raw)) raw = Built(text);
                 // Retail's text escapes ("You're too busy\!") are drawn, as chat's are, without the backslash; a line break joins the band's one line.
-                var line = raw is null ? null : NativeRetailChatPort.RetailChatTypes.Unescape(raw).Replace('\n', ' ').Trim();
+                var line = literal == IntPtr.Zero ? null
+                    : Marshal.PtrToStringUni(literal) is { } raw ? NativeRetailChatPort.RetailChatTypes.Unescape(raw).Replace('\n', ' ').Trim() : null;
                 if (!string.IsNullOrEmpty(line))
                 {
                     _pending.Enqueue(line);
                     return;
                 }
-                LogOnce("A game message could not be read; it went to retail's spew box.");
             }
             _retail(handler, chatType, text, timestampPrefix, targetWindow);
         }
-        catch (Exception exception)
+        catch
         {
             // A line that cannot be read or shown is dropped; the client keeps running.
-            LogOnce($"A game message could not be read: {exception.Message}");
         }
-    }
-
-    private bool _loggedMiss;
-    private int _diagnosed;
-    private byte _builtResult;
-
-    private void LogOnce(string message)
-    {
-        if (_loggedMiss) return;
-        _loggedMiss = true;
-        _log(message);
-    }
-
-    /// <summary>A line retail builds from its string table and variables, as its spew box shows it; null when it can't.</summary>
-    private string? Built(IntPtr stringInfo)
-    {
-        if (_inqString is null) return null;
-        // A PStringBase is a pointer to its characters; its buffer (vtable, refcount) sits 0x14 before them. It starts as a new reference to the
-        // empty string, and InqString swaps in the line, releasing that one.
-        var chars = Marshal.ReadIntPtr(new IntPtr(unchecked((int)EmptyWide)));
-        AddRef(chars);
-        // Retail's spew box (through StringInfo::ToString at 0x0042E980) draws whatever this writes and ignores what it returns.
-        try
-        {
-            _builtResult = _inqString(stringInfo, ref chars, 0);
-            return Marshal.PtrToStringUni(chars);
-        }
-        finally { Release(chars); }
-    }
-
-    private static unsafe void AddRef(IntPtr chars) => System.Threading.Interlocked.Increment(ref *(int*)(chars - 0x10));
-
-    private static unsafe void Release(IntPtr chars)
-    {
-        var buffer = chars - 0x14;
-        if (System.Threading.Interlocked.Decrement(ref *(int*)(buffer + 4)) != 0) return;
-        Marshal.GetDelegateForFunctionPointer<DeleteFn>(Marshal.ReadIntPtr(Marshal.ReadIntPtr(buffer)))(buffer, 1);
     }
 
     private static void WriteSlot(IntPtr target)
