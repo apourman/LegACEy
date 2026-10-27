@@ -132,7 +132,7 @@ public sealed class CharacterWindowTests
     }
 
     [Fact]
-    public void Raise_spends_the_rank_cost_and_train_spends_the_credits_on_the_second_press() => RenderThread.Run(() =>
+    public void Raise_spends_the_rank_cost_and_train_spends_the_credits() => RenderThread.Run(() =>
     {
         var sheet = new CharacterSheet();
         sheet.Receive(GameEvent, Description());
@@ -159,8 +159,6 @@ public sealed class CharacterWindowTests
 
         view.ShowTab(1);
         view.Select(StatKind.Skill, 38);
-        view.Train();
-        Assert.Empty(game.Trained);
         view.Train();
         Assert.Equal((38u, 4), game.Trained.Single());
     });

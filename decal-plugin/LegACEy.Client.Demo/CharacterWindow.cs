@@ -33,8 +33,8 @@ public interface ICharacterGame
 /// <summary>
 /// The Dereth character window, retail's Attributes, Skills and Titles tabs in retail's order: a plaque with the name, level and
 /// experience, the list, and retail's plate at the bottom: the selected row's name and value, its Experience To Raise bar with the +10 and +1
-/// triangles (or Train), and the credits and experience to spend. A click on a row selects it; a second click clears it. Every group but the
-/// vitals (attributes and each skill group) folds, and the folds are remembered. One instance serves the session; <see cref="Refresh"/> redraws what changed.
+/// triangles (or Train), and the credits and experience to spend. A click on a row selects it; a second click clears it. Each skill group
+/// folds from its band, and the folds are remembered; the attributes and vitals have no band. One instance serves the session; <see cref="Refresh"/> redraws what changed.
 /// </summary>
 public sealed class CharacterWindow
 {
@@ -50,7 +50,6 @@ public sealed class CharacterWindow
     private static readonly IBrush LineBrush = DerethPalette.Brush(DerethPalette.Line);
     private static readonly Dictionary<CharacterGroup, Color> GroupColours = new()
     {
-        [CharacterGroup.Attributes] = DerethPalette.Gold,
         [CharacterGroup.Specialized] = Color.FromRgb(140, 96, 220),
         [CharacterGroup.Trained] = Color.FromRgb(63, 160, 170),
         [CharacterGroup.Untrained] = Color.FromRgb(200, 150, 60),
@@ -58,7 +57,6 @@ public sealed class CharacterWindow
     };
     private static readonly Dictionary<CharacterGroup, string> GroupNames = new()
     {
-        [CharacterGroup.Attributes] = "Attributes",
         [CharacterGroup.Specialized] = "Specialized Skills",
         [CharacterGroup.Trained] = "Trained Skills",
         [CharacterGroup.Untrained] = "Untrained Skills",
@@ -93,8 +91,6 @@ public sealed class CharacterWindow
     private IReadOnlyList<CharacterRow> _rows = Array.Empty<CharacterRow>();
     private IReadOnlyList<CharacterRow>? _drawnRows;
     private string? _drawnPlaque, _drawnFoot, _drawnTitles;
-    // The untrained skill whose Train was pressed once: a second press spends the credits.
-    private uint _confirmTrain;
 
     public CharacterWindow(CharacterSheet sheet, ICharacterGame game, IGameArtSource? art, Func<CharacterTables> tables,
         Func<IReadOnlyDictionary<uint, string>> titleNames, IEnumerable<CharacterGroup> folded, Action<IReadOnlyCollection<CharacterGroup>> foldsChanged)
@@ -112,7 +108,6 @@ public sealed class CharacterWindow
         {
             _tab = index;
             _selected = null;
-            _confirmTrain = 0;
             _scroll!.Offset = default;
             Show();
         };
@@ -188,7 +183,6 @@ public sealed class CharacterWindow
     public void Select(StatKind kind, uint id)
     {
         _selected = (kind, id);
-        _confirmTrain = 0;
         // The highlight is drawn with the rows.
         _drawnRows = null;
         Refresh();
@@ -215,17 +209,10 @@ public sealed class CharacterWindow
         Refresh();
     }
 
-    /// <summary>The first press arms the train; the second spends the skill's credits.</summary>
+    /// <summary>Spends the selected skill's credits training it, as retail's triangle does.</summary>
     public void Train()
     {
         if (SelectedRow is not { TrainCost: > 0 } row || row.TrainCost > _sheet.SkillCredits) return;
-        if (_confirmTrain != row.Id)
-        {
-            _confirmTrain = row.Id;
-            Refresh();
-            return;
-        }
-        _confirmTrain = 0;
         if (_game.Train(row.Id, row.TrainCost)) _sheet.Train(row.Id, row.TrainCost);
         Refresh();
     }
@@ -294,11 +281,11 @@ public sealed class CharacterWindow
     {
         _drawnRows = _rows;
         _list.Children.Clear();
-        // Every group folds from its band but the vitals, which follow the attributes with no band, as in retail.
+        // The skill groups fold from their bands; the attributes and vitals are listed with no band, as in retail.
         var height = _tab == 0 ? AttributeRowHeight : SkillRowHeight;
         foreach (var group in _rows.GroupBy(row => row.Group))
         {
-            if (group.Key != CharacterGroup.Vitals)
+            if (group.Key is not (CharacterGroup.Attributes or CharacterGroup.Vitals))
             {
                 _list.Children.Add(Band(group.Key, group.Count()));
                 if (_folded.Contains(group.Key)) continue;
@@ -374,7 +361,6 @@ public sealed class CharacterWindow
             else
             {
                 _selected = null;
-                _confirmTrain = 0;
                 _drawnRows = null;
                 Refresh();
             }
@@ -406,12 +392,12 @@ public sealed class CharacterWindow
     /// <summary>
     /// The plate at the bottom, as retail's. A row experience raises: its name and value, the Experience To Raise bar and the unassigned
     /// experience, beside the +10 and +1 triangles. An untrained or unusable skill: its name and the credits to train it, beside one triangle
-    /// that trains it (the first click arms it, the second spends the credits).
+    /// that trains it.
     /// </summary>
     private void DrawFoot()
     {
         var row = SelectedRow;
-        var key = $"{_tab}|{row}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}|{_confirmTrain}";
+        var key = $"{_tab}|{row}|{_sheet.SkillCredits}|{_sheet.UnassignedExperience}";
         if (key == _drawnFoot) return;
         _drawnFoot = key;
         var unassigned = _sheet.UnassignedExperience;
@@ -427,13 +413,12 @@ public sealed class CharacterWindow
         }
         else if (row.Group is CharacterGroup.Untrained or CharacterGroup.Unusable)
         {
-            var armed = _confirmTrain == row.Id;
-            stack.Children.Add(Centred(Label(armed ? $"Train {row.Name}?" : row.Name, 13.5, armed ? DerethPalette.GoldBrush : DerethPalette.CreamBrush, title: true)));
+            stack.Children.Add(Centred(Label(row.Name, 13.5, DerethPalette.CreamBrush, title: true)));
             if (row.TrainCost > 0)
             {
                 stack.Children.Add(Pair("Skill Credits To Train", row.TrainCost.ToString(CultureInfo.InvariantCulture), short_: row.TrainCost > _sheet.SkillCredits));
                 side.Children.Add(Triangle(null, row.TrainCost <= _sheet.SkillCredits,
-                    armed ? $"Click again to spend {row.TrainCost} skill credits" : $"Train {row.Name} for {row.TrainCost} skill credits", Train));
+                    $"Train {row.Name} for {row.TrainCost} skill credits", Train));
             }
             stack.Children.Add(Pair("Skill Credits Available", credits));
         }
@@ -471,14 +456,16 @@ public sealed class CharacterWindow
     {
         var hit = new Grid
         {
-            Width = 24, Height = 20, Background = Transparent, Opacity = enabled ? 1 : 0.35,
+            Width = 28, Height = 22, Background = Transparent, Opacity = enabled ? 1 : 0.35,
             Cursor = new Cursor(enabled ? StandardCursorType.Hand : StandardCursorType.Arrow),
-            Children = { new DerethPathGlyph("M0,9 L5.5,0 L11,9 Z", 20) { Fill = DerethPalette.GoldBrush, Stroke = DerethPalette.GoldDarkBrush, StrokeThickness = 1.2 } }
+            Children = { new DerethPathGlyph("M0,9 L5.5,0 L11,9 Z", 26) { Fill = DerethPalette.GoldBrush, Stroke = DerethPalette.GoldDarkBrush, StrokeThickness = 1.2 } }
         };
         if (label != null)
         {
-            var text = Centred(Label(label, 9.5, DerethPalette.CreamBrush));
-            text.Margin = new Thickness(0, 6, 0, 0);
+            // In dark ink along the wide base, where it fits inside the triangle.
+            var text = Centred(Label(label, 9, DerethPalette.Brush(Color.FromRgb(0x24, 0x18, 0x08))));
+            text.VerticalAlignment = VerticalAlignment.Bottom;
+            text.Margin = new Thickness(0, 0, 0, 1);
             text.FontWeight = FontWeight.Bold;
             hit.Children.Add(text);
         }
