@@ -26,8 +26,8 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
     private readonly Action<uint> _select;
     // How often an object Decal had no name for is asked again, in milliseconds.
     private const long NameRetryMs = 1000;
-    // ponytail: names are kept for the session, one short string per object seen (no WorldFilter call per frame); an empty one is asked
-    // again at most once a second, so a name Decal learns late shows. The host forgets them once a minute (ForgetNames).
+    // One short string per object seen, so there is no WorldFilter call per frame; an empty one is asked again at most once a second, so
+    // a name Decal learns late shows. The host forgets them all once a minute (ForgetNames).
     private readonly Dictionary<uint, (string Name, long RetryAt)> _names = new();
 
     /// <param name="natives">Which HUD features the running client matched.</param>

@@ -52,15 +52,16 @@ public sealed class LookCache
     }
 
     /// <summary>
-    /// Forgets every object <paramref name="keep"/> refuses, and what it held. ACE sends no DeleteObject for objects left behind on a
-    /// teleport or out of sight; the client ages them out itself, so the host asks it which it still has. Returns how many it forgot.
+    /// Forgets every object <paramref name="keep"/> refuses, and what it held; an item held by a kept object stays with it. ACE sends no
+    /// DeleteObject for objects left behind on a teleport or out of sight; the client ages them out itself, so the host asks it which it
+    /// still has. Returns how many it forgot.
     /// </summary>
     public int Prune(Func<uint, bool> keep)
     {
         var forgotten = 0;
         foreach (var id in new List<uint>(_looks.Keys))
         {
-            if (keep(id)) continue;
+            if (keep(id) || (_held.TryGetValue(id, out var held) && keep(held.Holder))) continue;
             _looks.Remove(id);
             _held.Remove(id);
             DropHeldBy(id);

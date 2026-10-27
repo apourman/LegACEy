@@ -123,9 +123,10 @@ public sealed class LookCacheTests
         cache.Receive(LookCache.CreateObject, Created(Drudge, setup: 0x02000B00));
         cache.Receive(LookCache.CreateObject, Created(Shield, setup: 0x02000C00, parent: (Drudge, 3)));
 
-        Assert.Equal(1, cache.Prune(id => id is Player or Sword or Shield));
+        Assert.Equal(1, cache.Prune(id => id is Player or Shield));
 
         Assert.Null(cache.Look(Drudge));
+        // The sword stays with the player who holds it, though the client did not say it has it.
         Assert.Single(cache.Look(Player)!.Held);
         // Seen again, the drudge does not hold the shield it held before.
         cache.Receive(LookCache.CreateObject, Created(Drudge, setup: 0x02000B00));

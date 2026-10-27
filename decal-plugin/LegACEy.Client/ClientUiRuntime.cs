@@ -202,6 +202,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private uint _sampleCell;
     private DateTime _arrivalSampleAt = DateTime.MaxValue;
     private long _pruneAt;
+    private const long PruneIntervalMs = 60_000;
     private DateTime _lastTestFailureCheck;
     private readonly FrameSamples _uiFrameTimes = new();
     private readonly FrameSamples _postUiDrawTimes = new();
@@ -1918,9 +1919,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         var now = Environment.TickCount64;
         if (now < _pruneAt) return;
-        _pruneAt = now + 60_000;
-        var forgotten = _lookCache.Prune(static id =>
+        _pruneAt = now + PruneIntervalMs;
+        // The character is always kept, with what it holds: Decal missing it for a moment (portal space, login) must not blank the paperdoll.
+        uint player;
+        try { player = (uint)Bridge.Fact(BridgeFact.CharacterId); }
+        catch (COMException) { return; }
+        var forgotten = _lookCache.Prune(id =>
         {
+            if (id == player) return true;
             try { return Bridge.Item(id) != null; }
             catch (COMException) { return true; }
         });
