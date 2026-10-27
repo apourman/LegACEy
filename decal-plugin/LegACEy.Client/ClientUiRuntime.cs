@@ -419,6 +419,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         AssemblyLoadContext.Default.Resolving += ResolveFromClientDirectory;
         try
         {
+            SessionRecord.Open(Log);
+            SessionRecord.LogGraphics(Log);
             NativeUi.Initialize(Log);
             StartWorldUpdates();
             // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
@@ -505,7 +507,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _serverChannel?.Dispose();
             _serverChannel = null;
         }
-        finally { AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory; }
+        finally
+        {
+            AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory;
+            SessionRecord.Close();
+        }
     }
 
     /// <summary>
