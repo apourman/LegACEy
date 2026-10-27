@@ -81,7 +81,8 @@ public sealed class AvaloniaPanel : IDisposable
 
     private readonly Control _content;
     private double _scale;
-    // A short note over the content, such as the size while Ctrl and the wheel rescale the window. It hides itself when its time is up.
+    // A short note over the content, such as the size while Ctrl and the wheel rescale the window. It hides itself when its time is up. It
+    // sits at the top, over the header, because the host draws 3D views (a paperdoll) over the window's frame and they would hide it.
     private readonly Border _note;
     private readonly TextBlock _noteText;
     private readonly Stopwatch _noteClock = new();
@@ -92,12 +93,12 @@ public sealed class AvaloniaPanel : IDisposable
         _ownerThreadId = Thread.CurrentThread.ManagedThreadId;
         _content = content;
         _scale = scale;
-        _noteText = new TextBlock { FontFamily = DerethPalette.Title, FontSize = 18, Foreground = DerethPalette.CreamBrush };
+        _noteText = new TextBlock { FontFamily = DerethPalette.Title, FontSize = 14, Foreground = DerethPalette.CreamBrush };
         _note = new Border
         {
             Background = DerethPalette.Brush(Color.Parse("#E6141109")), BorderBrush = DerethPalette.GoldBrush, BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4), Padding = new Thickness(14, 6), HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false, IsVisible = false, Child = DerethPalette.CentreInk(_noteText),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(10, 1), Margin = new Thickness(0, 3, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, RenderTransformOrigin = new RelativePoint(0.5, 0, RelativeUnit.Relative), IsHitTestVisible = false, IsVisible = false, Child = DerethPalette.CentreInk(_noteText),
         };
         // The note lies over the content in the window; Content stays the content, which the host and plugins read.
         _window = CreateWindow(new Grid { Children = { content, _note } }, width, height, scale);
@@ -301,7 +302,7 @@ public sealed class AvaloniaPanel : IDisposable
     }
 
     /// <summary>
-    /// Shows <paramref name="text"/> in a plaque centred over the content for <paramref name="time"/>, at the same size on screen whatever the
+    /// Shows <paramref name="text"/> in a plaque at the top of the window, over its header, for <paramref name="time"/>, at the same size on screen whatever the
     /// panel's scale. Showing it again replaces the text and restarts the time.
     /// </summary>
     public void ShowNote(string text, TimeSpan time)
@@ -312,9 +313,6 @@ public sealed class AvaloniaPanel : IDisposable
         _noteTime = time;
         _noteClock.Restart();
     }
-
-    /// <summary>Whether the note from <see cref="ShowNote"/> is up.</summary>
-    public bool NoteShown => _note.IsVisible;
 
     /// <summary>Capture the frame Avalonia rendered, if this panel is shown and its content changed. A failure goes to the error handler.</summary>
     internal void Capture()
