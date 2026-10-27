@@ -3010,7 +3010,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         surface.Visible = bar.Visible && tab.IsShown;
         if (surface.Visible)
         {
-            var scale = surface.Panel.Scale;
+            // The tab has its own size, from Ctrl and the wheel over it.
+            var scale = PanelScaleOf(SplitTabPlaceId);
+            if (surface.Panel.Scale != scale) surface.Panel.Resize(surface.Panel.Frame.Width, surface.Panel.Frame.Height, scale);
             // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
             if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(tab);
             tab.Measure(Avalonia.Size.Infinity);
@@ -3091,7 +3093,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Draws the toolbar at this character's toolbar scale, the window scale times its own size, and lays it out again at its new size. Its
-    /// top-left corner stays, within the screen. The split tab over it takes the scale too.
+    /// top-left corner stays, within the screen.
     /// </summary>
     private void ScaleToolbar()
     {
@@ -3099,7 +3101,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var scale = PanelScaleOf(ToolbarPlaceId);
         if (surface.Panel.Scale == scale) return;
         surface.Panel.Resize(surface.Panel.Frame.Width, surface.Panel.Frame.Height, scale);
-        if (_splitTabSurface is { } split) split.Panel.Resize(split.Panel.Frame.Width, split.Panel.Frame.Height, scale);
         FitToolbar();
     }
 
@@ -4591,13 +4592,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private static int WholePixels(double length) => (int)Math.Ceiling(length - 0.001);
 
-    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window, chat included.</summary>
+    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, the split tab, or a LegACEy window, chat included.</summary>
     private bool Rescalable(string? id) => id == ToolbarSurfaceId
         ? _toolbarTakeover?.Holds == true
-        : id != null && _windows?.Get(id) != null;
+        : id == SplitTabSurfaceId || id != null && _windows?.Get(id) != null;
 
-    /// <summary>The id a surface's size is saved under: the toolbar's place, or the window's own id.</summary>
-    private static string PlaceIdOf(string id) => id == ToolbarSurfaceId ? ToolbarPlaceId : id;
+    /// <summary>The id a surface's size is saved under: the toolbar's or split tab's place, or the window's own id.</summary>
+    private static string PlaceIdOf(string id) => id switch { ToolbarSurfaceId => ToolbarPlaceId, SplitTabSurfaceId => SplitTabPlaceId, _ => id };
 
     // How long a window's size shows over it after a wheel notch.
     private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);
@@ -4613,6 +4614,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_windows.Rescale(placeId, steps))
         {
             if (id == ToolbarSurfaceId) ScaleToolbar();
+            else if (id == SplitTabSurfaceId) PlaceSplitTab();
             else SyncWindowLocations();
         }
         // The window's size shows over it while the wheel turns, at a limit too, as the Settings slider shows the UI size.
