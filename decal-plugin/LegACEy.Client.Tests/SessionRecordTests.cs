@@ -6,7 +6,7 @@ namespace LegACEy.Client.Tests;
 
 public sealed class SessionRecordTests
 {
-    // Real wevtutil output, cut down: retail's fault (with a pid), .NET's record of another crash (without), and a different program.
+    // Real wevtutil output, cut down: retail's fault (with a pid), .NET's two records of another crash (without), and a different program.
     private const string Events = """
         Event[0]
           Source: Application Error
@@ -28,6 +28,14 @@ public sealed class SessionRecordTests
            at LegACEy.Client.DecalPlugin.WorldEffects.OnLandscapeDraw(IntPtr)
 
         Event[2]
+          Source: .NET Runtime
+          Date: 2026-10-26T18:54:45.0710000Z
+          Description: 
+        Application: acclient.exe
+        Exception Info: exception code c0000005, exception address 0053D3C2
+        Stack:
+
+        Event[3]
           Source: Application Error
           Date: 2026-10-26T18:50:00.0000000Z
           Description:
@@ -37,10 +45,10 @@ public sealed class SessionRecordTests
         """;
 
     [Fact]
-    public void A_gone_client_is_described_by_its_own_fault_then_by_dotnets_record_then_as_unrecorded()
+    public void A_gone_client_is_described_by_its_own_fault_then_by_an_unclaimed_dotnet_record_then_as_unrecorded()
     {
         var events = CrashEvent.Parse(Events.Replace("\n", "\r\n"));
-        Assert.Equal(2, events.Count);
+        Assert.Equal(3, events.Count);
 
         var faulted = SessionRecord.Describe(0xB2A4, new DateTime(2026, 10, 26, 18, 38, 55), events);
         Assert.Contains("crashed after 2.2 min", faulted);
@@ -50,6 +58,7 @@ public sealed class SessionRecordTests
         Assert.Contains("probably", dotnet);
         Assert.Contains("exception address 0053D3C2 ← LegACEy.Client.DecalPlugin.WorldEffects.OnLandscapeDraw(IntPtr)", dotnet);
 
-        Assert.Contains("Windows recorded no crash", SessionRecord.Describe(1, new DateTime(2026, 10, 26, 19, 0, 0), events));
+        // Both of .NET's records went to the first client, so a second one started before them gets neither.
+        Assert.Contains("Windows recorded no crash", SessionRecord.Describe(1, new DateTime(2026, 10, 26, 18, 50, 0), events));
     }
 }

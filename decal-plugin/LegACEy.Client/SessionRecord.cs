@@ -25,7 +25,7 @@ internal static class SessionRecord
         try
         {
             Directory.CreateDirectory(Folder);
-            var gone = Directory.GetFiles(Folder).Select(Claim).OfType<(int Pid, DateTime Start)>().ToList();
+            var gone = Directory.GetFiles(Folder).Select(ClaimIfGone).OfType<(int Pid, DateTime Start)>().ToList();
             File.WriteAllText(Marker, Process.GetCurrentProcess().StartTime.ToString("O", CultureInfo.InvariantCulture));
             if (gone.Count > 0) Task.Run(() => Report(gone, log));
         }
@@ -36,7 +36,7 @@ internal static class SessionRecord
     public static void Close()
     {
         try { File.Delete(Marker); }
-        catch { }
+        catch { } // A marker left behind reads as an unclean end on the next start; nothing better to do while shutting down.
     }
 
     /// <summary>Retail's graphics settings, as last saved to UserPreferences.ini, in one line: high texture detail makes retail crash far more.</summary>
@@ -57,22 +57,22 @@ internal static class SessionRecord
         catch (Exception exception) { log($"Retail graphics unknown: {path} could not be read: {exception.Message}"); }
     }
 
-    /// <summary>The marker's client when it is gone, deleting the marker; null while it runs, or when another client claimed it first.</summary>
-    private static (int Pid, DateTime Start)? Claim(string marker)
+    /// <summary>The marker's client when it is gone, removing the marker; null while it runs, or when another client claimed it first.</summary>
+    private static (int Pid, DateTime Start)? ClaimIfGone(string marker)
     {
         try
         {
             if (!int.TryParse(Path.GetFileName(marker), NumberStyles.None, CultureInfo.InvariantCulture, out var pid)) return null;
-            // Opened alone and deleted on close, so of two clients starting together only one reports it.
-            using var stream = new FileStream(marker, FileMode.Open, FileAccess.Read, FileShare.None, 4096, FileOptions.DeleteOnClose);
-            var start = DateTime.Parse(new StreamReader(stream).ReadToEnd(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
-            if (Running(pid, start))
-            {
-                // Still running: write it back, as DeleteOnClose removes it.
-                stream.Close();
-                File.WriteAllText(marker, start.ToString("O", CultureInfo.InvariantCulture));
-                return null;
-            }
+            string text;
+            // Shared for delete, so a running client closing right now can still remove its own marker.
+            using (var stream = new FileStream(marker, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                text = new StreamReader(stream).ReadToEnd();
+            var start = DateTime.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+            if (Running(pid, start)) return null;
+            // Only one of two clients starting together wins the rename, so only one reports it.
+            var claimed = marker + ".claimed";
+            File.Move(marker, claimed);
+            File.Delete(claimed);
             return (pid, start);
         }
         catch { return null; }
@@ -90,23 +90,33 @@ internal static class SessionRecord
 
     private static void Report(List<(int Pid, DateTime Start)> gone, Action<string> log)
     {
-        var events = new List<CrashEvent>();
-        try { events = CrashEvent.Parse(ReadWindowsCrashes(gone.Min(client => client.Start))); }
-        catch (Exception exception) { log($"Windows' crash records could not be read: {exception.Message}"); }
-        foreach (var (pid, start) in gone) log(Describe(pid, start, events));
+        try
+        {
+            var events = new List<CrashEvent>();
+            try { events = CrashEvent.Parse(ReadWindowsCrashes(gone.Min(client => client.Start))); }
+            catch (Exception exception) { log($"Windows' crash records could not be read: {exception.Message}"); }
+            foreach (var (pid, start) in gone.OrderBy(client => client.Start)) log(Describe(pid, start, events));
+        }
+        catch (Exception exception) { log($"Crash records could not be written: {exception.Message}"); }
     }
 
-    internal static string Describe(int pid, DateTime start, IReadOnlyList<CrashEvent> events)
+    /// <summary>One line for a client that is gone. A .NET record it is given is removed from <paramref name="events"/>, so no other client gets it too.</summary>
+    internal static string Describe(int pid, DateTime start, List<CrashEvent> events)
     {
         var client = $"A client before this one (pid {pid}, started {start:yyyy-MM-dd HH:mm:ss})";
         var own = events.Where(e => e.Pid == pid && e.Time >= start).OrderBy(e => e.Time).ToList();
         if (own.Count > 0)
             return $"{client} crashed after {Minutes(own[0].Time - start)}: Windows recorded {string.Join("; ", own.Select(e => e.Summary))}.";
         // .NET's record has no pid: one after the start is likely this client's, unless several clients were running.
-        var dotnet = events.Where(e => e.Pid == null && e.Time >= start).OrderBy(e => e.Time).FirstOrDefault();
-        if (dotnet != null)
+        if (events.Where(e => e.Pid == null && e.Time >= start).OrderBy(e => e.Time).FirstOrDefault() is { } first)
+        {
+            // .NET writes each crash twice (Framework and CoreCLR lines), a moment apart, and only one may carry the stack.
+            bool Twin(CrashEvent e) => e.Pid == null && Math.Abs((e.Time - first.Time).TotalSeconds) < 2;
+            var dotnet = events.Where(Twin).MaxBy(e => e.Summary.Length)!;
+            events.RemoveAll(Twin);
             return $"{client} crashed after {Minutes(dotnet.Time - start)}, probably: .NET recorded {dotnet.Summary}.";
-        return $"{client} ended without closing cleanly, and Windows recorded no crash for it (a freeze ended in Task Manager, a power loss, or retail's own error box).";
+        }
+        return $"{client} ended without closing cleanly, and Windows recorded no crash for it (killed, frozen and ended, or a power loss).";
     }
 
     private static string Minutes(TimeSpan span) => $"{span.TotalMinutes:0.0} min";
@@ -122,7 +132,7 @@ internal static class SessionRecord
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        foreach (var argument in new[] { "qe", "Application", "/q:" + query, "/f:text", "/c:200" }) info.ArgumentList.Add(argument);
+        foreach (var argument in new[] { "qe", "Application", "/q:" + query, "/f:text", "/rd:true", "/c:200" }) info.ArgumentList.Add(argument);
         using var process = Process.Start(info)!;
         var text = process.StandardOutput.ReadToEndAsync();
         if (!process.WaitForExit(15_000)) { process.Kill(); throw new TimeoutException("wevtutil did not answer in 15 s"); }

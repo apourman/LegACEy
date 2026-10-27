@@ -102,6 +102,12 @@ next post-UI draw fail in game. The file is deleted, the failure is logged to
 that removal path. With several clients sharing the directory, whichever client
 checks first takes the file; the `[pid N]` prefix shows which one.
 
+Each start logs retail's graphics settings (`Retail graphics`: the `[Render]` and `[Display]` lines of
+`Documents\Asheron's Call\UserPreferences.ini`, which retail saves when the game closes). Each running client also leaves a marker
+in `sessions\<pid>` beside the log and removes it at a clean shutdown. A marker whose client is gone means that client crashed or
+was killed: the next client to start writes `A client before this one (pid N, …)` with what Windows recorded about it (exception
+code, module and offset, or .NET's record), or says Windows recorded nothing. A tester's log alone then tells which crash they hit.
+
 Every 30 s in game, `legacey-avalonia.log` gets a set of `UI performance` lines; times are median/95th percentile/worst in
 milliseconds. `sample` covers the whole UI frame and the post-UI draw, with memory and GC counts and the free address space with its
 largest block (`freeAddressMB`, `largestFreeMB`: what runs out first in the 32-bit client). One extra set, marked `after portal space`,
