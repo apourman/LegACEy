@@ -1675,6 +1675,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var view = views[i];
             if (!Avalonia.VisualTree.VisualExtensions.IsVisualAncestorOf(window, view)) continue;
             _drawnModelViews.Add(view);
+            // A 3D view would cover the window's note, such as its size while Ctrl and the wheel rescale it, so it waits for the note to go.
+            if (surface.Panel.NoteShown) continue;
             if (view.Model is not { } model || !view.IsEffectivelyVisible || _failedModelViews.Contains(view)) continue;
             try
             {

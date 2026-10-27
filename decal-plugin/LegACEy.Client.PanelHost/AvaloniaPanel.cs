@@ -313,6 +313,9 @@ public sealed class AvaloniaPanel : IDisposable
         _noteClock.Restart();
     }
 
+    /// <summary>Whether the note from <see cref="ShowNote"/> is up.</summary>
+    public bool NoteShown => _note.IsVisible;
+
     /// <summary>Capture the frame Avalonia rendered, if this panel is shown and its content changed. A failure goes to the error handler.</summary>
     internal void Capture()
     {
