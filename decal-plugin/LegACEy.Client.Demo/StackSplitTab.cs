@@ -6,6 +6,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LegACEy.Client.Themes;
@@ -20,12 +21,15 @@ public sealed class StackSplitTab : Decorator
 {
     /// <summary>The tab's width, the selection plaque's, so it sits square over it.</summary>
     public const double TabWidth = 220;
+    // How narrow and wide its edges can drag it; the slider takes the difference.
+    public const double NarrowestWidth = 180, WidestWidth = 640;
 
     private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0A0906"));
     private static readonly IBrush AmountEdge = DerethPalette.Brush(Color.Parse("#8A6326"));
     private static readonly IBrush ThumbBrush = DerethPalette.Brush(Color.Parse("#DDC47D"));
 
     private readonly IRetailToolbarPort _port;
+    private readonly Action? _startMove;
     // The controls of the stack being split: its stack, the count it shows, whether a write is in progress, and its controls.
     private uint _amountStackId;
     private int _amountSize;
@@ -33,9 +37,11 @@ public sealed class StackSplitTab : Decorator
     private TextBox? _amountBox;
     private Slider? _amountSlider;
 
-    public StackSplitTab(IRetailToolbarPort port)
+    /// <param name="startMove">Called when the frame, outside its controls, is pressed with the left button, to move the tab or drag its edge.</param>
+    public StackSplitTab(IRetailToolbarPort port, Action? startMove = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
+        _startMove = startMove;
         Width = TabWidth;
         Refresh();
         port.Changed += Refresh;
@@ -100,6 +106,11 @@ public sealed class StackSplitTab : Decorator
             // Only typing writes: the text the tab sets itself can raise this event after the refresh that set it.
             if (box == _amountBox && box.IsFocused && int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var typed)) Apply(typed, box);
         };
+        // A click into the box selects its figure, so typing replaces it. The press that focuses the box places the caret after focus
+        // arrives, so the release selects again.
+        var focusing = false;
+        box.GotFocus += (_, _) => { box.SelectAll(); focusing = true; };
+        box.AddHandler(PointerReleasedEvent, (_, _) => { if (focusing) box.SelectAll(); focusing = false; }, RoutingStrategies.Bubble, handledEventsToo: true);
         box.LostFocus += (_, _) => Settle(box);
         box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Settle(box); };
         slider.PropertyChanged += (_, e) =>
@@ -128,10 +139,16 @@ public sealed class StackSplitTab : Decorator
         var quick = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Right, Children = { OneButton, HalfButton, AllButton } };
         var quickRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { label, quick } };
         Grid.SetColumn(quick, 1);
-        Child = new DerethFrame(DerethFrameArt.Window)
+        var frame = new Border
         {
-            Child = new StackPanel { Spacing = 4, Margin = new Thickness(4, 2), Children = { quickRow, amountRow } }
+            Background = Brushes.Transparent,
+            Child = new DerethFrame(DerethFrameArt.Window) { Child = new StackPanel { Spacing = 4, Margin = new Thickness(4, 2), Children = { quickRow, amountRow } } }
         };
+        frame.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(frame).Properties.IsLeftButtonPressed) _startMove?.Invoke();
+        };
+        Child = frame;
     }
 
     /// <summary>A small framed button that writes an amount when clicked; a box being typed in takes the figure too.</summary>
@@ -185,7 +202,10 @@ public sealed class StackSplitTab : Decorator
         Apply(int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var typed) ? typed : _port.SplitAmount, null);
     }
 
-    /// <summary>A dark track with a gold thumb, as the retail amount slider draws.</summary>
+    /// <summary>
+    /// A dark groove with a gold thumb, as the retail amount slider draws. The track takes the thumb's full height, and its clear buttons
+    /// either side of the thumb are what Slider moves the thumb to a press on.
+    /// </summary>
     private static FuncControlTemplate<Slider> SliderTemplate() => new((_, scope) =>
     {
         var track = new Track
@@ -194,16 +214,28 @@ public sealed class StackSplitTab : Decorator
             Orientation = Orientation.Horizontal,
             [!RangeBase.MinimumProperty] = new TemplateBinding(RangeBase.MinimumProperty),
             [!RangeBase.MaximumProperty] = new TemplateBinding(RangeBase.MaximumProperty),
-            [!RangeBase.ValueProperty] = new Binding(nameof(RangeBase.Value)) { Mode = BindingMode.TwoWay, RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) }
+            [!RangeBase.ValueProperty] = new Binding(nameof(RangeBase.Value)) { Mode = BindingMode.TwoWay, RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) },
+            DecreaseButton = TrackButton("PART_DecreaseButton"),
+            IncreaseButton = TrackButton("PART_IncreaseButton"),
+            Thumb = new Thumb { Template = new FuncControlTemplate<Thumb>((_, _) => new Border { Width = 9, Height = 16, CornerRadius = new CornerRadius(2), Background = ThumbBrush, BorderBrush = AmountEdge, BorderThickness = new Thickness(1) }) }
         };
-        track.Thumb = new Thumb { Template = new FuncControlTemplate<Thumb>((_, _) => new Border { Width = 9, Height = 16, CornerRadius = new CornerRadius(2), Background = ThumbBrush, BorderBrush = AmountEdge, BorderThickness = new Thickness(1) }) };
         scope.Register(track.Name, track);
-        return new Border
+        scope.Register(track.DecreaseButton.Name!, track.DecreaseButton);
+        scope.Register(track.IncreaseButton.Name!, track.IncreaseButton);
+        var groove = new Border
         {
             Height = 6, CornerRadius = new CornerRadius(3), Background = TrackBrush, BorderBrush = DerethPalette.GrooveEdgeBrush,
-            BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center, Child = track
+            BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center
         };
+        return new Panel { Children = { groove, track } };
     });
+
+    /// <summary>A clear button filling the track beside the thumb, so a press anywhere along it reaches the slider.</summary>
+    private static RepeatButton TrackButton(string name) => new()
+    {
+        Name = name, Focusable = false,
+        Template = new FuncControlTemplate<RepeatButton>((_, _) => new Border { Background = Brushes.Transparent })
+    };
 
     /// <summary>The value held within [<paramref name="low"/>, <paramref name="high"/>]. netstandard2.0 has no Math.Clamp.</summary>
     private static int Between(int value, int low, int high) => Math.Min(Math.Max(value, low), high);

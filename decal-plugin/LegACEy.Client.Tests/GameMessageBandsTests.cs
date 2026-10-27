@@ -6,7 +6,7 @@ namespace LegACEy.Client.Tests;
 public sealed class GameMessageBandsTests
 {
     [Fact]
-    public void Messages_stack_newest_first_up_to_three_a_repeat_moves_to_the_top_and_each_runs_out_on_its_own() => RenderThread.Run(() =>
+    public void Messages_stack_newest_first_up_to_three_a_repeat_on_its_own_row_and_each_runs_out_on_its_own() => RenderThread.Run(() =>
     {
         var now = new DateTime(2026, 10, 25, 12, 0, 0, DateTimeKind.Utc);
         var bands = new DerethMessageBands(() => now);
@@ -18,11 +18,10 @@ public sealed class GameMessageBandsTests
         Assert.True(bands.IsVisible);
         Assert.Equal(new[] { "The chest is locked!", "You can't move that!" }, Lines(bands));
 
-        // A repeat moves to the top and starts its time again, without another row.
+        // A repeat gets its own row, as retail's floating lines stack.
         now += TimeSpan.FromSeconds(1);
         bands.Show("You can't move that!");
-        bands.Show("You can't move that!");
-        Assert.Equal(new[] { "You can't move that!", "The chest is locked!" }, Lines(bands));
+        Assert.Equal(new[] { "You can't move that!", "The chest is locked!", "You can't move that!" }, Lines(bands));
 
         // Past three, the oldest goes.
         bands.Show("You are too fatigued to attack!");
