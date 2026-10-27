@@ -16,7 +16,7 @@ namespace LegACEy.Client.Themes;
 /// </summary>
 public sealed class DerethClientTheme : IClientTheme
 {
-    private const double ScrollBarThickness = 9;
+    private const double ScrollBarThickness = 14;
     /// <summary>The shortest a thumb gets along its bar, so a long chat history still leaves one worth grabbing.</summary>
     private const double ThumbMinLength = 28;
     private static readonly IBrush ThumbBrush = new LinearGradientBrush

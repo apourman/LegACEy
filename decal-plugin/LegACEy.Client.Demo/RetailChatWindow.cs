@@ -10,7 +10,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Styling;
 using Avalonia.VisualTree;
 using LegACEy.Client.Themes;
 
@@ -151,10 +150,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _grooveEdge = new Border { BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3) };
         _scroll = new ScrollViewer { Content = _lines, Margin = new Thickness(4, 2), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         _scroll.ScrollChanged += (_, _) => { if (AtEnd()) HidePill(); };
-        // Wider than the theme's bars, so the thumb is easy to grab and drag back through the log.
-        var wideBar = new Style(x => x.OfType<ScrollBar>().Class(":vertical"));
-        wideBar.Setters.Add(new Setter(WidthProperty, 14.0));
-        _scroll.Styles.Add(wideBar);
         // The log selects as one text: a drag runs from line to line. Tunnel handlers, ahead of each line's own selection.
         _lines.AddHandler(PointerPressedEvent, OnLogPressed, RoutingStrategies.Tunnel);
         _lines.AddHandler(PointerMovedEvent, OnLogMoved, RoutingStrategies.Tunnel);
