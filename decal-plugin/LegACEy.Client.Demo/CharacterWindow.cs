@@ -42,6 +42,9 @@ public sealed class CharacterWindow
     public const int Width = 310, Height = 640;
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(280, 360));
     private const double SkillRowHeight = 21, AttributeRowHeight = 27, BandHeight = 20;
+    // Retail's raise arrows in the portal dat, lit and dim: the plain one (+1, or train) and the +10 one. Each is 30 × 26 with clear edges.
+    private const uint Arrow = 0x06004CB6, ArrowDim = 0x06004CB7, TenArrow = 0x0600712B, TenArrowDim = 0x0600712C;
+    private const double ArrowWidth = 30, ArrowHeight = 26;
 
     private static readonly IBrush Transparent = Brushes.Transparent;
     private static readonly IBrush HoverBrush = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x12));
@@ -415,7 +418,8 @@ public sealed class CharacterWindow
         var credits = _sheet.SkillCredits.ToString(CultureInfo.InvariantCulture);
 
         var stack = new StackPanel { Spacing = 3 };
-        var side = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
+        // Retail's arrows sit beside the last rows, each overlapping the clear edge of the one above.
+        var side = new StackPanel { Spacing = -9, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, -5) };
         if (row == null)
         {
             stack.Children.Add(Centred(Label(_tab == 0 ? "Select an Attribute to Improve" : "Select a Skill to Improve", 13.5, DerethPalette.CreamBrush, title: true)));
@@ -428,7 +432,7 @@ public sealed class CharacterWindow
             if (row.TrainCost > 0)
             {
                 stack.Children.Add(Pair("Skill Credits To Train", row.TrainCost.ToString(CultureInfo.InvariantCulture), short_: row.TrainCost > _sheet.SkillCredits));
-                side.Children.Add(Triangle(null, row.TrainCost <= _sheet.SkillCredits,
+                side.Children.Add(RaiseArrow(ten: false, row.TrainCost <= _sheet.SkillCredits,
                     $"Train {row.Name} for {row.TrainCost} skill credits", Train));
             }
             stack.Children.Add(Pair("Skill Credits Available", credits));
@@ -439,8 +443,8 @@ public sealed class CharacterWindow
             var next = row.NextCost;
             stack.Children.Add(Pair("Experience To Raise", next is { } cost ? Number(cost) : row.AtMax ? "Max" : "–", short_: next > unassigned));
             stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
-            side.Children.Add(Triangle("+10", row.TenCost is { } ten && ten > 0 && ten <= unassigned, "Raise 10 ranks", () => Raise(ten: true)));
-            side.Children.Add(Triangle(null, next is { } one && one > 0 && one <= unassigned, "Raise 1 rank", () => Raise(ten: false)));
+            side.Children.Add(RaiseArrow(ten: true, row.TenCost is { } ten && ten > 0 && ten <= unassigned, "Raise 10 ranks", () => Raise(ten: true)));
+            side.Children.Add(RaiseArrow(ten: false, next is { } one && one > 0 && one <= unassigned, "Raise 1 rank", () => Raise(ten: false)));
         }
 
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
@@ -460,25 +464,15 @@ public sealed class CharacterWindow
         return line;
     }
 
-    // Retail's raise arrow; the +10 one carries its label.
-    private static Control Triangle(string? label, bool enabled, string tip, Action click)
+    // One of retail's raise arrows, dim when the click cannot be afforded.
+    private Control RaiseArrow(bool ten, bool enabled, string tip, Action click)
     {
-        var hit = new Grid
+        var hit = new Border
         {
-            Width = 34, Height = 28, Background = Transparent, Opacity = enabled ? 1 : 0.35,
-            Cursor = new Cursor(enabled ? StandardCursorType.Hand : StandardCursorType.Arrow),
-            Children = { new DerethPathGlyph("M0,9 L5.5,0 L11,9 Z", 32) { Fill = DerethPalette.GoldBrush, Stroke = DerethPalette.GoldDarkBrush, StrokeThickness = 1.2 } }
+            Width = ArrowWidth, Height = ArrowHeight, Background = Transparent,
+            Child = Icon(ten ? enabled ? TenArrow : TenArrowDim : enabled ? Arrow : ArrowDim),
+            Cursor = new Cursor(enabled ? StandardCursorType.Hand : StandardCursorType.Arrow)
         };
-        if (label != null)
-        {
-            // In dark ink along the wide base, where it fits inside the triangle.
-            var text = Centred(Label(label, 9, DerethPalette.Brush(Color.FromRgb(0x24, 0x18, 0x08))));
-            text.VerticalAlignment = VerticalAlignment.Bottom;
-            text.Margin = new Thickness(0, 0, 0, 2);
-            text.TextTrimming = TextTrimming.None;
-            text.FontWeight = FontWeight.Bold;
-            hit.Children.Add(text);
-        }
         ToolTip.SetTip(hit, tip);
         hit.PointerPressed += (_, e) =>
         {
