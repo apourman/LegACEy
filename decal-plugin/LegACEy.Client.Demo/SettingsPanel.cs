@@ -713,7 +713,7 @@ public sealed class SettingsPanel : UserControl
     private Control WaterStrengthRow() => SliderRow("Wave strength", WaterOption.Smallest, WaterOption.Largest, WaterOption.Step,
         () => _settings.Water?.Percent, percent => _settings.Water?.Set(true, percent));
 
-    /// <summary>The visible plugins by name, each with its menu entries as the launcher lists them. A picked entry runs.</summary>
+    /// <summary>The visible plugins by name, each with its menu entries. A picked entry runs.</summary>
     private Control PluginsPane()
     {
         RebuildPlugins();
