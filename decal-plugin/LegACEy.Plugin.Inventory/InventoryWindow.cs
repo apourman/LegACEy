@@ -401,7 +401,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return true;
     }
 
-    /// <summary>A click on release: a pack opens; an item is selected, or used when the press was the second click on it.</summary>
+    /// <summary>A click on release: a pack or a focus opens; an item is selected, or used when the press was the second click on it.</summary>
     private void Click(InventorySlotId slot, int clicks)
     {
         if (slot.Place == SlotPlace.Pack)
@@ -582,7 +582,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             if (slot.Tag is InventorySlotId tag && DraggedId(tag) == id)
             {
                 slot.Opacity = lifted ? LiftedOpacity : 1;
-                slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? tag.Container == OpenPack(_port.Snapshot).Id : id == _port.Snapshot.Selected);
+                slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? PackOutlined(_port.Snapshot, tag.Container, OpenPack(_port.Snapshot)) : id == _port.Snapshot.Selected);
             }
     }
 
@@ -658,6 +658,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// <summary>The object a slot stands for when it is selected or targeted: its item, or a pack (the main pack is the character).</summary>
     private static uint TargetOf(InventorySlotId slot) => slot.Place != SlotPlace.Pack ? slot.ItemId : slot.Container;
 
+    /// <summary>A pack tile is outlined while its pack is open; a focus that is retail's selection takes the outline from it.</summary>
+    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => PackOf(s, s.Selected)?.Capacity == 0 ? id == s.Selected : id == open.Id;
 
     private GameImage? DragImage(uint id)
     {
@@ -848,7 +850,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var count = pack.Id == 0 ? 0 : ItemsIn(snapshot, pack.Id);
         var tile = pack.Id == 0
             ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null))
-            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), pack.Id == open.Id);
+            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
         // Only a container holding something shows its fill. The bar takes no presses, so the tile under it still does.
         if (pack.Capacity <= 0 || count <= 0) return tile;
         var bar = FillBar(count, pack.Capacity);

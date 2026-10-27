@@ -144,6 +144,13 @@ public sealed class InventoryWindowTests
         Assert.Contains("Contents of Potions", host.Texts());
         Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Potions).Selected);
         Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
+
+        // A focus selected outside the window takes the outline, though the pack stays open.
+        port.Push(InventorySample.Snapshot(focus: true, selected: InventorySample.Focus));
+        InventoryDriver.Tick(host.Host);
+        Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
+        Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Potions).Selected);
+        Assert.Contains("Contents of Potions", host.Texts());
     });
 
     [Fact]
