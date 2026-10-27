@@ -404,8 +404,9 @@ public sealed class CharacterWindow
         : DerethPalette.TextBrush;
 
     /// <summary>
-    /// The plate at the bottom, as retail's: the selected row's name and value, its Experience To Raise bar (or Credits To Train) beside the
-    /// +10 and +1 triangles (or Train), then what the character has to spend.
+    /// The plate at the bottom, as retail's. A row experience raises: its name and value, the Experience To Raise bar and the unassigned
+    /// experience, beside the +10 and +1 triangles. An untrained or unusable skill: its name and the credits to train it, beside one triangle
+    /// that trains it (the first click arms it, the second spends the credits).
     /// </summary>
     private void DrawFoot()
     {
@@ -414,43 +415,44 @@ public sealed class CharacterWindow
         if (key == _drawnFoot) return;
         _drawnFoot = key;
         var unassigned = _sheet.UnassignedExperience;
+        var credits = _sheet.SkillCredits.ToString(CultureInfo.InvariantCulture);
 
         var stack = new StackPanel { Spacing = 3 };
-        stack.Children.Add(row == null ? Centred(Label(_tab == 0 ? "Select an attribute to raise it" : "Select a skill to raise it", 12, DerethPalette.MutedBrush)) : Heading(row));
-        if (row is { TrainCost: > 0 })
-            stack.Children.Add(Pair("Credits To Train", row.TrainCost.ToString(CultureInfo.InvariantCulture), short_: row.TrainCost > _sheet.SkillCredits));
+        var side = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
+        if (row == null)
+        {
+            stack.Children.Add(Centred(Label(_tab == 0 ? "Select an attribute to raise it" : "Select a skill to raise it", 12, DerethPalette.MutedBrush)));
+            stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
+            if (_tab == 1) stack.Children.Add(Pair("Skill Credits Available", credits));
+        }
+        else if (row.Group is CharacterGroup.Untrained or CharacterGroup.Unusable)
+        {
+            var armed = _confirmTrain == row.Id;
+            stack.Children.Add(Centred(Label(armed ? $"Train {row.Name}?" : row.Name, 13.5, armed ? DerethPalette.GoldBrush : DerethPalette.CreamBrush, title: true)));
+            if (row.TrainCost > 0)
+            {
+                stack.Children.Add(Pair("Skill Credits To Train", row.TrainCost.ToString(CultureInfo.InvariantCulture), short_: row.TrainCost > _sheet.SkillCredits));
+                side.Children.Add(Triangle(null, row.TrainCost <= _sheet.SkillCredits,
+                    armed ? $"Click again to spend {row.TrainCost} skill credits" : $"Train {row.Name} for {row.TrainCost} skill credits", Train));
+            }
+            stack.Children.Add(Pair("Skill Credits Available", credits));
+        }
         else
         {
-            var next = row?.NextCost;
-            var text = next is { } cost ? Number(cost) : row?.AtMax == true ? "Max" : "–";
-            var fraction = row?.AtMax == true ? 1 : next > 0 ? Math.Min(1, (double)unassigned / next.Value) : 0;
+            stack.Children.Add(Heading(row));
+            var next = row.NextCost;
+            var text = next is { } cost ? Number(cost) : row.AtMax ? "Max" : "–";
+            var fraction = row.AtMax ? 1 : next > 0 ? Math.Min(1, (double)unassigned / next.Value) : 0;
             stack.Children.Add(Bar(fraction, "Experience To Raise", text, short_: next > unassigned));
+            stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
+            side.Children.Add(Triangle("+10", row.TenCost is { } ten && ten > 0 && ten <= unassigned, "Raise 10 ranks", () => Raise(ten: true)));
+            side.Children.Add(Triangle(null, next is { } one && one > 0 && one <= unassigned, "Raise 1 rank", () => Raise(ten: false)));
         }
-        stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
-        stack.Children.Add(Pair("Skill Credits Available", _sheet.SkillCredits.ToString(CultureInfo.InvariantCulture)));
 
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
         grid.Children.Add(stack);
-        Control? side = null;
-        if (row is { TrainCost: > 0 })
-        {
-            var armed = _confirmTrain == row.Id;
-            side = Button(armed ? "Confirm" : "Train", row.TrainCost <= _sheet.SkillCredits, Train);
-            ToolTip.SetTip(side, armed ? $"Press again to spend {row.TrainCost} skill credits" : $"Spend {row.TrainCost} skill credits to train {row.Name}");
-        }
-        else if (row != null)
-        {
-            var triangles = new StackPanel { Spacing = 4 };
-            triangles.Children.Add(Triangle(filled: true, row.TenCost is { } ten && ten > 0 && ten <= unassigned, "Raise 10 ranks", () => Raise(ten: true)));
-            triangles.Children.Add(Triangle(filled: false, row.NextCost is { } one && one > 0 && one <= unassigned, "Raise 1 rank", () => Raise(ten: false)));
-            side = triangles;
-        }
-        if (side != null)
-        {
-            side.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(side, 1);
-            grid.Children.Add(side);
-        }
+        Grid.SetColumn(side, 1);
+        grid.Children.Add(side);
         _foot.Content = Plate(grid);
     }
 
@@ -464,19 +466,22 @@ public sealed class CharacterWindow
         return line;
     }
 
-    // Retail's raise arrows: the filled one raises ten ranks, the open one a single rank.
-    private static Control Triangle(bool filled, bool enabled, string tip, Action click)
+    // Retail's raise arrow; the +10 one carries its label.
+    private static Control Triangle(string? label, bool enabled, string tip, Action click)
     {
-        var glyph = new DerethPathGlyph("M0,9 L5.5,0 L11,9 Z", 16)
+        var hit = new Grid
         {
-            Fill = filled ? DerethPalette.GoldBrush : null, Stroke = filled ? DerethPalette.GoldDarkBrush : DerethPalette.GoldBrush,
-            StrokeThickness = 1.4, Width = 22, Height = 18
+            Width = 24, Height = 20, Background = Transparent, Opacity = enabled ? 1 : 0.35,
+            Cursor = new Cursor(enabled ? StandardCursorType.Hand : StandardCursorType.Arrow),
+            Children = { new DerethPathGlyph("M0,9 L5.5,0 L11,9 Z", 20) { Fill = DerethPalette.GoldBrush, Stroke = DerethPalette.GoldDarkBrush, StrokeThickness = 1.2 } }
         };
-        var hit = new Border
+        if (label != null)
         {
-            Background = Transparent, Child = glyph, Opacity = enabled ? 1 : 0.35,
-            Cursor = new Cursor(enabled ? StandardCursorType.Hand : StandardCursorType.Arrow)
-        };
+            var text = Centred(Label(label, 9.5, DerethPalette.CreamBrush));
+            text.Margin = new Thickness(0, 6, 0, 0);
+            text.FontWeight = FontWeight.Bold;
+            hit.Children.Add(text);
+        }
         ToolTip.SetTip(hit, tip);
         hit.PointerPressed += (_, e) =>
         {
@@ -593,13 +598,6 @@ public sealed class CharacterWindow
         caption.Margin = new Thickness(5, 2, 5, 0);
         caption.VerticalAlignment = VerticalAlignment.Center;
         return new Grid { Children = { groove, caption } };
-    }
-
-    private static DerethButton Button(string text, bool enabled, Action click)
-    {
-        var button = new DerethButton { Content = Label(text, 11.5, DerethPalette.CreamBrush), Padding = new Thickness(9, 2), MinHeight = 22, IsEnabled = enabled };
-        button.Click += (_, _) => click();
-        return button;
     }
 
     private static TextBlock Centred(TextBlock text)
