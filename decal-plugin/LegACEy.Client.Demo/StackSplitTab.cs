@@ -21,6 +21,8 @@ public sealed class StackSplitTab : Decorator
 {
     /// <summary>The tab's width, the selection plaque's, so it sits square over it.</summary>
     public const double TabWidth = 220;
+    // How narrow and wide its edges can drag it; the slider takes the difference.
+    public const double NarrowestWidth = 180, WidestWidth = 640;
 
     private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0A0906"));
     private static readonly IBrush AmountEdge = DerethPalette.Brush(Color.Parse("#8A6326"));
@@ -35,7 +37,7 @@ public sealed class StackSplitTab : Decorator
     private TextBox? _amountBox;
     private Slider? _amountSlider;
 
-    /// <param name="startMove">Called when the frame, outside its controls, is pressed with the left button, to move the tab.</param>
+    /// <param name="startMove">Called when the frame, outside its controls, is pressed with the left button, to move the tab or drag its edge.</param>
     public StackSplitTab(IRetailToolbarPort port, Action? startMove = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
