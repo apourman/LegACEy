@@ -32,8 +32,8 @@ public interface ICharacterGame
 
 /// <summary>
 /// The Dereth character window, retail's Attributes, Skills and Titles tabs in retail's order: a plaque with the name, level and
-/// experience, the list, and retail's plate at the bottom: the selected row's name and value, its Experience To Raise bar with the +10 and +1
-/// triangles (or Train), and the credits and experience to spend. A click on a row selects it; a second click clears it. Each skill group
+/// experience, the list, and retail's plate at the bottom: the selected row's name and value, the experience to raise it beside retail's +10
+/// and +1 arrows (or its credit cost beside the arrow that trains it), and the credits and experience to spend. A click on a row selects it; a second click clears it. Each skill group
 /// folds from its band, and the folds are remembered; the attributes and vitals have no band. One instance serves the session; <see cref="Refresh"/> redraws what changed.
 /// </summary>
 public sealed class CharacterWindow
@@ -544,7 +544,10 @@ public sealed class CharacterWindow
         if (id == 0 || _art == null) return null;
         // Each art is decoded once; a control has one parent, so each row gets its own icon over the shared bitmap, at the art's own size.
         if (!_icons.TryGetValue(id, out var bitmap))
-            _icons[id] = bitmap = GameArtImageExtension.CreateBitmap(square && _art.ReadImage(id) is { } image ? Square(image) : _art.ReadImage(id));
+        {
+            var image = _art.ReadImage(id);
+            _icons[id] = bitmap = GameArtImageExtension.CreateBitmap(square && image != null ? Square(image) : image);
+        }
         return bitmap == null ? null
             : new DerethItemIcon(bitmap) { Width = bitmap.PixelSize.Width, Height = bitmap.PixelSize.Height, VerticalAlignment = VerticalAlignment.Center };
     }

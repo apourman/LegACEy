@@ -144,11 +144,11 @@ window. The file is only checked, never consumed. A drag that leaves the LegACEy
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
 The Dereth character window replaces retail's character panel (its key and toolbar button open it) with the same three tabs. Attributes
-and Skills share a plaque with the name, heritage, title, player-killer status, experience and level, and a plate at the bottom with the
-credits and experience to spend. Click a row and its next rank's cost drops down under it with Raise and +10; click it again to fold it
-away. An untrained skill drops down Train with its credit cost; the first press asks, the
-second spends the credits. Every group (Attributes, and the Specialized, Trained, Untrained and Unusable skills) folds from its
-band, remembered per character; the vitals follow the attributes with no band, as in retail.
+and Skills share a plaque with the name, heritage, title, player-killer status, experience and level, and retail's plate at the bottom.
+Click a row and the plate shows its name and value, the experience to raise it and the unassigned experience, beside retail's +10 and +1
+arrows; an untrained or unusable skill shows its credit cost and one arrow that trains it. Click the list's empty space (or the row again)
+to clear the selection. The skill groups (Specialized, Trained, Untrained, Unusable) fold from their bands, remembered per character; the
+attributes and vitals are listed with no band, as in retail.
 Titles lists every title the character holds and sets the display title. Values come from Decal, buffs included: green when raised, red
 when lowered, with base and bonus in the tooltip. Ranks, costs and credits come from the server's own messages and portal.dat's skill and
 experience tables, and raises go out as retail's own actions, so it works on any server. `retail-character-native` beside the main DLL
