@@ -671,8 +671,11 @@ public sealed class WindowManager
     private Point Snap(ManagedWindow window, Point location) => Snap(location, window.Size,
         _windows.Where(other => other != window).Select(other => other.Bounds).Concat(_snapTargets?.Invoke() ?? Enumerable.Empty<Rectangle>()));
 
-    /// <summary>The place of something moved outside this manager, such as the toolbar, snapped to the screen's edges and the windows.</summary>
-    public Point Snap(Point location, Size size) => Snap(location, size, _windows.Select(window => window.Bounds));
+    /// <summary>
+    /// The place of something moved outside this manager, such as the toolbar, snapped to the screen's edges, the windows and
+    /// <paramref name="also"/>.
+    /// </summary>
+    public Point Snap(Point location, Size size, params Rectangle[] also) => Snap(location, size, _windows.Select(window => window.Bounds).Concat(also));
 
     private Point Snap(Point location, Size size, IEnumerable<Rectangle> targets)
     {

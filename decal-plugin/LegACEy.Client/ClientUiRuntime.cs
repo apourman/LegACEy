@@ -3068,7 +3068,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return 0;
     }
 
-    /// <summary>Moves the split tab with the pointer, snapped to the windows and kept on screen.</summary>
+    /// <summary>Moves the split tab with the pointer, snapped to the windows and the toolbar and kept on screen.</summary>
     private void DragSplitTab(Point pointer)
     {
         if (_splitTabSurface is not { } surface)
@@ -3088,7 +3088,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var size = surface.Bounds.Size;
         var offset = _splitTabDragOffset!.Value;
         var wanted = new Point(pointer.X - offset.Width, pointer.Y - offset.Height);
-        if (_windows != null) wanted = _windows.Snap(wanted, size);
+        if (_windows != null) wanted = _toolbarSurface is { Visible: true } bar ? _windows.Snap(wanted, size, bar.Bounds) : _windows.Snap(wanted, size);
         surface.Location = OnScreen(wanted, size);
     }
 
