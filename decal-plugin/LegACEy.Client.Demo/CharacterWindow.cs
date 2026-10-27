@@ -118,7 +118,15 @@ public sealed class CharacterWindow
         {
             Content = _list,
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            Background = Transparent
+        };
+        // A click on the list's empty space clears the selection, as in retail; rows and bands handle their own clicks.
+        _scroll.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(_scroll).Properties.IsLeftButtonPressed) return;
+            e.Handled = true;
+            ClearSelection();
         };
         _foot = new ContentControl { Margin = new Thickness(1, 4, 1, 0) };
         _statsPage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
@@ -184,6 +192,14 @@ public sealed class CharacterWindow
     {
         _selected = (kind, id);
         // The highlight is drawn with the rows.
+        _drawnRows = null;
+        Refresh();
+    }
+
+    /// <summary>Clears the selection, as a click on the list's empty space does.</summary>
+    public void ClearSelection()
+    {
+        _selected = null;
         _drawnRows = null;
         Refresh();
     }
@@ -358,12 +374,7 @@ public sealed class CharacterWindow
             if (!e.GetCurrentPoint(border).Properties.IsLeftButtonPressed) return;
             e.Handled = true;
             if (!IsSelected(row)) Select(row.Kind, row.Id);
-            else
-            {
-                _selected = null;
-                _drawnRows = null;
-                Refresh();
-            }
+            else ClearSelection();
         };
         return border;
     }
@@ -407,9 +418,9 @@ public sealed class CharacterWindow
         var side = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
         if (row == null)
         {
-            stack.Children.Add(Centred(Label(_tab == 0 ? "Select an attribute to raise it" : "Select a skill to raise it", 12, DerethPalette.MutedBrush)));
+            stack.Children.Add(Centred(Label(_tab == 0 ? "Select an Attribute to Improve" : "Select a Skill to Improve", 13.5, DerethPalette.CreamBrush, title: true)));
+            stack.Children.Add(Pair("Skill Credits Available", credits));
             stack.Children.Add(Pair("Unassigned Experience", Number(unassigned)));
-            if (_tab == 1) stack.Children.Add(Pair("Skill Credits Available", credits));
         }
         else if (row.Group is CharacterGroup.Untrained or CharacterGroup.Unusable)
         {
