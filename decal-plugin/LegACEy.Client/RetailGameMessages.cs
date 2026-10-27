@@ -124,7 +124,7 @@ internal sealed class RetailGameMessages : IDisposable
                     _pending.Enqueue(line);
                     return;
                 }
-                LogOnce("A game message could not be read; it went to retail's spew box.");
+                LogOnce($"A game message could not be read (literal {literal}, InqString {(_inqString is null ? "missing" : _builtResult.ToString())}); it went to retail's spew box.");
             }
             _retail(handler, chatType, text, timestampPrefix, targetWindow);
         }
@@ -135,7 +135,7 @@ internal sealed class RetailGameMessages : IDisposable
         }
     }
 
-    private bool _loggedMiss;
+    private bool _loggedMiss, _builtResult;
 
     private void LogOnce(string message)
     {
@@ -152,7 +152,12 @@ internal sealed class RetailGameMessages : IDisposable
         // empty string, and InqString swaps in the line, releasing that one.
         var chars = Marshal.ReadIntPtr(new IntPtr(unchecked((int)EmptyWide)));
         AddRef(chars);
-        try { return _inqString(stringInfo, ref chars, 0) ? Marshal.PtrToStringUni(chars) : null; }
+        // Retail's spew box (through StringInfo::ToString at 0x0042E980) draws whatever this writes and ignores what it returns.
+        try
+        {
+            _builtResult = _inqString(stringInfo, ref chars, 0);
+            return Marshal.PtrToStringUni(chars);
+        }
         finally { Release(chars); }
     }
 
