@@ -691,6 +691,19 @@ public sealed class RetailToolbarTests
     });
 
     [Fact]
+    public void A_click_into_the_amount_box_selects_it_so_typing_replaces_the_figure() => RenderThread.Run(() =>
+    {
+        var port = new FakeToolbarPort { Selection = Pyreals(50), SplitAmount = 10 };
+        using var panel = OpenTab(port, out var tab);
+        panel.Tick();
+
+        Click(panel, tab, tab.AmountBox!);
+        panel.TextInput("7");
+        Assert.Equal("7", tab.AmountBox!.Text);
+        Assert.Equal(7, port.SplitAmount);
+    });
+
+    [Fact]
     public void A_press_on_the_split_frame_starts_a_move_and_a_press_on_a_button_does_not() => RenderThread.Run(() =>
     {
         var moves = 0;

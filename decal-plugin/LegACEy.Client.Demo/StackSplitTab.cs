@@ -6,6 +6,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LegACEy.Client.Themes;
@@ -103,6 +104,11 @@ public sealed class StackSplitTab : Decorator
             // Only typing writes: the text the tab sets itself can raise this event after the refresh that set it.
             if (box == _amountBox && box.IsFocused && int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var typed)) Apply(typed, box);
         };
+        // A click into the box selects its figure, so typing replaces it. The press that focuses the box places the caret after focus
+        // arrives, so the release selects again.
+        var focusing = false;
+        box.GotFocus += (_, _) => { box.SelectAll(); focusing = true; };
+        box.AddHandler(PointerReleasedEvent, (_, _) => { if (focusing) box.SelectAll(); focusing = false; }, RoutingStrategies.Bubble, handledEventsToo: true);
         box.LostFocus += (_, _) => Settle(box);
         box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Settle(box); };
         slider.PropertyChanged += (_, e) =>
