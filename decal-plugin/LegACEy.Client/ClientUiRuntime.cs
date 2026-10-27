@@ -10,7 +10,6 @@ using System.Runtime.Loader;
 using System.Threading.Tasks;
 using Avalonia.Input;
 using Avalonia.Controls;
-using Avalonia.VisualTree;
 using Avalonia.Media;
 using IOPath = System.IO.Path;
 using LegACEy.Client.Demo;
@@ -4267,13 +4266,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     if ((route.Modifiers & InputModifiers.Control) != 0 && Rescalable(route.SurfaceId))
                         RescaleWindow(route.SurfaceId!, Math.Sign(route.WheelDelta));
                     else
-                    {
-                        // ponytail: backlog 095 wheel diagnostic, remove before shipping.
-                        double Offsets() => target!.Panel.Content.GetVisualDescendants().OfType<ScrollViewer>().Sum(viewer => viewer.Offset.Y);
-                        var before = Offsets();
                         target!.Panel.MouseWheel(route.X, route.Y, 0, route.WheelDelta / 120.0, ToKeyModifiers(route.Modifiers));
-                        Log($"Wheel 095: surface={route.SurfaceId} at=({route.X},{route.Y}) delta={route.WheelDelta} modifiers={route.Modifiers} raw=({lParam & 0xffff},{(lParam >> 16) & 0xffff}) scrolled={before}->{Offsets()} error={target.Panel.LastError?.Message}");
-                    }
                     eat = route.Eat;
                     break;
                 case InputAction.KeyDown:
