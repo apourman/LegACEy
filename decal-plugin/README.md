@@ -88,7 +88,7 @@ run) asks first and works only in peace stance; it then downloads the release
 into `update\<version>\`, checks it against its `SHA256SUMS.txt`, unpacks it,
 starts the updater, and logs out and closes the game. The updater applies it
 once every client has exited; start the game again from the launcher. The
-LegACEy menu shows the installed version and a Check button, which checks now
+Settings window shows the installed version and a Check button, which checks now
 past the shared gap (at most once a minute) and shows Checking, then the
 outcome, as a toast and in chat; it is greyed out on a checkout build or with
 `no-auto-update`. The checksum guards against a corrupt download, not a
@@ -219,15 +219,15 @@ every character in `plugin-settings.txt`, since the messages show before a chara
 The Settings window's Windows tab has a Dereth / Retail switch on each window's card, and an All windows switch above them that
 writes or deletes every `retail-*-native` file at once. It lights neither choice while the windows differ.
 
-The LegACEy menu's UI size row scales every LegACEy window and the toolbar with its shortcut rows, from 60 to 150 percent (85 to start),
+The Settings window's UI size row scales every LegACEy window and the toolbar with its shortcut rows, from 60 to 150 percent (85 to start),
 for every character. Ctrl and the wheel over a window or the toolbar scales it on its own, in 5 percent steps from 50 to 200 percent,
 per character, and shows its size over it while it changes. Without a wheel, each window's card in Settings → Windows has a Size row whose − and +
 do the same. Item icons scale with their window like the rest of it. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.
 
-The LegACEy menu's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the
+The Settings window's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the
 default) and retail's (Native). It creates or deletes that window's switch file above, so the choice holds for every character on the
-install. `/legacey` in chat opens or closes the menu, so it can be reached with retail's toolbar too.
+install. The toolbar's LegACEy button opens Settings, and `/legacey` in chat opens or closes it, so it can be reached with retail's toolbar too.
 
 ## Worlds
 

@@ -158,8 +158,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
     // The release build stamps the client with the plugin version, so the menu shows which release is installed.
-    private static readonly string MenuTitle = $"LegACEy {typeof(ClientUiRuntime).Assembly.GetName().Version?.ToString(3)}";
-    private const string MenuWindowId = "plugin-menu";
     private const string SettingsWindowId = "dereth-settings";
     // The Settings window's last tab, kept for the install like the UI size.
     private const string SettingsTabKey = "settings-tab";
@@ -560,7 +558,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void ContainerOpened() => _inventory.MarkStale();
 
     /// <summary>
-    /// /legacey (or @legacey) opens or closes the LegACEy menu, so it can be reached without the Dereth toolbar. /water on, off or a percent
+    /// /legacey (or @legacey) opens or closes the Settings window, so it can be reached without the Dereth toolbar. /water on, off or a percent
     /// (0 to 200) sets the water effect, and /water alone says how it is set; the line is eaten either way, so the server never sees it.
     /// </summary>
     public bool CommandLine(string text)
@@ -569,7 +567,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var command = text.Trim();
         if (command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) || command.Equals("@legacey", StringComparison.OrdinalIgnoreCase))
         {
-            Guard(ToggleMenuWindow);
+            Guard(ToggleSettings);
             return true;
         }
         var space = command.IndexOf(' ');
@@ -1040,31 +1038,24 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private IClientTheme CurrentTheme() => _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();
 
-    /// <summary>Opens or closes the LegACEy launcher window: the plugins' menu entries and a Settings… button.</summary>
-    private void ToggleMenuWindow()
+    /// <summary>The toolbar's LegACEy button and /legacey: opens the Settings window, or closes it when it is open.</summary>
+    private void ToggleSettings()
     {
-        if (!_windowsEnabled || _windows == null || _clientUi == null)
-            return;
-        if (_postUiDrawHook?.HasRun != true)
-        {
+        if (_windows?.Get(SettingsWindowId) != null)
+            CloseSettings();
+        else if (_postUiDrawHook?.HasRun != true)
             Log("LegACEy windows unavailable: the installed retail EndScene hook has not run.");
-            return;
-        }
-        if (_windows.Get(MenuWindowId) != null)
-        {
-            _clientUi.CloseWindow(MenuWindowId);
-            SetMenuRing(false);
-            return;
-        }
-        var window = new DerethWindow(MenuTitle, null, new PluginMenuPanel(_plugins!, _portal, () => OpenSettings(LoadSettingsTab())));
-        window.CloseRequested += (_, _) =>
-        {
-            _clientUi?.CloseWindow(MenuWindowId);
-            SetMenuRing(false);
-        };
-        _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight,
-            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
-        SetMenuRing(true);
+        else
+            OpenSettings(LoadSettingsTab());
+    }
+
+    private void CloseSettings()
+    {
+        _clientUi?.CloseWindow(SettingsWindowId);
+        SetMenuRing(false);
+        // Placing the game messages ends with the window that started it.
+        SetGameMessagesMoving(false);
+        _settings = null;
     }
 
     /// <summary>
@@ -1101,16 +1092,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         };
         _settings = settings;
         var window = new DerethWindow("Settings", null, new SettingsPanel(settings, tab, SaveSettingsTab, _plugins));
-        window.CloseRequested += (_, _) =>
-        {
-            _clientUi?.CloseWindow(SettingsWindowId);
-            // Placing the game messages ends with the window that started it.
-            SetGameMessagesMoving(false);
-            _settings = null;
-        };
-        // First opened beside the launcher (260 + its 220 width), not over it.
+        window.CloseRequested += (_, _) => CloseSettings();
         _clientUi.OpenWindow(new WindowDefinition(SettingsWindowId, "Settings", SettingsPanel.WindowWidth, SettingsPanel.WindowHeight,
-            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(500, 120));
+            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
+        SetMenuRing(true);
     }
 
     private SettingsTab LoadSettingsTab() =>
@@ -1226,7 +1211,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void Rebuild(bool resetPositions)
     {
-        var menuOpen = _windows?.Get(MenuWindowId) != null;
         var settingsOpen = _windows?.Get(SettingsWindowId) != null;
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
@@ -1234,7 +1218,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (resetPositions) ForgetWindowPlaces();
         _carriedChatHistory = chatHistory;
         LoginComplete();
-        if (menuOpen) Guard(ToggleMenuWindow);
         // The Settings window comes back on the tab it was on, which the tab store keeps; after a reset, on General.
         if (settingsOpen) Guard(() => OpenSettings(resetPositions ? SettingsTab.General : LoadSettingsTab()));
     }
@@ -3156,7 +3139,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
         _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
-        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack, BeginToolbarDrag, _portal);
+        var toolbar = new RetailToolbar(_toolbarPort, ToggleSettings, MoveToMainPack, BeginToolbarDrag, _portal);
         // Drawn at LegACEy's window scale, as the other LegACEy windows are. The Dereth theme makes it larger than it measures
         // without one, so it is measured again under the theme and the panel takes that size, rounded up so no edge is cut.
         var scale = WindowScale;
