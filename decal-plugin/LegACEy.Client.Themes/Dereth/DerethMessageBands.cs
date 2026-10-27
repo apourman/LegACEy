@@ -74,16 +74,11 @@ public sealed class DerethMessageBands : StackPanel
         }
     }
 
-    /// <summary>Shows a message on top, moving it there when it already shows; the oldest goes past three.</summary>
+    /// <summary>Shows a message on top, a repeat on its own row as retail's floating lines stack; the oldest goes past three.</summary>
     public void Show(string text)
     {
         Tick();
-        Band? band = null;
-        foreach (var child in Children)
-            if (child is Band { Text: var shown } same && shown == text) band = same;
-        if (band != null) Children.Remove(band);
-        else band = new Band(text, _textScale);
-        band.Remaining = Lifetime;
+        var band = new Band(text, _textScale) { Remaining = Lifetime };
         var top = Moving ? 1 : 0;
         Children.Insert(top, band);
         while (Children.Count - top > MaxShown) Children.RemoveAt(Children.Count - 1);
