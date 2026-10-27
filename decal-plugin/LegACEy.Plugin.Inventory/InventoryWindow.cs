@@ -406,8 +406,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         if (slot.Place == SlotPlace.Pack)
         {
-            // A focus takes a pack slot but holds nothing, so it does not open.
-            if (slot.Container != 0 && !IsFocus(_port.Snapshot, slot.Container))
+            // A focus opens too, as in retail: it holds nothing, so the grid shows no cells under "Contents of" its name.
+            if (slot.Container != 0)
             {
                 _picked = slot.Container;
                 Render(_port.Snapshot);
@@ -582,7 +582,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             if (slot.Tag is InventorySlotId tag && DraggedId(tag) == id)
             {
                 slot.Opacity = lifted ? LiftedOpacity : 1;
-                slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? PackOutlined(_port.Snapshot, tag.Container, OpenPack(_port.Snapshot)) : id == _port.Snapshot.Selected);
+                slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? tag.Container == OpenPack(_port.Snapshot).Id : id == _port.Snapshot.Selected);
             }
     }
 
@@ -658,11 +658,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// <summary>The object a slot stands for when it is selected or targeted: its item, or a pack (the main pack is the character).</summary>
     private static uint TargetOf(InventorySlotId slot) => slot.Place != SlotPlace.Pack ? slot.ItemId : slot.Container;
 
-    /// <summary>Whether a side-pack slot holds a focus: it takes the slot but holds nothing.</summary>
-    private static bool IsFocus(InventorySnapshot s, uint id) => PackOf(s, id)?.Capacity == 0;
-
-    /// <summary>A pack tile is outlined while its pack is open; a focus that is retail's selection takes the outline from it.</summary>
-    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => IsFocus(s, s.Selected) ? id == s.Selected : id == open.Id;
 
     private GameImage? DragImage(uint id)
     {
@@ -853,7 +848,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var count = pack.Id == 0 ? 0 : ItemsIn(snapshot, pack.Id);
         var tile = pack.Id == 0
             ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null))
-            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
+            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), pack.Id == open.Id);
         // Only a container holding something shows its fill. The bar takes no presses, so the tile under it still does.
         if (pack.Capacity <= 0 || count <= 0) return tile;
         var bar = FillBar(count, pack.Capacity);
@@ -869,7 +864,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         foreach (var item in snapshot.Items)
             if (item.Container == open.Id) items[item.Slot] = item;
         _contentsName.Text = "Contents of " + open.Name;
-        _contentsCount.Text = $"{ItemsIn(snapshot, open.Id)} / {open.Capacity}";
+        // A focus has no slots, so it has no count, as in retail.
+        _contentsCount.Text = open.Capacity == 0 ? string.Empty : $"{ItemsIn(snapshot, open.Id)} / {open.Capacity}";
         // One cell per slot of the container, empty ones included, in slot-index order. The grid keeps its scroll position.
         _grid.Cells.Clear();
         for (var index = 0; index < open.Capacity; index++)

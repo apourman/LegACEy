@@ -124,31 +124,26 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
-    public void Clicking_a_focus_selects_it_and_outlines_it_without_opening_it() => RenderThread.Run(() =>
+    public void Clicking_a_focus_selects_and_opens_it_with_no_cells() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot(focus: true));
         using var host = new InventoryHost(port, showSlots: true);
 
+        // As in retail, the focus opens: the grid empties and the header names it, with no count.
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Focus));
         Assert.Equal(new[] { $"select 0x{InventorySample.Focus:X8}" }, port.Commands);
-        Assert.Contains("Contents of Main Pack", host.Texts());
-
-        port.Push(InventorySample.Snapshot(focus: true, selected: InventorySample.Focus));
-        InventoryDriver.Tick(host.Host);
+        Assert.Contains("Contents of Foci of Strife", host.Texts());
+        Assert.DoesNotContain("0 / 0", host.Texts());
+        Assert.Empty(host.Cells);
         Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
         Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Character).Selected);
 
-        // A side pack is an item too: a click opens and selects it, and the outline goes to it.
-        InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack));
-        Assert.Equal($"select 0x{InventorySample.Sack:X8}", port.Commands[^1]);
-        port.Push(InventorySample.Snapshot(focus: true, selected: InventorySample.Sack));
-        InventoryDriver.Tick(host.Host);
-        Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Sack).Selected);
+        // A side pack takes the outline and the grid back.
+        InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
+        Assert.Contains("Contents of Potions", host.Texts());
+        Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Potions).Selected);
         Assert.False(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
-
-        InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Focus));
-        Assert.Equal($"select 0x{InventorySample.Focus:X8}", port.Commands[^1]);
     });
 
     [Fact]
