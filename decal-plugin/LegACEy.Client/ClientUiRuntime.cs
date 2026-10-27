@@ -236,6 +236,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The selected stack's split tab: its own surface over the toolbar's plaque, shown while a stack is selected.
     private const string SplitTabSurfaceId = "toolbar-split";
     private StackSplitTab? _splitTab;
+    // The split tab's saved place for this character, once read; none keeps it standing on the toolbar. Where a drag holds it.
+    private Point? _splitTabPlace;
+    private bool _splitTabPlaceLoaded;
+    private Size? _splitTabDragOffset;
     private ScreenSurface? _splitTabSurface;
     // Shortcut rows 1 and 2, inside the toolbar under its buttons while the takeover holds, and their refresh on inventory changes.
     private ShortcutBar? _shortcutBar;
@@ -928,6 +932,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
         _toolbarPlaceLoaded = false;
         if (_toolbarPlace != null) _toolbarPlace.Location = null;
+        _splitTabPlaceLoaded = false;
         _inventory.Clear();
         _lookCache.Clear();
         _portal?.ForgetImages();
@@ -2995,8 +3000,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Shows the split tab while the toolbar shows and a stack is selected, at its content's size, centred over the plaque and standing on
-    /// the toolbar's top edge; below the toolbar when there is no room above it.
+    /// Shows the split tab while the toolbar shows and a stack is selected, at its content's size: at the character's saved place, kept on
+    /// screen, or until it is moved centred over the plaque and standing on the toolbar's top edge; below the toolbar when there is no room above it.
     /// </summary>
     private void PlaceSplitTab()
     {
@@ -3012,11 +3017,56 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             int width = WholePixels(tab.DesiredSize.Width * scale), height = WholePixels(tab.DesiredSize.Height * scale);
             if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
             var plaque = Avalonia.VisualExtensions.TranslatePoint(toolbar.Plaque, new Avalonia.Point(toolbar.Plaque.Bounds.Width / 2, 0), toolbar) ?? default;
+            if (!_splitTabPlaceLoaded)
+            {
+                _splitTabPlace = _positionStore.Load(SessionServer(), SessionCharacter(), SplitTabPlaceId)?.Location;
+                _splitTabPlaceLoaded = true;
+            }
+            if (_splitTabDragOffset != null) return;
+            if (_splitTabPlace is { } place)
+            {
+                surface.Location = OnScreen(place, new Size(width, height));
+                return;
+            }
             var screen = GameDevice.ViewportSize(_device);
             var x = bar.Location.X + (int)Math.Round(plaque.X * scale) - width / 2;
             var y = bar.Location.Y - height;
             surface.Location = new Point(Math.Max(0, Math.Min(screen.Width - width, x)), y >= 0 ? y : bar.Bounds.Bottom);
         }
+    }
+
+    private const string SplitTabPlaceId = "dereth-split";
+
+    /// <summary>The split tab's frame was pressed: it follows the pointer until the button goes up. Refused while retail's UI is locked.</summary>
+    private void BeginSplitTabDrag()
+    {
+        if (NativeUi.IsUiLocked || _splitTabSurface is not { Visible: true } surface) return;
+        _splitTabDragOffset = new Size(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
+    }
+
+    /// <summary>Moves the split tab with the pointer, snapped to the windows and kept on screen.</summary>
+    private void DragSplitTab(Point pointer)
+    {
+        if (_splitTabSurface is not { } surface)
+        {
+            _splitTabDragOffset = null;
+            return;
+        }
+        var size = surface.Bounds.Size;
+        var offset = _splitTabDragOffset!.Value;
+        var wanted = new Point(pointer.X - offset.Width, pointer.Y - offset.Height);
+        if (_windows != null) wanted = _windows.Snap(wanted, size);
+        surface.Location = OnScreen(wanted, size);
+    }
+
+    /// <summary>The button went up: the split tab stays where it was dropped, and the place is saved for this character.</summary>
+    private void EndSplitTabDrag()
+    {
+        _splitTabDragOffset = null;
+        if (_splitTabSurface is not { } surface || !_inGame) return;
+        _splitTabPlace = surface.Location;
+        _positionStore.Save(SessionServer(), SessionCharacter(), SplitTabPlaceId, (surface.Location, null));
+        Log($"Moved the split tab to {surface.Location}.");
     }
 
     private const string ToolbarPlaceId = "dereth-toolbar";
@@ -3193,7 +3243,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         SetMenuRing(_windows?.Get(SettingsWindowId) != null);
         _toolbarSurface = new ScreenSurface(_device, panel);
         FitToolbar();
-        _splitTab = new StackSplitTab(_toolbarPort);
+        _splitTab = new StackSplitTab(_toolbarPort, BeginSplitTabDrag);
+        // A rebuild, as after a reset of the window places, reads the place again.
+        _splitTabPlaceLoaded = false;
         var splitPanel = ObservePanel(AvaloniaPanel.Create(() => _splitTab, 1, 1, scale), ToolbarFailed);
         splitPanel.ApplyTheme(new DerethClientTheme());
         _splitTabSurface = new ScreenSurface(_device, splitPanel);
@@ -4232,6 +4284,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                         DragToolbarRows(point);
                     else if (_gameMessageDragOffset != null)
                         DragGameMessages(point);
+                    else if (_splitTabDragOffset != null)
+                        DragSplitTab(point);
                     else
                     {
                         var handingOff = _handOff == null;
@@ -4289,6 +4343,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     _toolbarRowDragY = null;
                     if (_gameMessageDragOffset != null)
                         EndGameMessageDrag();
+                    if (_splitTabDragOffset != null)
+                        EndSplitTabDrag();
                     eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
@@ -4370,7 +4426,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private IntPtr WindowCursorAt(Point point)
     {
-        if (_toolbarDragOffset != null || _gameMessageDragOffset != null || _windows?.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
+        if (_toolbarDragOffset != null || _gameMessageDragOffset != null || _splitTabDragOffset != null || _windows?.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
         // The pointer goes to a capture, else to the topmost surface under it, as the router decides. Only the window that owns
         // it gets the move or resize cursor, so the retail bar and any other surface keep the game's cursor.
         var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
@@ -4515,6 +4571,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarDragOffset = null;
         _toolbarRowDragY = null;
         _gameMessageDragOffset = null;
+        _splitTabDragOffset = null;
         _windows?.Release();
     }
 

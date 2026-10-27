@@ -26,6 +26,7 @@ public sealed class StackSplitTab : Decorator
     private static readonly IBrush ThumbBrush = DerethPalette.Brush(Color.Parse("#DDC47D"));
 
     private readonly IRetailToolbarPort _port;
+    private readonly Action? _startMove;
     // The controls of the stack being split: its stack, the count it shows, whether a write is in progress, and its controls.
     private uint _amountStackId;
     private int _amountSize;
@@ -33,9 +34,11 @@ public sealed class StackSplitTab : Decorator
     private TextBox? _amountBox;
     private Slider? _amountSlider;
 
-    public StackSplitTab(IRetailToolbarPort port)
+    /// <param name="startMove">Called when the frame, outside its controls, is pressed with the left button, to move the tab.</param>
+    public StackSplitTab(IRetailToolbarPort port, Action? startMove = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
+        _startMove = startMove;
         Width = TabWidth;
         Refresh();
         port.Changed += Refresh;
@@ -128,10 +131,16 @@ public sealed class StackSplitTab : Decorator
         var quick = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Right, Children = { OneButton, HalfButton, AllButton } };
         var quickRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { label, quick } };
         Grid.SetColumn(quick, 1);
-        Child = new DerethFrame(DerethFrameArt.Window)
+        var frame = new Border
         {
-            Child = new StackPanel { Spacing = 4, Margin = new Thickness(4, 2), Children = { quickRow, amountRow } }
+            Background = Brushes.Transparent,
+            Child = new DerethFrame(DerethFrameArt.Window) { Child = new StackPanel { Spacing = 4, Margin = new Thickness(4, 2), Children = { quickRow, amountRow } } }
         };
+        frame.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(frame).Properties.IsLeftButtonPressed) _startMove?.Invoke();
+        };
+        Child = frame;
     }
 
     /// <summary>A small framed button that writes an amount when clicked; a box being typed in takes the figure too.</summary>

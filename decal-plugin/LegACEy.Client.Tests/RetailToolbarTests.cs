@@ -656,10 +656,10 @@ public sealed class RetailToolbarTests
     private static ShortcutBar Row(int firstIndex, ShortcutDragSource source) =>
         new(firstIndex, new FakeToolbarPort(), _ => null, null, new FakeItemDragHost(), source);
 
-    private static AvaloniaPanel OpenTab(IRetailToolbarPort port, out StackSplitTab tab)
+    private static AvaloniaPanel OpenTab(IRetailToolbarPort port, out StackSplitTab tab, Action? startMove = null)
     {
         StackSplitTab? created = null;
-        var panel = AvaloniaPanel.Create(() => created = new StackSplitTab(port), (int)StackSplitTab.TabWidth, 64);
+        var panel = AvaloniaPanel.Create(() => created = new StackSplitTab(port, startMove), (int)StackSplitTab.TabWidth, 64);
         tab = created!;
         return panel;
     }
@@ -688,6 +688,22 @@ public sealed class RetailToolbarTests
         panel.PointerUp(quarter.X, quarter.Y);
         panel.PointerLeave();
         Assert.InRange(port.SplitAmount, 10, 16);
+    });
+
+    [Fact]
+    public void A_press_on_the_split_frame_starts_a_move_and_a_press_on_a_button_does_not() => RenderThread.Run(() =>
+    {
+        var moves = 0;
+        var port = new FakeToolbarPort { Selection = Pyreals(50), SplitAmount = 10 };
+        using var panel = OpenTab(port, out var tab, () => moves++);
+        panel.Tick();
+
+        Click(panel, tab, tab.HalfButton!);
+        Assert.Equal(0, moves);
+        // The frame's corner, outside every control.
+        panel.PointerDown(3, 3);
+        panel.PointerUp(3, 3);
+        Assert.Equal(1, moves);
     });
 
     /// <summary>A player's drag of a slider's thumb, from where it sits to a fraction of the track (0 the left end, 1 the right).</summary>
