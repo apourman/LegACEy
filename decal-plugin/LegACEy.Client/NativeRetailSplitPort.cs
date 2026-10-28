@@ -18,18 +18,19 @@ internal sealed class NativeRetailSplitPort : IRetailSplitPort
 
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
     {
-        new NativeUiEntry("ACCWeenieObject::UIAttemptSplitTo3D asks IsPlayerReadyToMakeInventoryRequest, then sends", UIAttemptSplitTo3D,
-            NativeUiCatalogue.Bytes("56 6A 00 8B F1 E8 F6 F7 FF FF 83 C4 04 85 C0 74 59 8B 46 08 57 8B 7C 24 0C 57 50 E8 80 E8 11 00"), Source,
+        // Past the five-byte prologue and up to the sender's E8: Decal patches prologues and call sites.
+        new NativeUiEntry("ACCWeenieObject::UIAttemptSplitTo3D asks IsPlayerReadyToMakeInventoryRequest, then sends", UIAttemptSplitTo3D + 5,
+            NativeUiCatalogue.Bytes("E8 F6 F7 FF FF 83 C4 04 85 C0 74 59 8B 46 08 57 8B 7C 24 0C 57 50 E8"), Source,
             "ThisCall (ACCWeenieObject* stack, int amount), ret 4"),
         new NativeUiEntry("ACCWeenieObject::UIAttemptSplitTo3D records a split request (prevRequest = 2)", UIAttemptSplitTo3D + 0x34,
             NativeUiCatalogue.Bytes("C7 05 D0 1E 87 00 02 00 00 00"), Source, "instruction reference (mov [0x871ED0], 2)"),
-        new NativeUiEntry("ACCWeenieObject::UIAttemptSplitToContainer asks IsPlayerReadyToMakeInventoryRequest, then sends", UIAttemptSplitToContainer,
-            NativeUiCatalogue.Bytes("56 6A 00 8B F1 E8 76 F8 FF FF 83 C4 04 85 C0 74 64 8B 44 24 0C 8B 4C 24 08 8B 56 08 57 8B 7C 24 14 57 50 51 52 E8 06 EA 11 00"),
+        new NativeUiEntry("ACCWeenieObject::UIAttemptSplitToContainer asks IsPlayerReadyToMakeInventoryRequest, then sends", UIAttemptSplitToContainer + 5,
+            NativeUiCatalogue.Bytes("E8 76 F8 FF FF 83 C4 04 85 C0 74 64 8B 44 24 0C 8B 4C 24 08 8B 56 08 57 8B 7C 24 14 57 50 51 52 E8"),
             Source, "ThisCall (ACCWeenieObject* stack, uint containerId, int place, int amount), ret 0xC"),
         new NativeUiEntry("ACCWeenieObject::UIAttemptSplitToContainer records a split request (prevRequest = 2)", UIAttemptSplitToContainer + 0x3E,
             NativeUiCatalogue.Bytes("C7 05 D0 1E 87 00 02 00 00 00"), Source, "instruction reference (mov [0x871ED0], 2)"),
-        new NativeUiEntry("ACCObjectMaint::GetWeenieObject", RetailHudCatalogue.GetWeenieObject,
-            NativeUiCatalogue.Bytes("8B 0D DC 2A 84 00 85 C9 74 0B 8B 44 24 04 50 E8 DC 04 FB FF C3"), Source, "Cdecl (uint id) -> ACCWeenieObject*, null when unknown")
+        new NativeUiEntry("ACCObjectMaint::GetWeenieObject body: calls through ACCObjectMaint (0x00842ADC)", RetailHudCatalogue.GetWeenieObject + 6,
+            NativeUiCatalogue.Bytes("85 C9 74 0B 8B 44 24 04 50 E8 DC 04 FB FF C3"), Source, "Cdecl (uint id) -> ACCWeenieObject*, null when unknown")
     };
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -57,10 +58,10 @@ internal sealed class NativeRetailSplitPort : IRetailSplitPort
     private static readonly GetWeenieObjectFn GetWeenieObject = Marshal.GetDelegateForFunctionPointer<GetWeenieObjectFn>(
         new IntPtr(RetailHudCatalogue.GetWeenieObject));
 
-    private readonly bool _attempts;
+    private readonly bool _retailAttempts;
 
     public NativeRetailSplitPort(Func<uint, int, byte[]> readMemory, Action<string> log) =>
-        _attempts = NativeUiCatalogue.Validate(readMemory, log, Entries, "A refused split shows no \"can't be split\" line: the running client does not match its native entries.");
+        _retailAttempts = NativeUiCatalogue.Validate(readMemory, log, Entries, "A refused split shows no \"can't be split\" line: the running client does not match its native entries.");
 
     public uint SelectedId => (uint)Bridge.Fact(BridgeFact.CurrentSelection);
 
@@ -80,5 +81,5 @@ internal sealed class NativeRetailSplitPort : IRetailSplitPort
         else SplitToContainerNative(stackId, containerId, place, amount);
     }
 
-    private IntPtr Stack(uint stackId) => _attempts ? GetWeenieObject(stackId) : IntPtr.Zero;
+    private IntPtr Stack(uint stackId) => _retailAttempts ? GetWeenieObject(stackId) : IntPtr.Zero;
 }
