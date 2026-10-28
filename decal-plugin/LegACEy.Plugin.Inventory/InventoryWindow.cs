@@ -838,7 +838,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private DerethSlot WornSlot(InventorySnapshot snapshot, Dictionary<PaperdollSlot, WieldedItem> worn, PaperdollSlot slot)
     {
         if (!worn.TryGetValue(slot, out var item))
-            return new DerethSlot(InventoryGlyphs.For(slot)) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
+            return new DerethSlot(InventoryGlyphs.For(slot), flush: true) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
         return Slot(new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot), Layers(item.Visual, item.StackCount), item.Id == snapshot.Selected);
     }
 
@@ -856,8 +856,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         var count = pack.Id == 0 ? 0 : ItemsIn(snapshot, pack.Id);
         var tile = pack.Id == 0
-            ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null))
-            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
+            ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null), flush: false)
+            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open), flush: false);
         // Only a container holding something shows its fill. The bar takes no presses, so the tile under it still does.
         if (pack.Capacity <= 0 || count <= 0) return tile;
         var bar = FillBar(count, pack.Capacity);
@@ -889,9 +889,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             ? Empty(new InventorySlotId(SlotPlace.Cell, 0, container, index, null))
             : Slot(new InventorySlotId(SlotPlace.Cell, item.Id, container, index, null), Layers(item.Visual, item.StackCount, item.PartFull), item.Id == snapshot.Selected);
 
-    private static DerethSlot Slot(InventorySlotId id, Control content, bool selected) => new(content) { Tag = id, Selected = selected };
+    // The paperdoll's and the grid's slots touch, as retail's do; the pack column's keep the Dereth well round them.
+    private static DerethSlot Slot(InventorySlotId id, Control content, bool selected, bool flush = true) => new(content, flush) { Tag = id, Selected = selected };
 
-    private static DerethSlot Empty(InventorySlotId id) => new(null) { Tag = id, Opacity = EmptyOpacity };
+    private static DerethSlot Empty(InventorySlotId id, bool flush = true) => new(null, flush) { Tag = id, Opacity = EmptyOpacity };
 
     private void RenderBurden(InventorySnapshot snapshot)
     {
@@ -969,41 +970,47 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control Body()
     {
-        // The pack's six columns sit under the paperdoll's left column, with the contents line across their width.
+        // The pack's six columns sit under the paperdoll's left column, on its pitch, with the contents line across their width.
         _grid.Columns = RetailColumns;
-        // The paperdoll insets each cell 1 px in its pitch, so the pack's columns do too, and the two sections line up.
-        var pack = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(1, 0, 0, 0) };
+        _grid.ColumnPitch = InventoryPaperdoll.Cells.Pitch;
+        var pack = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), HorizontalAlignment = HorizontalAlignment.Left };
         pack.Children.Add(At(ContentsLine(), 0));
         pack.Children.Add(At(_grid, 1));
 
-        // The pack column stands on the right, as retail's does, the window's full height: burden at its head, then the main pack and
-        // the side packs, which scroll.
+        // The pack column stands on the right, as retail's does, the window's full height: "Burden" and its reading at its head, then the
+        // main pack and the side packs, which scroll. The meter stands at the window's edge beside the reading and the main pack.
         var packs = new ScrollViewer
         {
             Content = _packList, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Margin = new Thickness(0, 4, 0, 0),
+            Margin = new Thickness(0, 2, 0, 0),
         };
-        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 0, 0) };
-        column.Children.Add(At(Centred(_burdenMeter), 0));
-        column.Children.Add(At(Centred(_burdenText), 1));
-        column.Children.Add(At(packs, 2));
+        var label = Label("Burden", TextBrush, 12);
+        label.HorizontalAlignment = _burdenText.HorizontalAlignment = HorizontalAlignment.Right;
+        var burden = new StackPanel { Children = { label, _burdenText } };
+        _burdenMeter.VerticalAlignment = VerticalAlignment.Top;
+        _burdenMeter.Margin = new Thickness(4, 2, 0, 0);
+        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), ColumnDefinitions = new ColumnDefinitions("Auto,Auto") };
+        column.Children.Add(At(burden, 0));
+        column.Children.Add(At(packs, 1));
+        column.Children.Add(At(_burdenMeter, 0, 1));
+        Grid.SetRowSpan(_burdenMeter, 2);
 
         var body = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(2, 8, 2, 6)
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,*"), Margin = new Thickness(2, 3, 2, 2)
         };
+        // No rule between the paperdoll and the contents line: retail has none.
         body.Children.Add(At(_paperdoll, 0));
-        body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
-        body.Children.Add(At(pack, 2));
+        body.Children.Add(At(pack, 1));
         body.Children.Add(At(column, 0, 1));
-        Grid.SetRowSpan(column, 3);
+        Grid.SetRowSpan(column, 2);
         return body;
     }
 
     private Control ContentsLine()
     {
         // The count hugs the right edge, its margin a gap from a long pack name, which shrinks rather than running into it (Backlog 107).
-        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 0, 6) };
+        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 3, 0, 3) };
         line.Children.Add(_contentsName);
         line.Children.Add(At(_contentsCount, 0, 1));
         return line;
@@ -1013,13 +1020,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         Grid.SetRow(control, row);
         Grid.SetColumn(control, column);
-        return control;
-    }
-
-    private static T Centred<T>(T control) where T : Control
-    {
-        control.HorizontalAlignment = HorizontalAlignment.Center;
-        control.VerticalAlignment = VerticalAlignment.Center;
         return control;
     }
 }
