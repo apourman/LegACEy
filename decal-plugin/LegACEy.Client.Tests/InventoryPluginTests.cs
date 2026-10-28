@@ -280,11 +280,11 @@ public sealed class InventoryPluginTests
     });
 
     /// <summary>
-    /// The vertical window opens as retail's panel does: the main pack six cells across, here twelve down, titled with the character's name.
+    /// The vertical window opens as retail's panel does: the main pack six cells across and eleven down, titled with the character's name.
     /// Its width is fixed, and the grid has no spare width beside its columns.
     /// </summary>
     [Fact]
-    public void The_vertical_window_opens_with_a_six_by_twelve_main_pack_and_the_character_s_name() => RenderThread.Run(() =>
+    public void The_vertical_window_opens_with_retail_s_six_by_eleven_main_pack_and_the_character_s_name() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { Art = new InventorySample.SolidArt() };
         client.Port.Push(InventorySample.Snapshot(characterName: "R o Z"));
@@ -303,7 +303,7 @@ public sealed class InventoryPluginTests
         Assert.Equal(6, grid.Cells.Take(12).Select(cell => cell.Bounds.X).Distinct().Count());
         var viewport = Assert.Single(grid.GetVisualDescendants().OfType<ScrollViewer>()).Viewport.Width;
         Assert.InRange(viewport - 6 * pitch, 0, pitch / 2);
-        Assert.InRange(grid.Bounds.Height, 12 * pitch, 13 * pitch);
+        Assert.InRange(grid.Bounds.Height, 11 * pitch, 11.5 * pitch);
         Assert.Contains(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of R o Z");
 
         // The pack column stands right of the paperdoll and the grid, clear of both.
