@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.20.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.19.0...decal-plugin-v0.20.0) (2026-10-28)
+
+
+### Features
+
+* **client:** LegACEy button opens Settings directly ([#198](https://github.com/apourman/LegACEy/issues/198)) ([fd29131](https://github.com/apourman/LegACEy/commit/fd29131b315cefb3b296592820586b344bc3fa79))
+* **client:** retail-style appraisal layout ([#192](https://github.com/apourman/LegACEy/issues/192)) ([d63ef92](https://github.com/apourman/LegACEy/commit/d63ef926398e195bf121a8abf9a8b9f65b1dc93d))
+* retail raise plate in the character window ([#203](https://github.com/apourman/LegACEy/issues/203)) ([38a7b97](https://github.com/apourman/LegACEy/commit/38a7b9768bf207bdac63b78bc7391e2c93f60918))
+* window opacity ([#202](https://github.com/apourman/LegACEy/issues/202)) ([013d10d](https://github.com/apourman/LegACEy/commit/013d10d0b007d74c509437f2c51bba863c4e538e))
+
+
+### Bug Fixes
+
+* a click makes a chat window active ([#210](https://github.com/apourman/LegACEy/issues/210)) ([ecf3c15](https://github.com/apourman/LegACEy/commit/ecf3c159f12019d7fd2abd15c8c895b56029ed84))
+* burden reading caps at 300% ([#205](https://github.com/apourman/LegACEy/issues/205)) ([45e36a0](https://github.com/apourman/LegACEy/commit/45e36a0a02240ebd924a89f5576ad78849d80d3a))
+* character window title, vitals and experience bar ([#201](https://github.com/apourman/LegACEy/issues/201)) ([b391522](https://github.com/apourman/LegACEy/commit/b391522c296b2f72f30fedf88d92d83233372047))
+* chat input row and scroll bar stay solid ([#209](https://github.com/apourman/LegACEy/issues/209)) ([162d0d9](https://github.com/apourman/LegACEy/commit/162d0d9eeb844376f238e2a6c16b7e31b834d207))
+* **client:** clicking a focus opens it in the Dereth inventory ([#200](https://github.com/apourman/LegACEy/issues/200)) ([df90b57](https://github.com/apourman/LegACEy/commit/df90b5715b0c104dde9be93f6f079a74ae0b90b0))
+* **client:** share one GroundDat between radar, weather and water ([#197](https://github.com/apourman/LegACEy/issues/197)) ([c7097f8](https://github.com/apourman/LegACEy/commit/c7097f8d9797ac48b9971eec21b3aacc7cdb2432))
+* **client:** wider scrollbars with a thumb you can grab ([#196](https://github.com/apourman/LegACEy/issues/196)) ([6601037](https://github.com/apourman/LegACEy/commit/6601037d899b422cb353d6feb6e96e1a9aef8d93))
+* **client:** window size shows over the paperdoll ([#199](https://github.com/apourman/LegACEy/issues/199)) ([037d0bb](https://github.com/apourman/LegACEy/commit/037d0bb8363c3c66dd21ff99fe6f01436817655d))
+* pack count spacing in the inventory ([#208](https://github.com/apourman/LegACEy/issues/208)) ([5af6434](https://github.com/apourman/LegACEy/commit/5af6434d436ad3888eedeace9ffb5b22774e8903))
+* salvage shows its material and fullness ([#207](https://github.com/apourman/LegACEy/issues/207)) ([2cea81c](https://github.com/apourman/LegACEy/commit/2cea81cd41e0020433ecb51ed8866b42600e286f))
+* Split tab moves, resizes and slides ([#204](https://github.com/apourman/LegACEy/issues/204)) ([b522d29](https://github.com/apourman/LegACEy/commit/b522d29ead5faaadfe940e0b7903221d0c62b4cf))
+
+
+### Documentation
+
+* simpler decal-plugin README ([#206](https://github.com/apourman/LegACEy/issues/206)) ([52b809d](https://github.com/apourman/LegACEy/commit/52b809dbf28e2919c1870176cfa88f6d55cb1014))
+
 ## [0.19.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.18.0...decal-plugin-v0.19.0) (2026-10-27)
 
 
