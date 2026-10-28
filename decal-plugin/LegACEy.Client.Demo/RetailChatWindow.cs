@@ -68,6 +68,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly Border _groove;
     private readonly Border _grooveEdge;
     private readonly List<Control> _chrome = new();
+    private readonly Control _inputRow;
     private readonly Border _tabBar;
     private (double Backing, double Ink) _tabFade = (-1, -1);
     private readonly RetailChatFade _fade;
@@ -228,9 +229,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The frame is a sibling of the content, not its parent, so it fades without the lines fading with it. The root is hit-testable
         // all over, so the pointer counts as over the window wherever it is in the frame.
         // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
-        // The main window's input row never fades, as retail's chat bar does not; a torn-off window's fades with its frame.
         _chrome.AddRange(new Control[] { _frame, _groove, _grooveEdge });
-        if (tornOff) _chrome.Add(inputRow);
+        _inputRow = inputRow;
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, _scaled } };
         // A tab press that moves out of the strip is a drag; a press released on the tab is a click. Both are read from the window's own
         // events, so a press that moves outside the tab (where the tab itself gets no moves) still reaches the window.
@@ -419,13 +419,17 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             _idle = _fade.Idle;
             _linesSettled = false;
         }
-        // The whole window, frame and backdrop alike, goes from the active opacity to the inactive one as it fades, as retail's does; only
-        // the lines keep their own. Held by the host (moved or resized) or active it shows whole, so even at 0% it can be found.
+        // The frame and backdrop go from the active opacity to the inactive one as the window fades, as retail's do; the lines, tab labels,
+        // input row and scroll bar keep their own. Held by the host (moved or resized) or active it shows whole, so even at 0% it can be found.
         var opacity = keepAwake ? 1 : (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
         foreach (var part in _chrome) SetOpacity(part, opacity);
         FadeTabs(opacity, InactiveOpacity > 0 ? 1 : _fade.ChromeOpacity(now));
+        // The input row and the scroll bar stay solid while awake, as retail's do, and fade only with the idle fade, down to the inactive opacity.
+        // The main window's input row never fades, as retail's chat bar does not.
+        var solid = keepAwake ? 1 : (InactiveOpacity + (100 - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
+        SetOpacity(_inputRow, _tornOff ? solid : 1);
         _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
-        if (_scrollBar != null) SetOpacity(_scrollBar, opacity);
+        if (_scrollBar != null) SetOpacity(_scrollBar, solid);
         if (!_linesSettled) _linesSettled = ApplyLines(now);
     }
 
@@ -543,7 +547,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
     }
 
-    /// <summary>The window's opacity in percent while it is awake, frame and backdrop alike; the lines stay solid. A change applies on the next frame.</summary>
+    /// <summary>The window's opacity in percent while it is awake, frame and backdrop alike; the lines, input row and scroll bar stay solid. A change applies on the next frame.</summary>
     public int ActiveOpacity { get; set; } = RetailChatWindows.DefaultActiveOpacity;
 
     /// <summary>
