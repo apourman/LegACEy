@@ -56,7 +56,7 @@ public static class DerethItemCells
     /// </summary>
     public static Control FullnessBar(double full)
     {
-        var fill = new Border { Background = FullnessFill, VerticalAlignment = VerticalAlignment.Bottom, Height = 28 * Math.Min(Math.Max(full, 0), 1) };
+        var fill = new Border { Background = FullnessFill, VerticalAlignment = VerticalAlignment.Bottom, Height = 28 * full };
         return new Border
         {
             Width = 5, Height = 30, Margin = new Thickness(25, 1, 2, 1), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
