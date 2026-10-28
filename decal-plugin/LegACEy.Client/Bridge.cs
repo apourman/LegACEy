@@ -227,7 +227,8 @@ public static unsafe class Bridge
             : row.HasMana != 0 ? SelectionKind.ItemWithMana
             : row.StackCount > 1 ? SelectionKind.Stack
             : SelectionKind.Other;
-        return new RetailSelection(id, row.ToRead().Name, kind, StackCount: row.StackCount);
+        var name = AppraisalContent.WithMaterial(row.ToRead().Name, AppraisalOtherLines.MaterialName(row.Material));
+        return new RetailSelection(id, name, kind, StackCount: row.StackCount);
     }
 
     internal static GameStateSnapshot ReadGameState() => new(Text(BridgeText.CharacterName), Text(BridgeText.ServerName),
