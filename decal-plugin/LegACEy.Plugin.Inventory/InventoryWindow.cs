@@ -994,7 +994,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control ContentsLine()
     {
-        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 2, 6) };
+        // The count hugs the right edge and keeps a gap from a long pack name, which trims rather than running into it (Backlog 107).
+        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 0, 6) };
+        _contentsName.TextTrimming = TextTrimming.CharacterEllipsis;
+        _contentsCount.Margin = new Thickness(10, 0, 0, 0);
         line.Children.Add(_contentsName);
         line.Children.Add(At(_contentsCount, 0, 1));
         return line;
