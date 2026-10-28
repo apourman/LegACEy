@@ -68,6 +68,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly Border _groove;
     private readonly Border _grooveEdge;
     private readonly List<Control> _chrome = new();
+    private readonly Control _inputRow;
     private readonly RetailChatFade _fade;
     private readonly Func<DateTime> _clock;
     private readonly Action<string> _copy;
@@ -226,7 +227,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The frame is a sibling of the content, not its parent, so it fades without the lines fading with it. The root is hit-testable
         // all over, so the pointer counts as over the window wherever it is in the frame.
         // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
-        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, _grooveEdge, inputRow });
+        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, _grooveEdge });
+        _inputRow = inputRow;
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, _scaled } };
         // A tab press that moves out of the strip is a drag; a press released on the tab is a click. Both are read from the window's own
         // events, so a press that moves outside the tab (where the tab itself gets no moves) still reaches the window.
@@ -418,6 +420,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // the lines keep their own. Held by the host (moved or resized) it shows whole, so even at 0% it can be found.
         var opacity = keepAwake ? 1 : (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
         foreach (var part in _chrome) SetOpacity(part, opacity);
+        // The input row stays solid while awake, as retail's does, and fades only with the idle fade, down to the inactive opacity.
+        SetOpacity(_inputRow, keepAwake ? 1 : (InactiveOpacity + (100 - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0);
         _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
         if (_scrollBar != null) SetOpacity(_scrollBar, opacity);
         if (!_linesSettled) _linesSettled = ApplyLines(now);
