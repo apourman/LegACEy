@@ -13,9 +13,9 @@ namespace LegACEy.Plugin.Inventory;
 /// <summary>
 /// The paperdoll block: retail's paperdoll on six columns at retail's 32 px pitch (<see cref="Cells"/>): the left
 /// jewellery column, three armour columns over the doll and two right columns. The aetheria are one row across the top right, as retail's,
-/// the first over the doll area's corner, so the doll stands below that row. Rows keep retail's spacing. It fills the width it is given: the left column keeps to the left edge, the
-/// right columns to the right edge, and the doll area takes the rest, with the armour slots centred over it. The doll area is the one control
-/// the 3D character fills; the Slots toggle sits in its bottom-left corner. Slots are placed by <see cref="Show"/>.
+/// the first over the doll area's corner, so the doll stands below that row. Rows keep retail's spacing. The block is as wide as retail's,
+/// whatever width it is given, so its columns sit where retail's do and the window's room to their right stays empty, as retail's does. The
+/// doll area is the one control the 3D character fills; the Slots toggle sits in its bottom-left corner. Slots are placed by <see cref="Show"/>.
 /// </summary>
 internal sealed class InventoryPaperdoll : Canvas
 {
@@ -26,14 +26,14 @@ internal sealed class InventoryPaperdoll : Canvas
     internal static readonly ItemCellSize Cells = new(32, 32, 32);
     private const int Columns = 6;
     // Retail's rows less its 8 px above the first and 10 px below the last, so the grid under the block shows more rows (Backlog 067).
-    private const int Height = 196;
-    // The armour columns run from 1 to 3, round which the doll area is drawn, 2 DIPs clear of them on each side; 4 and 5 are the right side.
-    // A gap on each side of the armour columns keeps the doll area clear of the left and right columns.
-    private const int ArmourLeft = 1, ArmourRight = 3, RightLeft = 4;
-    private const double DollClearance = 2, SideGap = 6;
+    private const int BlockHeight = 196;
+    // The armour columns run from 1 to 3, over the doll; 4 and 5 are the right side. A gap on each side of the armour columns sets the
+    // left and right columns where retail's are, and the doll area spans the armour columns and both gaps, 2 DIPs clear of the side columns.
+    private const int ArmourLeft = 1, RightLeft = 4;
+    private const double DollClearance = 2, SideGap = 9;
+    private static double BlockWidth => Columns * Cells.Pitch + 2 * SideGap;
     // The Slots toggle sits in the doll area's bottom-left corner, as retail's does, on one row with the expand button in the
-    // bottom-right corner; the doll takes all the height above that row, as retail's fills its panel. The host draws the doll over
-    // the window, so it stays off the row rather than hide the toggle.
+    // bottom-right corner. The doll takes the whole height, as retail's fills its panel, its feet between the two.
     private const int CornerInset = 4;
     private const int CornerRowHeight = 20;
     // The aetheria row's top. The row moves with the right side, so its cells stay one pitch apart.
@@ -63,8 +63,6 @@ internal sealed class InventoryPaperdoll : Canvas
     };
 
     private readonly List<(Control Cell, int X, int Y, bool Right)> _placed = new();
-    // The width the block was placed for, and how much of it is past the narrowest: the doll area takes it.
-    private double _width, _spare;
     private readonly Border _slotsMark = new()
     {
         Width = 11, Height = 11, CornerRadius = new CornerRadius(6), BorderBrush = DerethPalette.GoldBrush, BorderThickness = new Thickness(1),
@@ -100,44 +98,38 @@ internal sealed class InventoryPaperdoll : Canvas
         ExpandButton = new DerethHeaderButton(expand) { Name = "ExpandDoll", Width = CornerRowHeight, Height = CornerRowHeight, IsVisible = false };
         ToolTip.SetTip(ExpandButton, "Inspect in a larger window");
         Children.Add(ExpandButton);
+        Place();
     }
 
-    // Everything is placed from the pitch and from the width given, again when the width changes.
     protected override Size MeasureOverride(Size availableSize)
     {
-        var width = Math.Max(Columns * Cells.Pitch + 2 * SideGap, double.IsInfinity(availableSize.Width) ? 0 : Math.Floor(availableSize.Width));
-        if (width != _width) Place(width);
         base.MeasureOverride(availableSize);
-        return new Size(width, Height);
+        return new Size(BlockWidth, BlockHeight);
     }
 
-    private void Place(double width)
+    private void Place()
     {
-        _width = width;
-        _spare = width - Columns * Cells.Pitch - 2 * SideGap;
-        DollArea.Width = (ArmourRight - ArmourLeft) * Cells.Pitch + Cells.Cell + 2 * DollClearance + _spare;
-        DollArea.Height = Height;
-        SetLeft(DollArea, ArmourLeft * Cells.Pitch + SideGap - DollClearance);
+        DollArea.Width = 3 * Cells.Pitch + 2 * SideGap - 2 * DollClearance;
+        DollArea.Height = BlockHeight;
+        SetLeft(DollArea, ArmourLeft * Cells.Pitch + DollClearance);
         // The first aetheria reaches over the doll area's top-right corner, so that corner is cut away round it, a gap clear of its
         // cell, and the cell sits in the window's own space beside the doll.
         var rowBottom = AetheriaY + Cells.Cell + AetheriaGap;
-        var notchLeft = 3 * Cells.Pitch + 2 * SideGap + _spare - AetheriaGap - GetLeft(DollArea);
-        // The doll stands above the corner row with its head beside the aetheria row; the host draws only the figure, not its view.
-        // Starting a third of the way from the panel top to that row's bottom puts the stance's shoulders below the first aetheria and its gap.
-        DollArea.Padding = new Thickness(0, rowBottom / 3, 0, CornerRowHeight + 2 * CornerInset);
+        var notchLeft = 3 * Cells.Pitch + 2 * SideGap - AetheriaGap - GetLeft(DollArea);
+        // The doll takes the area's whole height, as retail's does its panel's: the host draws only the figure, not its view, so its head
+        // stands beside the aetheria row and its feet between the Slots toggle and the expand button.
         DollArea.Clip = new CombinedGeometry(GeometryCombineMode.Exclude,
-            new RectangleGeometry(new Rect(0, 0, DollArea.Width, Height)), new RectangleGeometry(new Rect(notchLeft, 0, DollArea.Width - notchLeft, rowBottom)));
+            new RectangleGeometry(new Rect(0, 0, DollArea.Width, BlockHeight)), new RectangleGeometry(new Rect(notchLeft, 0, DollArea.Width - notchLeft, rowBottom)));
         SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
-        SetTop(SlotsToggle, Height - CornerRowHeight - CornerInset);
+        SetTop(SlotsToggle, BlockHeight - CornerRowHeight - CornerInset);
         SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - CornerInset);
-        SetTop(ExpandButton, Height - CornerRowHeight - CornerInset);
-        foreach (var (cell, column, y, right) in _placed) PlaceCell(cell, column, y, right);
+        SetTop(ExpandButton, BlockHeight - CornerRowHeight - CornerInset);
     }
 
-    private void PlaceCell(Control cell, int column, int y, bool right)
+    private static void PlaceCell(Control cell, int column, int y, bool right)
     {
-        // The left column stays at the left edge, the armour over the doll moves half the spare width, and the right side all of it.
-        var shift = right ? 2 * SideGap + _spare : column >= ArmourLeft ? SideGap + Math.Round(_spare / 2) : 0;
+        // The left column keeps to the left edge; a gap sets the armour columns off it, and another the right side off them.
+        var shift = right ? 2 * SideGap : column >= ArmourLeft ? SideGap : 0;
         // A flush slot asks no width of its own, and a canvas gives a child only what it asks.
         cell.Width = Cells.Cell;
         SetLeft(cell, column * Cells.Pitch + shift);

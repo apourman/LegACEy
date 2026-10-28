@@ -977,17 +977,23 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         pack.Children.Add(At(ContentsLine(), 0));
         pack.Children.Add(At(_grid, 1));
 
-        // The pack column stands on the right, as retail's does, the window's full height: burden at its head, then the main pack and
-        // the side packs, which scroll.
+        // The pack column stands on the right, as retail's does, the window's full height: "Burden" and its reading at its head, then the
+        // main pack and the side packs, which scroll. The meter stands at the window's edge beside the reading and the main pack.
         var packs = new ScrollViewer
         {
             Content = _packList, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Margin = new Thickness(0, 4, 0, 0),
+            Margin = new Thickness(0, 2, 0, 0),
         };
-        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 0, 0) };
-        column.Children.Add(At(Centred(_burdenMeter), 0));
-        column.Children.Add(At(Centred(_burdenText), 1));
-        column.Children.Add(At(packs, 2));
+        _burdenText.HorizontalAlignment = HorizontalAlignment.Right;
+        var burden = new StackPanel { Children = { Label("Burden", TextBrush, 12), _burdenText } };
+        burden.Children[0].HorizontalAlignment = HorizontalAlignment.Right;
+        _burdenMeter.VerticalAlignment = VerticalAlignment.Top;
+        _burdenMeter.Margin = new Thickness(4, 2, 0, 0);
+        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), ColumnDefinitions = new ColumnDefinitions("Auto,Auto") };
+        column.Children.Add(At(burden, 0));
+        column.Children.Add(At(packs, 1));
+        column.Children.Add(At(_burdenMeter, 0, 1));
+        Grid.SetRowSpan(_burdenMeter, 2);
 
         var body = new Grid
         {
@@ -1014,13 +1020,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         Grid.SetRow(control, row);
         Grid.SetColumn(control, column);
-        return control;
-    }
-
-    private static T Centred<T>(T control) where T : Control
-    {
-        control.HorizontalAlignment = HorizontalAlignment.Center;
-        control.VerticalAlignment = VerticalAlignment.Center;
         return control;
     }
 }
