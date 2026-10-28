@@ -15,7 +15,7 @@ namespace LegACEy.Plugin.Inventory;
 /// jewellery column, three armour columns over the doll and two right columns. The aetheria are one row across the top right, as retail's,
 /// the first over the doll area's corner, so the doll stands below that row. Rows keep retail's spacing. The block is as wide as retail's,
 /// whatever width it is given, so its columns sit where retail's do and the window's room to their right stays empty, as retail's does. The
-/// doll area is the one control the 3D character fills; the Slots toggle sits in its bottom-left corner. Slots are placed by <see cref="Show"/>.
+/// doll area is the one control the 3D character fills; the Slots toggle sits in the right side's gap above the weapon. Slots are placed by <see cref="Show"/>.
 /// </summary>
 internal sealed class InventoryPaperdoll : Canvas
 {
@@ -32,8 +32,9 @@ internal sealed class InventoryPaperdoll : Canvas
     private const int ArmourLeft = 1, RightLeft = 4;
     private const double DollClearance = 2, SideGap = 9;
     private static double BlockWidth => Columns * Cells.Pitch + 2 * SideGap;
-    // The Slots toggle sits in the doll area's bottom-left corner, as retail's does, on one row with the expand button in the
-    // bottom-right corner. The doll takes the whole height, as retail's fills its panel, its feet between the two.
+    // The expand button sits in the doll area's bottom-right corner, clear of the feet. The Slots toggle sits in the right side's gap
+    // between the ring and the weapon, clear of the doll and the armour slots: in the doll's bottom-left corner, as retail's, the
+    // full-height doll's left foot covered it.
     private const int CornerInset = 4;
     private const int CornerRowHeight = 20;
     // The aetheria row's top. The row moves with the right side, so its cells stay one pitch apart.
@@ -117,11 +118,12 @@ internal sealed class InventoryPaperdoll : Canvas
         var rowBottom = AetheriaY + Cells.Cell + AetheriaGap;
         var notchLeft = 3 * Cells.Pitch + 2 * SideGap - AetheriaGap - GetLeft(DollArea);
         // The doll takes the area's whole height, as retail's does its panel's: the host draws only the figure, not its view, so its head
-        // stands beside the aetheria row and its feet between the Slots toggle and the expand button.
+        // stands beside the aetheria row and its feet left of the expand button.
         DollArea.Clip = new CombinedGeometry(GeometryCombineMode.Exclude,
             new RectangleGeometry(new Rect(0, 0, DollArea.Width, BlockHeight)), new RectangleGeometry(new Rect(notchLeft, 0, DollArea.Width - notchLeft, rowBottom)));
-        SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
-        SetTop(SlotsToggle, BlockHeight - CornerRowHeight - CornerInset);
+        // Centred in the gap from the ring's foot (row 108) to the weapon's head (row 164).
+        SetLeft(SlotsToggle, RightLeft * Cells.Pitch + 2 * SideGap);
+        SetTop(SlotsToggle, (108 + Cells.Cell + 164 - CornerRowHeight) / 2);
         SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - CornerInset);
         SetTop(ExpandButton, BlockHeight - CornerRowHeight - CornerInset);
     }
