@@ -56,7 +56,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private readonly InventoryPaperdoll _paperdoll = new();
     // Its columns start under the contents line's name.
     private readonly DerethSlotGrid _grid = new() { ColumnAlignment = HorizontalAlignment.Left };
-    private readonly TextBlock _contentsName = Label(string.Empty, TextBrush, 13);
+    // Shrinks to fit beside the count, as a window title does, before it trims.
+    private readonly DerethTitleText _contentsName = new()
+    {
+        Foreground = TextBrush, FontFamily = DerethPalette.Body, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
+    };
     private readonly TextBlock _contentsCount = Label(string.Empty, MutedBrush, 13);
     // The pack list: the main pack and the side packs, in a column right of the grid.
     private readonly StackPanel _packList = new() { Spacing = 4 };
@@ -865,7 +869,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var items = new Dictionary<int, InventoryItem>();
         foreach (var item in snapshot.Items)
             if (item.Container == open.Id) items[item.Slot] = item;
-        _contentsName.Text = "Contents of " + open.Name;
+        _contentsName.FullText = "Contents of " + open.Name;
         // A focus has no slots, so it has no count, as in retail.
         _contentsCount.Text = open.Capacity == 0 ? string.Empty : $"{ItemsIn(snapshot, open.Id)} / {open.Capacity}";
         // One cell per slot of the container, empty ones included, in slot-index order. The grid keeps its scroll position.
@@ -994,9 +998,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control ContentsLine()
     {
-        // The count hugs the right edge and keeps a gap from a long pack name, which trims rather than running into it (Backlog 107).
+        // The count hugs the right edge and keeps a gap from a long pack name, which shrinks rather than running into it (Backlog 107).
         var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 0, 6) };
-        _contentsName.TextTrimming = TextTrimming.CharacterEllipsis;
         _contentsCount.Margin = new Thickness(10, 0, 0, 0);
         line.Children.Add(_contentsName);
         line.Children.Add(At(_contentsCount, 0, 1));
