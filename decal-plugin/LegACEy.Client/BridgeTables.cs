@@ -166,4 +166,9 @@ public unsafe struct BridgeItem
     public int IsCreature;
     /// <summary>1 when the object has mana (Decal's MaximumMana), which the selection plaque gives a mana meter.</summary>
     public int HasMana;
+    /// <summary>The MaterialType value (ACE property 131), 0 for none; the plaque puts its name in front ("Steel Salvage").</summary>
+    public int Material;
+    /// <summary>Uses or units left and the most it holds (ACE Structure 92 and MaxStructure 91), 0 for none: a salvage bag's units.</summary>
+    public int Structure;
+    public int MaxStructure;
 }

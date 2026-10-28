@@ -165,10 +165,13 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             : response.Strings.TryGetValue(NameString, out var sent) && sent.Length > 0 ? sent : "Unknown item";
         var count = world?.StackCount ?? 0;
         if (count > 1) name = plural.Length > 0 ? plural : name + (name.EndsWith("s", StringComparison.Ordinal) ? "es" : "s");
-        if (AppraisalOtherLines.Material(response) is { } material && name.IndexOf(material, StringComparison.Ordinal) < 0)
-            name = material + " " + name;
+        name = WithMaterial(name, AppraisalOtherLines.Material(response));
         return count > 1 ? Invariant(count) + " " + name : name;
     }
+
+    /// <summary>The name with the material in front ("Steel Salvage"), unless there is none or the name already has it.</summary>
+    internal static string WithMaterial(string name, string? material) =>
+        material != null && name.IndexOf(material, StringComparison.Ordinal) < 0 ? material + " " + name : name;
 
     /// <summary>
     /// Builds what the window shows from one appraisal. <paramref name="spells"/> gives each spell's name and description by id (the

@@ -43,7 +43,8 @@ public static unsafe class Bridge
         Utf8.ToUtf16(end < 0 ? bytes : bytes[..end], chars, out _, out var written, isFinalBlock: false);
         return new InventoryObjectRead(row.Id, new string(chars[..written]), row.Container, row.Slot, row.EquippedMask,
             row.ValidLocations, row.StackCount, row.StackMax, row.ItemSlots, row.IsContainer != 0, row.Wcid,
-            new ItemVisual(row.Icon, row.Underlay, row.Overlay, row.UiEffects, row.Plate));
+            new ItemVisual(row.Icon, row.Underlay, row.Overlay, row.UiEffects, row.Plate),
+            row.MaxStructure > 0 && row.Structure < row.MaxStructure ? (double)Math.Max(0, row.Structure) / row.MaxStructure : null);
     }
 
     private static BridgeCalls _calls;
@@ -227,7 +228,8 @@ public static unsafe class Bridge
             : row.HasMana != 0 ? SelectionKind.ItemWithMana
             : row.StackCount > 1 ? SelectionKind.Stack
             : SelectionKind.Other;
-        return new RetailSelection(id, row.ToRead().Name, kind, StackCount: row.StackCount);
+        var name = AppraisalContent.WithMaterial(row.ToRead().Name, AppraisalOtherLines.MaterialName(row.Material));
+        return new RetailSelection(id, name, kind, StackCount: row.StackCount);
     }
 
     internal static GameStateSnapshot ReadGameState() => new(Text(BridgeText.CharacterName), Text(BridgeText.ServerName),
