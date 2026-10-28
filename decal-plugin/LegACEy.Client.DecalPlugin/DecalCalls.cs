@@ -240,6 +240,9 @@ internal static unsafe class DecalCalls
         row->HasMana = item.Values(LongValueKey.MaximumMana, 0) > 0 ? 1 : 0;
         // Gate: Decal's Material is the item's MaterialType (ACE property 131), sent with the object.
         row->Material = item.Values(LongValueKey.Material, 0);
+        // Gate: Decal's UsesRemaining and UsesTotal are the item's Structure and MaxStructure (ACE 92 and 91), sent with the object.
+        row->Structure = item.Values(LongValueKey.UsesRemaining, 0);
+        row->MaxStructure = item.Values(LongValueKey.UsesTotal, 0);
     }
 
     /// <summary>Decal reports portal texture ids without their 0x06 prefix; zero means none.</summary>

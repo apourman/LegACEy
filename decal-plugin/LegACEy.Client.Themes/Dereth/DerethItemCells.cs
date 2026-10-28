@@ -43,6 +43,27 @@ public static class DerethItemCells
         return panel;
     }
 
+    private static readonly IBrush FullnessEdge = DerethPalette.Brush(Color.FromRgb(0x2A, 0x4A, 0x00));
+    private static readonly IBrush FullnessFill = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
+        GradientStops = { new GradientStop(Color.FromRgb(0x35, 0xFF, 0x02), 0), new GradientStop(Color.FromRgb(0x1D, 0x8B, 0x00), 1) },
+    };
+
+    /// <summary>
+    /// Retail's bar for a part-used item (a salvage bag under 100 units), in icon pixels: 5 × 30 at the icon's right edge, a dark green
+    /// edge round black, green from the bottom for <paramref name="full"/> of the way. Lay it over <see cref="Icon"/>.
+    /// </summary>
+    public static Control FullnessBar(double full)
+    {
+        var fill = new Border { Background = FullnessFill, VerticalAlignment = VerticalAlignment.Bottom, Height = 28 * Math.Min(Math.Max(full, 0), 1) };
+        return new Border
+        {
+            Width = 5, Height = 30, Margin = new Thickness(25, 1, 2, 1), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            BorderBrush = FullnessEdge, BorderThickness = new Thickness(1), Background = Brushes.Black, Child = fill,
+        };
+    }
+
     /// <summary>A line of text in the Dereth body font, centred vertically.</summary>
     public static TextBlock Label(string text, IBrush brush, double size) => new()
     {

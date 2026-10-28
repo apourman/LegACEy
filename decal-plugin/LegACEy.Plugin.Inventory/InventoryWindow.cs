@@ -880,7 +880,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private DerethSlot Cell(InventorySnapshot snapshot, uint container, int index, InventoryItem? item) =>
         item == null
             ? Empty(new InventorySlotId(SlotPlace.Cell, 0, container, index, null))
-            : Slot(new InventorySlotId(SlotPlace.Cell, item.Id, container, index, null), Layers(item.Visual, item.StackCount), item.Id == snapshot.Selected);
+            : Slot(new InventorySlotId(SlotPlace.Cell, item.Id, container, index, null), Layers(item.Visual, item.StackCount, item.PartFull), item.Id == snapshot.Selected);
 
     private static DerethSlot Slot(InventorySlotId id, Control content, bool selected) => new(content) { Tag = id, Selected = selected };
 
@@ -941,11 +941,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return track;
     }
 
-    /// <summary>An item's icon and, for a stack, its count, in a slot-sized layer stack.</summary>
-    private Grid Layers(ItemVisual visual, int stack)
+    /// <summary>An item's icon and, for a stack, its count, and for a part-used item, retail's fullness bar, in a slot-sized layer stack.</summary>
+    private Grid Layers(ItemVisual visual, int stack, double? partFull = null)
     {
         var layers = Icon(visual);
         if (stack > 1) layers.Children.Add(StackCount(stack));
+        if (partFull is { } full) layers.Children.Add(DerethItemCells.FullnessBar(full));
         return layers;
     }
 

@@ -98,8 +98,10 @@ public sealed class ItemVisual : IEquatable<ItemVisual>
 /// <summary>An item in a pack, at a slot index of its container.</summary>
 public sealed class InventoryItem : IEquatable<InventoryItem>
 {
-    public InventoryItem(uint id, string name, uint container, int slot, ItemVisual visual, int stackCount, int stackMax, int wcid, uint validLocations)
+    public InventoryItem(uint id, string name, uint container, int slot, ItemVisual visual, int stackCount, int stackMax, int wcid, uint validLocations,
+        double? partFull = null)
     {
+        PartFull = partFull;
         Id = id;
         Name = name ?? string.Empty;
         Container = container;
@@ -124,9 +126,11 @@ public sealed class InventoryItem : IEquatable<InventoryItem>
     public int Wcid { get; }
     /// <summary>The wield locations the item can take (the AC EquipMask bits).</summary>
     public uint ValidLocations { get; }
+    /// <summary>How full a part-used item is: see <see cref="InventoryObjectRead.PartFull"/>.</summary>
+    public double? PartFull { get; }
 
-    public bool Equals(InventoryItem? other) => other != null && (Id, Name, Container, Slot, Visual, StackCount, StackMax, Wcid, ValidLocations)
-        .Equals((other.Id, other.Name, other.Container, other.Slot, other.Visual, other.StackCount, other.StackMax, other.Wcid, other.ValidLocations));
+    public bool Equals(InventoryItem? other) => other != null && (Id, Name, Container, Slot, Visual, StackCount, StackMax, Wcid, ValidLocations, PartFull)
+        .Equals((other.Id, other.Name, other.Container, other.Slot, other.Visual, other.StackCount, other.StackMax, other.Wcid, other.ValidLocations, other.PartFull));
     public override bool Equals(object? obj) => Equals(obj as InventoryItem);
     public override int GetHashCode() => Id.GetHashCode();
 }

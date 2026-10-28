@@ -168,4 +168,7 @@ public unsafe struct BridgeItem
     public int HasMana;
     /// <summary>The MaterialType value (ACE property 131), 0 for none; the plaque puts its name in front ("Steel Salvage").</summary>
     public int Material;
+    /// <summary>Uses or units left and the most it holds (ACE Structure 92 and MaxStructure 91), 0 for none: a salvage bag's units.</summary>
+    public int Structure;
+    public int MaxStructure;
 }

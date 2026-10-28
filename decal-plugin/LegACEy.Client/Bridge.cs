@@ -43,7 +43,8 @@ public static unsafe class Bridge
         Utf8.ToUtf16(end < 0 ? bytes : bytes[..end], chars, out _, out var written, isFinalBlock: false);
         return new InventoryObjectRead(row.Id, new string(chars[..written]), row.Container, row.Slot, row.EquippedMask,
             row.ValidLocations, row.StackCount, row.StackMax, row.ItemSlots, row.IsContainer != 0, row.Wcid,
-            new ItemVisual(row.Icon, row.Underlay, row.Overlay, row.UiEffects, row.Plate));
+            new ItemVisual(row.Icon, row.Underlay, row.Overlay, row.UiEffects, row.Plate),
+            row.MaxStructure > 0 && row.Structure < row.MaxStructure ? (double)Math.Max(0, row.Structure) / row.MaxStructure : null);
     }
 
     private static BridgeCalls _calls;
