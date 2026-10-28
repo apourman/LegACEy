@@ -818,7 +818,7 @@ public sealed class RetailChatTests
     });
 
     [Fact]
-    public void A_window_left_alone_goes_idle_and_fades_its_frame_tabs_input_and_scrollbar_in_a_quarter_second_and_keeps_its_new_lines() => RenderThread.Run(() =>
+    public void A_window_left_alone_goes_idle_and_fades_its_frame_tabs_input_and_scrollbar_in_a_quarter_second_with_its_input_and_scrollbar_solid_while_awake_and_keeps_its_new_lines() => RenderThread.Run(() =>
     {
         var clock = new TestClock();
         var port = new FakeChatPort();
@@ -832,8 +832,11 @@ public sealed class RetailChatTests
         window.Refresh();
         // The first frame is the window's own; the Send button draws its frame too.
         var frame = window.GetVisualDescendants().OfType<DerethFrame>().First();
-        var scrollBar = window.GetVisualDescendants().OfType<ScrollBar>().First(bar => bar.Orientation == Orientation.Vertical);
-        Assert.Equal(Awake, Seen(scrollBar));
+        // The log's scroll bar, not the tab strip's.
+        var scrollBar = LineOf(panel, "line 30 of the log").GetVisualAncestors().OfType<ScrollViewer>().First()
+            .GetVisualDescendants().OfType<ScrollBar>().First(bar => bar.Orientation == Orientation.Vertical);
+        Assert.Equal(1.0, Seen(scrollBar));
+        Assert.Equal(1.0, Seen(InputBox(window)));
 
         clock.Advance(0.125);
         window.Refresh();
@@ -872,7 +875,7 @@ public sealed class RetailChatTests
         Click(panel, InputBox(window));
         clock.Advance(1);
         window.Refresh();
-        Assert.Equal(Awake, Seen(InputBox(window)));
+        Assert.Equal(1.0, Seen(InputBox(window)));
         Assert.Equal(Awake, Seen(TabView(window, "All")));
 
         Click(panel, ChipText(panel, "Local"));

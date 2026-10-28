@@ -243,16 +243,19 @@ public sealed class RetailChatWindowsTests
         first.Chat.SetInactiveOpacity(30);
         port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
         first.Tick();
-        // The frame, tabs and input fade with the backdrop, in the main window and a torn-off one alike.
-        void Shows(double opacity)
+        // The frame and tabs fade with the backdrop, in the main window and a torn-off one alike; the input stays solid until idle.
+        void Shows(double opacity, double input)
         {
             foreach (var window in first.Chat.Windows)
-                foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) }) Assert.Equal(opacity, Seen(part), 6);
+            {
+                foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window) }) Assert.Equal(opacity, Seen(part), 6);
+                Assert.Equal(input, Seen(InputBox(window)), 6);
+            }
         }
-        Shows(0.8);
+        Shows(0.8, 1.0);
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds));
         first.Tick();
-        Shows(0.3);
+        Shows(0.3, 0.3);
         // With a backdrop left, the line outlasts its stay instead of fading.
         Assert.Equal(1.0, Seen(first.Main.GetVisualDescendants().OfType<Control>().First(part => part.Tag is DateTime)));
         first.Dispose();
