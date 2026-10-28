@@ -61,7 +61,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         Foreground = TextBrush, FontFamily = DerethPalette.Body, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
     };
-    private readonly TextBlock _contentsCount = Label(string.Empty, MutedBrush, 13);
+    private readonly TextBlock _contentsCount = new()
+    {
+        Foreground = MutedBrush, FontSize = 13, FontFamily = DerethPalette.Body, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0)
+    };
     // The pack list: the main pack and the side packs, in a column right of the grid.
     private readonly StackPanel _packList = new() { Spacing = 4 };
     private readonly ContentControl _burdenMeter = new();
@@ -998,9 +1001,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control ContentsLine()
     {
-        // The count hugs the right edge and keeps a gap from a long pack name, which shrinks rather than running into it (Backlog 107).
+        // The count hugs the right edge, its margin a gap from a long pack name, which shrinks rather than running into it (Backlog 107).
         var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 0, 6) };
-        _contentsCount.Margin = new Thickness(10, 0, 0, 0);
         line.Children.Add(_contentsName);
         line.Children.Add(At(_contentsCount, 0, 1));
         return line;
