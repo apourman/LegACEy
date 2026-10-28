@@ -281,7 +281,11 @@ public static unsafe class Bridge
 
     internal static void UseItem(uint id, int state) => Check(_calls.UseItem((int)id, state), nameof(UseItem));
     internal static void SelectItem(uint id) => Check(_calls.SelectItem((int)id), nameof(SelectItem));
-    internal static void RequestId(uint id) => Check(_calls.RequestId((int)id), nameof(RequestId));
+    // Retail's own sender first: Decal's ID queue can hold the request for half a second.
+    internal static void RequestId(uint id)
+    {
+        if (!NativeAppraisalSender.TrySend(id, ClientUiRuntime.Log)) Check(_calls.RequestId((int)id), nameof(RequestId));
+    }
     internal static void DropItem(uint id) => Check(_calls.DropItem((int)id), nameof(DropItem));
     internal static void MoveItem(uint id, uint container, int slot, bool stack) =>
         Check(_calls.MoveItem((int)id, (int)container, slot, stack ? 1 : 0), nameof(MoveItem));
