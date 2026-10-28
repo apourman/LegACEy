@@ -3456,19 +3456,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const int ExtendedKey = 1 << 24;
 
     /// <summary>
-    /// Gives the chat window's box the keyboard when retail's chat is held and neither a field of ours nor one of retail's has it. True when
-    /// it did, so the Enter is eaten. Never without the Enter entries: retail's hidden entry could not be let go then. A failure turns the
-    /// chat window off, not the whole UI.
+    /// Gives the active chat window's box, else the main one's, the keyboard when retail's chat is held and neither a field of ours nor one
+    /// of retail's has it. True when it did, so the Enter is eaten. Never without the Enter entries: retail's hidden entry could not be let
+    /// go then. A failure turns the chat window off, not the whole UI.
     /// </summary>
     private bool TryFocusRetailChat()
     {
         try
         {
-            if (_chatNatives?.Enter != true || _chatWindows?.Main is not { } main || _chatTakeover?.Holds != true) return false;
+            if (_chatNatives?.Enter != true || _chatWindows is not { } chats || _chatTakeover?.Holds != true) return false;
+            var typingId = chats.TypingId;
+            if (chats.Get(typingId) is not { } typing) return false;
             var focused = SurfaceById(_inputRouter.FocusedSurfaceId);
             if (focused?.Panel.WantsKeyboard == true || _chatPort?.RetailFieldHasKeyboard() != false) return false;
-            main.FocusInput();
-            _inputRouter.FocusSurface(ChatWindowId);
+            typing.FocusInput();
+            _inputRouter.FocusSurface(typingId);
             return true;
         }
         catch (Exception exception)
@@ -3650,8 +3652,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Ctrl+C while text is selected in a chat log copies it, and the game sees none of the C's down, character or up, so it does not act on
-    /// the key. A press outside the chat windows lets go of the selection, so the key is the game's again. True eats the message. A field of
-    /// ours with the keyboard gets its keys as before: the chat box copies the log's selection itself.
+    /// the key. A press outside the chat windows lets go of the selection, so the key is the game's again, and a press picks the active chat
+    /// window (none outside them). True eats the message. A field of ours with the keyboard gets its keys as before: the chat box copies the
+    /// log's selection itself.
     /// </summary>
     private bool CopyChatSelection(int message, int wParam, int lParam)
     {
@@ -3660,7 +3663,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (message is InputRouterService.WmLButtonDown or InputRouterService.WmRButtonDown)
         {
             var at = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
-            Guard(() => chats.ClearLogSelections(_windows?.HitTest(at)?.Id));
+            Guard(() => chats.Pressed(_windows?.HitTest(at)?.Id));
             return false;
         }
         if (_eatingCtrlC && (message == InputRouterService.WmChar && wParam == CtrlC || message == InputRouterService.WmKeyUp && wParam == VkC))
