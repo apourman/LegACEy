@@ -11,9 +11,9 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
-/// The paperdoll block: retail's paperdoll on six columns at retail's 32 px pitch (<see cref="Cells"/>): the left
-/// jewellery column, three armour columns over the doll and two right columns. The aetheria are one row across the top right, as retail's,
-/// the first over the doll area's corner, beside the doll's head. Rows keep retail's spacing.
+/// The paperdoll block: retail's paperdoll on six columns at retail's 32 px pitch (<see cref="Cells"/>). They are the left jewellery
+/// column, three armour columns over the doll and two right columns. The aetheria are one row across the top right, as retail's, the
+/// first over the doll area's corner, beside the doll's head. Rows keep retail's spacing.
 /// The block is as wide as retail's, whatever width it is given, so its columns sit where retail's do and the window's room to their right
 /// stays empty, as retail's does. The doll area is the one control the 3D character fills; the Slots toggle sits in its bottom-left corner,
 /// under the doll's feet, as retail's does. Slots are placed by <see cref="Show"/>.
@@ -65,7 +65,7 @@ internal sealed class InventoryPaperdoll : Canvas
         PaperdollSlot.UpperLegs, PaperdollSlot.Hands, PaperdollSlot.LowerLegs, PaperdollSlot.Feet,
     };
 
-    private readonly List<(Control Cell, int X, int Y, bool Right)> _placed = new();
+    private readonly List<Control> _placed = new();
     private readonly Border _slotsMark = new()
     {
         Width = 11, Height = 11, CornerRadius = new CornerRadius(6), BorderBrush = DerethPalette.GoldBrush, BorderThickness = new Thickness(1),
@@ -84,7 +84,7 @@ internal sealed class InventoryPaperdoll : Canvas
         };
         Children.Add(DollArea);
 
-        // A plain row, not a framed button: the toggle reads as text under the doll, as the retail checkbox does. It acts on release.
+        // A plain row, not a framed button: the toggle reads as text in the doll area's corner, as the retail checkbox does. It acts on release.
         var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
         label.Children.Add(_slotsMark);
         label.Children.Add(_slotsLabel);
@@ -168,16 +168,15 @@ internal sealed class InventoryPaperdoll : Canvas
     /// </summary>
     public void Show(Func<PaperdollSlot, Control> slotFor, bool showArmour)
     {
-        foreach (var (control, _, _, _) in _placed) Children.Remove(control);
+        foreach (var control in _placed) Children.Remove(control);
         _placed.Clear();
         foreach (var (slot, x, y) in Positions)
         {
             if (!showArmour && Armour.Contains(slot)) continue;
             var cell = slotFor(slot);
-            var right = x >= RightLeft || Aetheria.Contains(slot);
-            PlaceCell(cell, x, y, right);
+            PlaceCell(cell, x, y, x >= RightLeft || Aetheria.Contains(slot));
             Children.Add(cell);
-            _placed.Add((cell, x, y, right));
+            _placed.Add(cell);
         }
     }
 }

@@ -984,9 +984,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Content = _packList, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Margin = new Thickness(0, 2, 0, 0),
         };
-        _burdenText.HorizontalAlignment = HorizontalAlignment.Right;
-        var burden = new StackPanel { Children = { Label("Burden", TextBrush, 12), _burdenText } };
-        burden.Children[0].HorizontalAlignment = HorizontalAlignment.Right;
+        var label = Label("Burden", TextBrush, 12);
+        label.HorizontalAlignment = _burdenText.HorizontalAlignment = HorizontalAlignment.Right;
+        var burden = new StackPanel { Children = { label, _burdenText } };
         _burdenMeter.VerticalAlignment = VerticalAlignment.Top;
         _burdenMeter.Margin = new Thickness(4, 2, 0, 0);
         var column = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), ColumnDefinitions = new ColumnDefinitions("Auto,Auto") };
@@ -999,7 +999,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,*"), Margin = new Thickness(2, 3, 2, 2)
         };
-        // No rule between the paperdoll and the contents line: retail has none, and its height is a grid row's worth with the margins.
+        // No rule between the paperdoll and the contents line: retail has none.
         body.Children.Add(At(_paperdoll, 0));
         body.Children.Add(At(pack, 1));
         body.Children.Add(At(column, 0, 1));
