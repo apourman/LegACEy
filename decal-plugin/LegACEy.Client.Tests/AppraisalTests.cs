@@ -576,6 +576,156 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void The_retail_layout_boxes_a_player_s_header_and_runs_its_attributes_into_its_vitals()
+    {
+        // A Penumbraen male, non-PK, level 126, with Strength raised by a buff.
+        var bytes = new ServerAppraisal(0x50000C01)
+        {
+            Strings = { [1] = "Big Dog", [21] = "Ronin Kael" },
+            Ints = { [25] = 126, [188] = 10, [113] = 1, [261] = 5, [134] = 2 },
+            Creature = new CreatureWrite(412, 455, new uint[] { 200, 100, 100, 100, 60, 100, 380, 510, 380, 510 }, 0x1, 0x1),
+        }.Build();
+        var names = new CharacterNames(new Dictionary<uint, string>(), new Dictionary<uint, string> { [5] = "Vanquisher of the Olthoi" });
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, names: names);
+        var groups = RetailAppraisalLayout.Groups(content);
+
+        Assert.Equal(new[] { "Male Penumbraen", "Vanquisher of the Olthoi", "Non-Player Killer" }, content.Creature!.Lines);
+        Assert.Equal(("126", true), (content.Creature.Level, content.Creature.Character));
+        Assert.Equal(new[] { "Strength", "Endurance", "Coordination", "Quickness", "Focus", "Self", "Health", "Stamina", "Mana" },
+            groups[0].Lines.Select(line => line.Label));
+        Assert.Equal(new RetailAppraisalLine("Strength", "200", AppraisalTone.Raised), groups[0].Lines[0]);
+        Assert.Equal(new RetailAppraisalLine("Health", "412/455 (91 %)"), groups[0].Lines[6]);
+        Assert.Equal(new RetailAppraisalLine("Stamina", "380/380"), groups[0].Lines[7]);
+        // The header box shows the PK status, so the lines do not.
+        Assert.DoesNotContain(groups.SelectMany(group => group.Lines), line => line.Label == "PK Status");
+    }
+
+    [Fact]
+    public void The_retail_layout_writes_an_item_as_label_value_lines_with_its_use_and_description_as_paragraphs()
+    {
+        var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells);
+        var wand = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A07)
+        {
+            Ints = { [106] = 370, [107] = 1492, [108] = 1494 },
+            Floats = { [5] = -1 / 15.0 },
+            SpellBook = { 0x1111u },
+        }.Build()), NoSpells);
+
+        Assert.Equal(new[]
+        {
+            new[] { "Value: 75", "Burden: 5" }, new[] { "Restores 75 points of Mana." }, new[] { "A small vial of glowing blue liquid." },
+        }, RetailAppraisalLayout.Groups(potion).Select(group => group.Lines.Select(line => line.Value).ToArray()));
+        Assert.Equal(new[]
+        {
+            new[] { "Spells: Spell 4369" }, new[] { "Spellcraft: 370", "Mana: 1,492 / 1,494", "Mana Cost: 1 point per 15 seconds" },
+            new[] { "Spell Descriptions:", "~ Spell 4369: " },
+        }, RetailAppraisalLayout.Groups(wand).Select(group => group.Lines.Select(line => line.Value).ToArray()));
+    }
+
+    [Fact]
+    public void The_retail_layout_gathers_an_item_s_properties_on_one_line_and_says_what_it_covers_after_its_armor()
+    {
+        // A bonded, attuned, retained, dyeable breastplate with a Bludgeon Rending imbue, covering the chest and upper arms.
+        var bytes = new ServerAppraisal(0x80000A06)
+        {
+            Ints = { [1] = 0x2, [28] = 650, [33] = 1, [114] = 1, [179] = 0x20 },
+            Bools = { [91] = true, [100] = true },
+            Armor = new[] { 1.2f, 1.0f, 1.2f, 0.78f, 0.38f, 1.0f, 0f, 1.0f },
+        }.Build();
+
+        var groups = RetailAppraisalLayout.Groups(AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, validLocations: 0x200,
+            coverage: 0x0008 | 0x1000)).Select(group => group.Lines.Select(line => line.Value).ToList()).ToList();
+        var lines = groups.SelectMany(group => group).ToList();
+
+        Assert.Contains("Properties: Bludgeon Rending, Attuned, Bonded, Retained, Dyeable", lines);
+        Assert.DoesNotContain(lines, line => line is "Attuned" or "Bonded" or "Dyeable" || line.StartsWith("Imbued Effect", StringComparison.Ordinal));
+        Assert.Equal("Covers Chest, Upper Arms", groups.Single(group => group[0].StartsWith("Armor level", StringComparison.Ordinal))[^1]);
+    }
+
+    [Fact]
+    public void Switching_to_the_retail_layout_redraws_the_open_window_with_a_parchment_inscription_box() => OnWindowThread(() =>
+    {
+        var retail = false;
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game, retailLayout: () => retail);
+        appraisals.Request(Potion);
+        appraisals.Receive(InscribedPotion(Potion, "testomg", "Aerbax"));
+        Assert.Equal("Inscribe here", InscriptionField(host).Watermark);
+
+        retail = true;
+        appraisals.Relayout();
+
+        // Retail's box: the text, signed by its scribe at the bottom right, and the placeholder only while it is empty.
+        bool Shown(string line) => host.LastWindow!.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == line && text.IsVisible);
+        Assert.Equal("testomg", InscriptionField(host).Text);
+        Assert.True(Shown("--Aerbax"));
+        Assert.True(Shown("Value: 75"));
+        Assert.False(Shown("<Inscribe here>"));
+        InscriptionField(host).Text = string.Empty;
+        Assert.True(Shown("<Inscribe here>"));
+        Assert.False(Shown("--Aerbax"));
+        // As retail's, Enter is a line break and only leaving the field saves.
+        InscriptionField(host).Text = "testomg";
+        Assert.True(InscriptionField(host).AcceptsReturn);
+        Press(InscriptionField(host), Key.Enter);
+        Assert.Empty(game.Inscriptions);
+        InscriptionField(host).Text = "for Ilsa";
+        Leave(InscriptionField(host));
+        Assert.Equal((Potion, "for Ilsa"), Assert.Single(game.Inscriptions));
+    });
+
+    [Fact]
+    public void The_retail_layout_always_stands_a_player_behind_its_lines_but_a_creature_only_once_its_look_is_known() => OnWindowThread(() =>
+    {
+        // Neither look has been sent: the player's doll waits for it, the drudge gets none.
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { }, retailLayout: () => true);
+        appraisals.Request(0x50000C01);
+        appraisals.Receive(new ServerAppraisal(0x50000C01)
+        {
+            Strings = { [1] = "Big Dog" }, Ints = { [25] = 126, [188] = 1, [261] = 5 }, Creature = new CreatureWrite(10, 10, null, 0, 0),
+        }.Build());
+        Assert.Single(host.LastWindow!.GetLogicalDescendants().OfType<PaperdollView>());
+
+        appraisals.Request(0x80000B03);
+        appraisals.Receive(new ServerAppraisal(0x80000B03) { Strings = { [1] = "Drudge" }, Creature = new CreatureWrite(10, 10, null, 0, 0) }.Build());
+        Assert.Empty(host.LastWindow!.GetLogicalDescendants().OfType<PaperdollView>());
+    });
+
+    [Theory]
+    [InlineData(260)]
+    [InlineData(AppraisalWindow.Width)]
+    public void The_retail_figure_stands_between_the_labels_and_the_values_at_any_width(int width) => OnWindowThread(() =>
+    {
+        // The 3D view draws over text, so the figure's room must miss every word, however narrow the window: at the narrowest it has none.
+        var bytes = new ServerAppraisal(0x50000C01)
+        {
+            Strings = { [1] = "Big Dog" }, Ints = { [25] = 126, [188] = 1, [261] = 5 },
+            Creature = new CreatureWrite(412, 455, new uint[] { 200, 100, 100, 100, 60, 100, 380, 510, 380, 510 }, 0, 0),
+            ArmorLevels = new uint[] { 679, 854, 826, 641, 639, 649, 883, 629, 670 },
+        }.Build();
+        var figure = new Border();
+        var view = AppraisalWindow.Create(AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells), null, (_, _) => true, retail: true,
+            figure: _ => figure);
+        using var panel = AvaloniaPanel.Create(() => view.Window, width, 500);
+        panel.Tick();
+
+        Avalonia.Rect Bounds(Control control) => new(Avalonia.VisualExtensions.TranslatePoint(control, new Avalonia.Point(0, 0), view.Window)!.Value, control.Bounds.Size);
+        var room = Bounds(figure);
+        if (width == AppraisalWindow.Width) Assert.True(room.Width > 30, $"The figure has {room.Width} pixels.");
+        var words = view.Window.GetLogicalDescendants().OfType<TextBlock>()
+            .Where(text => text.Text is "Head/Chest/Groin" or "Coordination" or "AL: 679/854/826" or "412/455 (91 %)").ToList();
+        Assert.Equal(4, words.Count);
+        if (room.Width > 0) Assert.All(words, text => Assert.False(Bounds(text).Intersects(room), $"\"{text.Text}\" is under the figure."));
+        // Every value shows whole inside the body: a narrow window cuts the labels short instead.
+        var scroll = view.Window.GetLogicalDescendants().OfType<ScrollViewer>().First();
+        Assert.All(words.Where(text => text.Text!.Contains('/') && char.IsDigit(text.Text[0]) || text.Text!.StartsWith("AL", StringComparison.Ordinal)),
+            text => Assert.True(Bounds(text).Right <= Bounds(scroll).Right, $"\"{text.Text}\" is cut off."));
+    });
+
+    [Fact]
     public void A_character_with_no_named_monarch_shows_its_followers_and_its_society_with_the_rank_word()
     {
         // The template name marks a character (the server sends it for every player); the Celestial Hand bit with rank 150 is an Adept.
@@ -955,7 +1105,7 @@ public sealed class AppraisalTests
         var content = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells, "Aerbax", carried: true,
             descriptionFlags: AppraisalInscription.InscribableFlag);
 
-        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "", ""), content.Inscription);
+        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "", "", "Aerbax"), content.Inscription);
     }
 
     [Fact]
@@ -1060,7 +1210,7 @@ public sealed class AppraisalTests
 
         // The silent ID's answer carries what was saved and the scribe.
         appraisals.Receive(InscribedPotion(Potion, "Remember.", "Aerbax", inscribable: true));
-        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "Remember.", "Aerbax"), appraisals.Shown!.Inscription);
+        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "Remember.", "Aerbax", "Aerbax"), appraisals.Shown!.Inscription);
         Assert.Equal("Remember.", InscriptionField(host).Text);
 
         // A refused save: the answer still has the old text, and the field shows it.

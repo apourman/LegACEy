@@ -56,8 +56,15 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private readonly InventoryPaperdoll _paperdoll = new();
     // Its columns start under the contents line's name.
     private readonly DerethSlotGrid _grid = new() { ColumnAlignment = HorizontalAlignment.Left };
-    private readonly TextBlock _contentsName = Label(string.Empty, TextBrush, 13);
-    private readonly TextBlock _contentsCount = Label(string.Empty, MutedBrush, 13);
+    // Shrinks to fit beside the count, as a window title does, before it trims.
+    private readonly DerethTitleText _contentsName = new()
+    {
+        Foreground = TextBrush, FontFamily = DerethPalette.Body, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
+    };
+    private readonly TextBlock _contentsCount = new()
+    {
+        Foreground = MutedBrush, FontSize = 13, FontFamily = DerethPalette.Body, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0)
+    };
     // The pack list: the main pack and the side packs, in a column right of the grid.
     private readonly StackPanel _packList = new() { Spacing = 4 };
     private readonly ContentControl _burdenMeter = new();
@@ -401,13 +408,13 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return true;
     }
 
-    /// <summary>A click on release: a pack opens; an item is selected, or used when the press was the second click on it.</summary>
+    /// <summary>A click on release: a pack or a focus opens; an item is selected, or used when the press was the second click on it.</summary>
     private void Click(InventorySlotId slot, int clicks)
     {
         if (slot.Place == SlotPlace.Pack)
         {
-            // A focus takes a pack slot but holds nothing, so it does not open.
-            if (slot.Container != 0 && !IsFocus(_port.Snapshot, slot.Container))
+            // A focus opens too, as in retail: it holds nothing, so the grid shows no cells under "Contents of" its name.
+            if (slot.Container != 0)
             {
                 _picked = slot.Container;
                 Render(_port.Snapshot);
@@ -658,11 +665,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// <summary>The object a slot stands for when it is selected or targeted: its item, or a pack (the main pack is the character).</summary>
     private static uint TargetOf(InventorySlotId slot) => slot.Place != SlotPlace.Pack ? slot.ItemId : slot.Container;
 
-    /// <summary>Whether a side-pack slot holds a focus: it takes the slot but holds nothing.</summary>
-    private static bool IsFocus(InventorySnapshot s, uint id) => PackOf(s, id)?.Capacity == 0;
-
     /// <summary>A pack tile is outlined while its pack is open; a focus that is retail's selection takes the outline from it.</summary>
-    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => IsFocus(s, s.Selected) ? id == s.Selected : id == open.Id;
+    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => PackOf(s, s.Selected)?.Capacity == 0 ? id == s.Selected : id == open.Id;
 
     private GameImage? DragImage(uint id)
     {
@@ -868,8 +872,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var items = new Dictionary<int, InventoryItem>();
         foreach (var item in snapshot.Items)
             if (item.Container == open.Id) items[item.Slot] = item;
-        _contentsName.Text = "Contents of " + open.Name;
-        _contentsCount.Text = $"{ItemsIn(snapshot, open.Id)} / {open.Capacity}";
+        _contentsName.FullText = "Contents of " + open.Name;
+        // A focus has no slots, so it has no count, as in retail.
+        _contentsCount.Text = open.Capacity == 0 ? string.Empty : $"{ItemsIn(snapshot, open.Id)} / {open.Capacity}";
         // One cell per slot of the container, empty ones included, in slot-index order. The grid keeps its scroll position.
         _grid.Cells.Clear();
         for (var index = 0; index < open.Capacity; index++)
@@ -882,7 +887,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private DerethSlot Cell(InventorySnapshot snapshot, uint container, int index, InventoryItem? item) =>
         item == null
             ? Empty(new InventorySlotId(SlotPlace.Cell, 0, container, index, null))
-            : Slot(new InventorySlotId(SlotPlace.Cell, item.Id, container, index, null), Layers(item.Visual, item.StackCount), item.Id == snapshot.Selected);
+            : Slot(new InventorySlotId(SlotPlace.Cell, item.Id, container, index, null), Layers(item.Visual, item.StackCount, item.PartFull), item.Id == snapshot.Selected);
 
     private static DerethSlot Slot(InventorySlotId id, Control content, bool selected) => new(content) { Tag = id, Selected = selected };
 
@@ -890,7 +895,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private void RenderBurden(InventorySnapshot snapshot)
     {
-        var percent = snapshot.BurdenLimit > 0 ? snapshot.Burden * 100 / snapshot.BurdenLimit : 0;
+        // Retail stops the reading at 300%, the most a character can carry.
+        var percent = snapshot.BurdenLimit > 0 ? Math.Min(300, snapshot.Burden * 100 / snapshot.BurdenLimit) : 0;
         _burdenMeter.Content = BurdenMeter(snapshot);
         _burdenText.Text = $"{percent}%";
     }
@@ -942,11 +948,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return track;
     }
 
-    /// <summary>An item's icon and, for a stack, its count, in a slot-sized layer stack.</summary>
-    private Grid Layers(ItemVisual visual, int stack)
+    /// <summary>An item's icon and, for a stack, its count, and for a part-used item, retail's fullness bar, in a slot-sized layer stack.</summary>
+    private Grid Layers(ItemVisual visual, int stack, double? partFull = null)
     {
         var layers = Icon(visual);
         if (stack > 1) layers.Children.Add(StackCount(stack));
+        if (partFull is { } full) layers.Children.Add(DerethItemCells.FullnessBar(full));
         return layers;
     }
 
@@ -995,7 +1002,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control ContentsLine()
     {
-        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 2, 6) };
+        // The count hugs the right edge, its margin a gap from a long pack name, which shrinks rather than running into it (Backlog 107).
+        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 0, 6) };
         line.Children.Add(_contentsName);
         line.Children.Add(At(_contentsCount, 0, 1));
         return line;

@@ -33,9 +33,9 @@ public sealed class VaultShellTests
         Assert.Null(host.LastError);
         AssertNothingOutsideFrame(host);
 
-        // The Dereth scrollbar is nine pixels across; the stock bar is not.
+        // The Dereth scrollbar is fourteen pixels across; the stock bar is not.
         var scrollBar = VerticalBar(host);
-        Assert.Equal(9, scrollBar.Width);
+        Assert.Equal(14, scrollBar.Width);
         Assert.NotNull(scrollBar.GetVisualDescendants().OfType<Thumb>().SingleOrDefault());
         // The header's chest icon is the game's own art, requested from the DAT.
         if (art is CellArt cellArt) Assert.Contains(VaultShellPanel.VaultIconId, cellArt.Reads.Keys);

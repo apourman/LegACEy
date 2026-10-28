@@ -554,10 +554,10 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A window title: 13 DIPs, stepping down to 11 until it fits its width, as a long character name needs; past that it shows its short
+/// A title line: 13 DIPs, stepping down to 11 until it fits its width, as a long name needs; past that it shows its short
 /// text, sized the same way, if it has one, and ends in an ellipsis.
 /// </summary>
-internal sealed class DerethTitleText : TextBlock
+public sealed class DerethTitleText : TextBlock
 {
     private const double Largest = 13, Smallest = 11;
 

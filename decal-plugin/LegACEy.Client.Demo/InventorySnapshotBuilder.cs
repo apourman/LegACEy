@@ -18,8 +18,9 @@ public enum PaperdollSlot
 public sealed class InventoryObjectRead
 {
     public InventoryObjectRead(uint id, string name, uint container, int slot, uint equippedMask, uint validLocations,
-        int stackCount, int stackMax, int itemSlots, bool isContainer, int wcid, ItemVisual visual)
+        int stackCount, int stackMax, int itemSlots, bool isContainer, int wcid, ItemVisual visual, double? partFull = null)
     {
+        PartFull = partFull;
         Id = id;
         Name = name ?? string.Empty;
         Container = container;
@@ -52,6 +53,8 @@ public sealed class InventoryObjectRead
     /// <summary>The weenie class id (WCID) of the object: Decal's LongValueKey.Type.</summary>
     public int Wcid { get; }
     public ItemVisual Visual { get; }
+    /// <summary>How full a part-used item is, 0 to under 1 (a salvage bag's units of 100); null when it is full or holds no uses.</summary>
+    public double? PartFull { get; }
 }
 
 /// <summary>The Decal-facing reads the snapshot needs. The client implements it over WorldFilter and CharacterFilter on the game thread.</summary>
@@ -228,7 +231,7 @@ public static class InventorySnapshotBuilder
     }
 
     private static InventoryItem ItemAt(InventoryObjectRead read, int slot) =>
-        new(read.Id, read.Name, read.Container, slot, read.Visual, read.StackCount, read.StackMax, read.Wcid, read.ValidLocations);
+        new(read.Id, read.Name, read.Container, slot, read.Visual, read.StackCount, read.StackMax, read.Wcid, read.ValidLocations, read.PartFull);
 
     /// <summary>The paperdoll slots an equip mask covers, in paperdoll order. A multi-slot mask covers every slot it touches.</summary>
     private static IReadOnlyList<PaperdollSlot> SlotsFor(uint equipMask) =>

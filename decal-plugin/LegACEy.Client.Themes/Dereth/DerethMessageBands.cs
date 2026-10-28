@@ -8,8 +8,8 @@ namespace LegACEy.Client.Themes;
 
 /// <summary>
 /// Short game messages ("The chest is locked!") as the game message mockups' soft band (look 2): one line of cream Palatino on a dark band
-/// that fades out to both sides. Up to three show at once, newest on top; older ones dim and go first. A message already showing moves to
-/// the top and starts its time again instead of taking another row. Each shows for its lifetime and fades over the last moment. The
+/// that fades out to both sides. Up to three show at once, newest on top; older ones dim and go first. A repeated message takes its own row,
+/// as retail's floating lines stack. Each shows for its lifetime and fades over the last moment. The
 /// client's panels run Avalonia's jobs but not its timers, so the host ticks it once a frame. It is hidden while it shows nothing. While
 /// <see cref="Moving"/>, a sample band on top shows where they go, outlined in gold, for as long as the player places them.
 /// </summary>
@@ -74,16 +74,11 @@ public sealed class DerethMessageBands : StackPanel
         }
     }
 
-    /// <summary>Shows a message on top, moving it there when it already shows; the oldest goes past three.</summary>
+    /// <summary>Shows a message on top, a repeat on its own row as retail's floating lines stack; the oldest goes past three.</summary>
     public void Show(string text)
     {
         Tick();
-        Band? band = null;
-        foreach (var child in Children)
-            if (child is Band { Text: var shown } same && shown == text) band = same;
-        if (band != null) Children.Remove(band);
-        else band = new Band(text, _textScale);
-        band.Remaining = Lifetime;
+        var band = new Band(text, _textScale) { Remaining = Lifetime };
         var top = Moving ? 1 : 0;
         Children.Insert(top, band);
         while (Children.Count - top > MaxShown) Children.RemoveAt(Children.Count - 1);
@@ -120,7 +115,6 @@ public sealed class DerethMessageBands : StackPanel
 
         public Band(string text, double scale, bool sample = false)
         {
-            Text = text;
             IsSample = sample;
             Background = BandFill;
             HorizontalAlignment = HorizontalAlignment.Center;
@@ -133,7 +127,6 @@ public sealed class DerethMessageBands : StackPanel
             Scale(scale);
         }
 
-        public string Text { get; }
         public bool IsSample { get; }
         public TimeSpan Remaining { get; set; }
 

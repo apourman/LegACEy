@@ -158,8 +158,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
     // The release build stamps the client with the plugin version, so the menu shows which release is installed.
-    private static readonly string MenuTitle = $"LegACEy {typeof(ClientUiRuntime).Assembly.GetName().Version?.ToString(3)}";
-    private const string MenuWindowId = "plugin-menu";
     private const string SettingsWindowId = "dereth-settings";
     // The Settings window's last tab, kept for the install like the UI size.
     private const string SettingsTabKey = "settings-tab";
@@ -190,6 +188,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The chat tabs each window of each character has: a row per server, character and window, missing means the six defaults.
     private readonly FileRetailChatTabStore _chatTabs = new(IOPath.Combine(PluginDirectory, "chat-tabs.txt"), Log);
     private readonly ShortcutRowChoice _row2Choice;
+    private readonly WindowOpacities _opacities;
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
@@ -237,6 +236,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The selected stack's split tab: its own surface over the toolbar's plaque, shown while a stack is selected.
     private const string SplitTabSurfaceId = "toolbar-split";
     private StackSplitTab? _splitTab;
+    // The split tab's saved place for this character, once read; none keeps it standing on the toolbar. Where a drag holds it.
+    private Point? _splitTabPlace;
+    private bool _splitTabPlaceLoaded;
+    private Size? _splitTabDragOffset;
+    // While an edge of the split tab is dragged: which (-1 left, 1 right), and the pointer, width and left edge it started from.
+    private (int Edge, int PointerX, double Width, int Left)? _splitTabResize;
+    // Where and how wide the split tab was when the press began: a press that changes neither saves nothing.
+    private (Point Location, double Width) _splitTabDragFrom;
     private ScreenSurface? _splitTabSurface;
     // Shortcut rows 1 and 2, inside the toolbar under its buttons while the takeover holds, and their refresh on inventory changes.
     private ShortcutBar? _shortcutBar;
@@ -282,7 +289,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Point? _radarPlace;
     private RetailHeldWindows? _radarTakeover;
     private RetailRadarWindow? _radar;
-    private Task<GroundDat?>? _radarDatLoad;
+    // The ground's DATs, opened once off the UI thread and shared by the radar, weather and water; kept until the plugin unloads, as the
+    // world effects outlive a UI rebuild.
+    private Task<GroundDat?>? _ground;
     private GroundTiles? _radarTiles;
     private Task<IndoorDat?>? _radarIndoorLoad;
     private IndoorPlanCache? _radarPlans;
@@ -399,10 +408,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
-            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale));
+            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale),
+            retailLayout: AppraisalRetailLayout);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal,
             () => SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch));
         _row2Choice = new ShortcutRowChoice(_settingsStore);
+        _opacities = new WindowOpacities(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
             _uiSize = Math.Clamp(size, UiSizeChoice.Smallest, UiSizeChoice.Largest);
@@ -506,6 +517,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // With both hooks gone, nothing else frees the last frame's spare state blocks before the game's next device reset.
             D3D9.ReleaseSpareStates();
             TearDown();
+            // The shared ground goes last, once the radar and world effects that read it are gone.
+            if (_ground is { } ground) DisposeWhenLoaded(ground);
+            _ground = null;
             _serverChannel?.Dispose();
             _serverChannel = null;
         }
@@ -559,7 +573,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void ContainerOpened() => _inventory.MarkStale();
 
     /// <summary>
-    /// /legacey (or @legacey) opens or closes the LegACEy menu, so it can be reached without the Dereth toolbar. /water on, off or a percent
+    /// /legacey (or @legacey) opens or closes the Settings window, so it can be reached without the Dereth toolbar. /water on, off or a percent
     /// (0 to 200) sets the water effect, and /water alone says how it is set; the line is eaten either way, so the server never sees it.
     /// </summary>
     public bool CommandLine(string text)
@@ -568,7 +582,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var command = text.Trim();
         if (command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) || command.Equals("@legacey", StringComparison.OrdinalIgnoreCase))
         {
-            Guard(ToggleMenuWindow);
+            Guard(ToggleSettings);
             return true;
         }
         var space = command.IndexOf(' ');
@@ -922,6 +936,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
         _toolbarPlaceLoaded = false;
         if (_toolbarPlace != null) _toolbarPlace.Location = null;
+        _splitTabPlaceLoaded = false;
         _inventory.Clear();
         _lookCache.Clear();
         _portal?.ForgetImages();
@@ -982,7 +997,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         EnsurePostUiDrawHook();
         try
         {
-            _worldEffects ??= WorldEffects.Create(_device, _portal, NativeUi.ReadMemory, Log);
+            _worldEffects ??= WorldEffects.Create(_device, Ground(), NativeUi.ReadMemory, Log);
             if (_worldEffects != null) _worldEffects.WaterStrength = _water.Strength;
             ShowRemembered();
         }
@@ -1039,31 +1054,24 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private IClientTheme CurrentTheme() => _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();
 
-    /// <summary>Opens or closes the LegACEy launcher window: the plugins' menu entries and a Settings… button.</summary>
-    private void ToggleMenuWindow()
+    /// <summary>The toolbar's LegACEy button and /legacey: opens the Settings window, or closes it when it is open.</summary>
+    private void ToggleSettings()
     {
-        if (!_windowsEnabled || _windows == null || _clientUi == null)
-            return;
-        if (_postUiDrawHook?.HasRun != true)
-        {
+        if (_windows?.Get(SettingsWindowId) != null)
+            CloseSettings();
+        else if (_postUiDrawHook?.HasRun != true)
             Log("LegACEy windows unavailable: the installed retail EndScene hook has not run.");
-            return;
-        }
-        if (_windows.Get(MenuWindowId) != null)
-        {
-            _clientUi.CloseWindow(MenuWindowId);
-            SetMenuRing(false);
-            return;
-        }
-        var window = new DerethWindow(MenuTitle, null, new PluginMenuPanel(_plugins!, _portal, () => OpenSettings(LoadSettingsTab())));
-        window.CloseRequested += (_, _) =>
-        {
-            _clientUi?.CloseWindow(MenuWindowId);
-            SetMenuRing(false);
-        };
-        _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight,
-            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
-        SetMenuRing(true);
+        else
+            OpenSettings(LoadSettingsTab());
+    }
+
+    private void CloseSettings()
+    {
+        _clientUi?.CloseWindow(SettingsWindowId);
+        SetMenuRing(false);
+        // Placing the game messages ends with the window that started it.
+        SetGameMessagesMoving(false);
+        _settings = null;
     }
 
     /// <summary>
@@ -1082,12 +1090,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
             VitalsRetailBars = new OptionChoice<bool>(_vitalsLayouts.RetailBars(SessionServer(), SessionCharacter()), SetVitalsRetailBars),
+            AppraisalRetailLayout = new OptionChoice<bool>(AppraisalRetailLayout(), SetAppraisalRetailLayout),
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
             ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore, SessionServer(), SessionCharacter()), SetChatTextSize),
             ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
             ChatActiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.ActiveOpacityKey, RetailChatWindows.DefaultActiveOpacity), SetChatActiveOpacity),
             ChatInactiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, RetailChatWindows.DefaultInactiveOpacity), SetChatInactiveOpacity),
             ChatNameColour = new OptionChoice<int>(RetailChatWindows.LoadNameColour(_positionStore, SessionServer(), SessionCharacter()), SetChatNameColour),
+            WindowsOpacity = new OptionChoice<int>(_opacities.All(SessionServer(), SessionCharacter()), SetWindowsOpacity),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
             TestWeather = _worldEffects != null ? new OptionChoice<WeatherKind>(_worldEffects.TestWeather, SetTestWeather) : null,
             TestFog = _worldEffects != null ? new OptionChoice<bool>(_worldEffects.TestFog, SetTestFog) : null,
@@ -1099,16 +1109,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         };
         _settings = settings;
         var window = new DerethWindow("Settings", null, new SettingsPanel(settings, tab, SaveSettingsTab, _plugins));
-        window.CloseRequested += (_, _) =>
-        {
-            _clientUi?.CloseWindow(SettingsWindowId);
-            // Placing the game messages ends with the window that started it.
-            SetGameMessagesMoving(false);
-            _settings = null;
-        };
-        // First opened beside the launcher (260 + its 220 width), not over it.
+        window.CloseRequested += (_, _) => CloseSettings();
         _clientUi.OpenWindow(new WindowDefinition(SettingsWindowId, "Settings", SettingsPanel.WindowWidth, SettingsPanel.WindowHeight,
-            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(500, 120));
+            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
+        SetMenuRing(true);
     }
 
     private SettingsTab LoadSettingsTab() =>
@@ -1149,7 +1153,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// A window's card: its switch file, and the ids of the windows its Size row scales, the first of which it reads the size from. A window
-    /// that is not open has its size saved for when it opens.
+    /// that is not open has its size saved for when it opens. Its Opacity row is saved under its first id; chat has its own opacity.
     /// </summary>
     private UiWindowChoice Choice(string title, string file, Action recheck, params string[] sizeIds)
     {
@@ -1157,6 +1161,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var size = sizeIds.Length == 0 ? null : new WindowSizeChoice(
             () => _windows?.SizePercentOf(PlaceIdOf(sizeIds[0])) ?? 100,
             steps => Guard(() => { if (_windows != null) foreach (var id in sizeIds) RescaleWindow(id, steps); }));
+        var opacity = sizeIds.Length == 0 || RetailChatWindows.IsChat(sizeIds[0]) ? null : new WindowOpacityChoice(
+            () => _opacities.Of(SessionServer(), SessionCharacter(), sizeIds[0]),
+            percent => _opacities.Set(SessionServer(), SessionCharacter(), sizeIds[0], percent));
         return new UiWindowChoice(title, () => SwitchCustom(path), custom =>
         {
             try
@@ -1172,7 +1179,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _switchHeld[path] = custom;
             }
             recheck();
-        }, size);
+        }, size, opacity);
+    }
+
+    /// <summary>All windows' opacity set from the Settings window: every card's window takes it, and so does every window without a card.</summary>
+    private void SetWindowsOpacity(int percent)
+    {
+        _opacities.SetAll(SessionServer(), SessionCharacter(), percent);
+        if (_settings == null) return;
+        foreach (var window in _settings.Windows) window.Opacity?.Set(percent);
+        _settings.WindowsOpacity = new OptionChoice<int>(_opacities.All(SessionServer(), SessionCharacter()), SetWindowsOpacity);
     }
 
     /// <summary>Whether a switch's window is on LegACEy's: the file's absence, unless a write this session could not change it.</summary>
@@ -1224,7 +1240,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void Rebuild(bool resetPositions)
     {
-        var menuOpen = _windows?.Get(MenuWindowId) != null;
         var settingsOpen = _windows?.Get(SettingsWindowId) != null;
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
@@ -1232,7 +1247,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (resetPositions) ForgetWindowPlaces();
         _carriedChatHistory = chatHistory;
         LoginComplete();
-        if (menuOpen) Guard(ToggleMenuWindow);
         // The Settings window comes back on the tab it was on, which the tab store keeps; after a reset, on General.
         if (settingsOpen) Guard(() => OpenSettings(resetPositions ? SettingsTab.General : LoadSettingsTab()));
     }
@@ -1604,7 +1618,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_failed) return;
         ThrowIfTestFailureRequested();
         // Drawn after retail's UI, under the LegACEy windows: drawn before it, retail's portal space would paint over it on a teleport.
-        Guard(() => _toolbarSurface?.DrawNow());
+        var (server, character) = (SessionServer(), SessionCharacter());
+        Guard(() =>
+        {
+            if (_toolbarSurface == null) return;
+            _toolbarSurface.Opacity = DrawOpacity(server, character, ToolbarSurfaceId, _toolbarDragOffset != null || _toolbarRowDragY != null);
+            _toolbarSurface.DrawNow();
+        });
         var windows = !_failed && _windowsEnabled && _windows != null;
         if (windows)
         {
@@ -1613,8 +1633,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             for (var i = order.Count - 1; i >= 0; i--)
             {
                 var surface = SurfaceById(order[i].Id);
+                if (surface != null) surface.Opacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Moving || order[i] == _windows.Resizing);
                 surface?.DrawNow();
                 DrawModelViews(surface);
+                // The note (the size while Ctrl and the wheel rescale the window) goes over its 3D views.
+                surface?.DrawNote();
                 if (_firstPostUiWindow)
                 {
                     _firstPostUiWindow = false;
@@ -1626,7 +1649,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
         }
         // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
-        if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
+        // It fades with the toolbar it belongs to.
+        if (!_failed) Guard(() =>
+        {
+            if (_splitTabSurface == null) return;
+            _splitTabSurface.Opacity = _toolbarSurface?.Opacity ?? 1;
+            _splitTabSurface.DrawNow();
+        });
         try { _gameMessageSurface?.DrawNow(); }
         catch (Exception exception) { GameMessagesFailed(exception); }
         if (windows || !_loggedIn)
@@ -1637,6 +1666,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // An item dragged out of a LegACEy window draws above everything.
         if (windows) Guard(() => _dragIconSurface?.DrawNow());
     }
+
+    /// <summary>
+    /// How opaque a window or the toolbar draws, from its Opacity setting: whole while it is moved or resized, so it can be found. Chat has
+    /// its own opacity, and Settings and toasts always draw whole. Vitals keeps one value for both its layouts.
+    /// </summary>
+    private double DrawOpacity(string server, string character, string id, bool moving) =>
+        moving || id is SettingsWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
+            : _opacities.Of(server, character, id == DerethVitalsWindow.SideBySideId ? DerethVitalsWindow.StackedId : id) / 100.0;
 
     /// <summary>
     /// A tester creates a file named fail-post-ui-draw beside the DLL to make the next post-UI draw fail in game,
@@ -1682,7 +1719,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
                     Log($"3D view first drawn: {model.TriangleCount} triangles, height {model.Top - model.Bottom:0.00} m, at {area} on a {D3D9.Viewport(_device)} viewport.");
                 }
-                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour);
+                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour, surface.Opacity);
             }
             catch (Exception exception)
             {
@@ -2910,7 +2947,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _windows?.Close(id);
     }
 
-    /// <summary>Shows the LegACEy menu's open state on the toolbar's menu button.</summary>
+    /// <summary>Shows whether the Settings window is open on the toolbar's LegACEy button.</summary>
     private void SetMenuRing(bool open) => _toolbar?.SetMenuOpen(open);
 
     /// <summary>
@@ -2967,8 +3004,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Shows the split tab while the toolbar shows and a stack is selected, at its content's size, centred over the plaque and standing on
-    /// the toolbar's top edge; below the toolbar when there is no room above it.
+    /// Shows the split tab while the toolbar shows and a stack is selected, at its content's size: at the character's saved place, kept on
+    /// screen, or until it is moved centred over the plaque and standing on the toolbar's top edge; below the toolbar when there is no room above it.
     /// </summary>
     private void PlaceSplitTab()
     {
@@ -2977,18 +3014,98 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         surface.Visible = bar.Visible && tab.IsShown;
         if (surface.Visible)
         {
-            var scale = surface.Panel.Scale;
+            // The tab has its own size, from Ctrl and the wheel over it.
+            var scale = PanelScaleOf(SplitTabPlaceId);
+            if (surface.Panel.Scale != scale) surface.Panel.Resize(surface.Panel.Frame.Width, surface.Panel.Frame.Height, scale);
             // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
             if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(tab);
             tab.Measure(Avalonia.Size.Infinity);
             int width = WholePixels(tab.DesiredSize.Width * scale), height = WholePixels(tab.DesiredSize.Height * scale);
             if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
             var plaque = Avalonia.VisualExtensions.TranslatePoint(toolbar.Plaque, new Avalonia.Point(toolbar.Plaque.Bounds.Width / 2, 0), toolbar) ?? default;
+            if (!_splitTabPlaceLoaded)
+            {
+                var saved = _positionStore.Load(SessionServer(), SessionCharacter(), SplitTabPlaceId);
+                _splitTabPlace = saved?.Location;
+                tab.Width = saved?.Size is { Width: > 0 } size
+                    ? Math.Max(StackSplitTab.NarrowestWidth, Math.Min(StackSplitTab.WidestWidth, size.Width))
+                    : StackSplitTab.TabWidth;
+                _splitTabPlaceLoaded = true;
+            }
+            if (_splitTabDragOffset != null) return;
+            if (_splitTabPlace is { } place)
+            {
+                surface.Location = OnScreen(place, new Size(width, height));
+                return;
+            }
             var screen = GameDevice.ViewportSize(_device);
             var x = bar.Location.X + (int)Math.Round(plaque.X * scale) - width / 2;
             var y = bar.Location.Y - height;
             surface.Location = new Point(Math.Max(0, Math.Min(screen.Width - width, x)), y >= 0 ? y : bar.Bounds.Bottom);
         }
+    }
+
+    private const string SplitTabPlaceId = "dereth-split";
+
+    /// <summary>
+    /// The split tab's frame was pressed: a press on its left or right edge drags that edge, elsewhere the tab follows the pointer, until the
+    /// button goes up. Refused while retail's UI is locked.
+    /// </summary>
+    private void BeginSplitTabDrag()
+    {
+        if (NativeUi.IsUiLocked || _splitTab is not { } tab || _splitTabSurface is not { Visible: true } surface) return;
+        var edge = SplitTabEdgeAt(_pointer);
+        _splitTabResize = edge == 0 ? null : (edge, _pointer.X, tab.Width, surface.Location.X);
+        _splitTabDragFrom = (surface.Location, tab.Width);
+        _splitTabDragOffset = new Size(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
+    }
+
+    /// <summary>Which edge of the split tab a point is on: -1 left, 1 right, 0 neither or while retail's UI is locked.</summary>
+    private int SplitTabEdgeAt(Point point)
+    {
+        if (NativeUi.IsUiLocked || _splitTabSurface is not { Visible: true } surface) return 0;
+        var bounds = surface.Bounds;
+        if (point.Y < bounds.Top || point.Y >= bounds.Bottom) return 0;
+        if (point.X >= bounds.Left && point.X - bounds.Left < WindowManager.ResizeBand) return -1;
+        if (point.X < bounds.Right && bounds.Right - point.X <= WindowManager.ResizeBand) return 1;
+        return 0;
+    }
+
+    /// <summary>Moves the split tab with the pointer, snapped to the windows and the toolbar and kept on screen.</summary>
+    private void DragSplitTab(Point pointer)
+    {
+        if (_splitTabSurface is not { } surface)
+        {
+            _splitTabDragOffset = null;
+            return;
+        }
+        if (_splitTabResize is { } resize && _splitTab is { } tab)
+        {
+            // The panel takes the new width at the next placement; a left edge moves the tab so its right edge stays. Neither edge leaves the screen.
+            var scale = surface.Panel.Scale;
+            var room = resize.Edge < 0 ? resize.Left / scale + resize.Width : (GameDevice.ViewportSize(_device).Width - resize.Left) / scale;
+            var widest = Math.Max(StackSplitTab.NarrowestWidth, Math.Min(StackSplitTab.WidestWidth, room));
+            var width = Math.Max(StackSplitTab.NarrowestWidth, Math.Min(widest, resize.Width + resize.Edge * (pointer.X - resize.PointerX) / scale));
+            tab.Width = width;
+            if (resize.Edge < 0) surface.Location = new Point(resize.Left + (int)Math.Round((resize.Width - width) * scale), surface.Location.Y);
+            return;
+        }
+        var size = surface.Bounds.Size;
+        var offset = _splitTabDragOffset!.Value;
+        var wanted = new Point(pointer.X - offset.Width, pointer.Y - offset.Height);
+        if (_windows != null) wanted = _toolbarSurface is { Visible: true } bar ? _windows.Snap(wanted, size, bar.Bounds) : _windows.Snap(wanted, size);
+        surface.Location = OnScreen(wanted, size);
+    }
+
+    /// <summary>The button went up: the split tab stays where it was dropped at its width, both saved for this character.</summary>
+    private void EndSplitTabDrag()
+    {
+        _splitTabDragOffset = null;
+        _splitTabResize = null;
+        if (_splitTabSurface is not { } surface || _splitTab is not { } tab || !_inGame || (surface.Location, tab.Width) == _splitTabDragFrom) return;
+        _splitTabPlace = surface.Location;
+        _positionStore.Save(SessionServer(), SessionCharacter(), SplitTabPlaceId, (surface.Location, new Size((int)Math.Round(tab.Width), 0)));
+        Log($"Moved the split tab to {surface.Location}, {tab.Width:0} wide.");
     }
 
     private const string ToolbarPlaceId = "dereth-toolbar";
@@ -3013,7 +3130,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Draws the toolbar at this character's toolbar scale, the window scale times its own size, and lays it out again at its new size. Its
-    /// top-left corner stays, within the screen. The split tab over it takes the scale too.
+    /// top-left corner stays, within the screen.
     /// </summary>
     private void ScaleToolbar()
     {
@@ -3021,7 +3138,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var scale = PanelScaleOf(ToolbarPlaceId);
         if (surface.Panel.Scale == scale) return;
         surface.Panel.Resize(surface.Panel.Frame.Width, surface.Panel.Frame.Height, scale);
-        if (_splitTabSurface is { } split) split.Panel.Resize(split.Panel.Frame.Width, split.Panel.Frame.Height, scale);
         FitToolbar();
     }
 
@@ -3154,16 +3270,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
         _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
-        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack, BeginToolbarDrag, _portal);
+        var toolbar = new RetailToolbar(_toolbarPort, ToggleSettings, MoveToMainPack, BeginToolbarDrag, _portal);
         // Drawn at LegACEy's window scale, as the other LegACEy windows are. The Dereth theme makes it larger than it measures
         // without one, so it is measured again under the theme and the panel takes that size, rounded up so no edge is cut.
         var scale = WindowScale;
         var panel = ObservePanel(AvaloniaPanel.Create(() => toolbar, 1, 1, scale), ToolbarFailed);
         panel.ApplyTheme(new DerethClientTheme());
         _toolbar = toolbar;
+        // A rebuild reopens Settings before the toolbar is back, so the ring starts from the window.
+        SetMenuRing(_windows?.Get(SettingsWindowId) != null);
         _toolbarSurface = new ScreenSurface(_device, panel);
         FitToolbar();
-        _splitTab = new StackSplitTab(_toolbarPort);
+        _splitTab = new StackSplitTab(_toolbarPort, BeginSplitTabDrag);
+        // A rebuild, as after a reset of the window places, reads the place again.
+        _splitTabPlaceLoaded = false;
         var splitPanel = ObservePanel(AvaloniaPanel.Create(() => _splitTab, 1, 1, scale), ToolbarFailed);
         splitPanel.ApplyTheme(new DerethClientTheme());
         _splitTabSurface = new ScreenSurface(_device, splitPanel);
@@ -3336,19 +3456,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const int ExtendedKey = 1 << 24;
 
     /// <summary>
-    /// Gives the chat window's box the keyboard when retail's chat is held and neither a field of ours nor one of retail's has it. True when
-    /// it did, so the Enter is eaten. Never without the Enter entries: retail's hidden entry could not be let go then. A failure turns the
-    /// chat window off, not the whole UI.
+    /// Gives the active chat window's box, else the main one's, the keyboard when retail's chat is held and neither a field of ours nor one
+    /// of retail's has it. True when it did, so the Enter is eaten. Never without the Enter entries: retail's hidden entry could not be let
+    /// go then. A failure turns the chat window off, not the whole UI.
     /// </summary>
     private bool TryFocusRetailChat()
     {
         try
         {
-            if (_chatNatives?.Enter != true || _chatWindows?.Main is not { } main || _chatTakeover?.Holds != true) return false;
+            if (_chatNatives?.Enter != true || _chatWindows is not { } chats || _chatTakeover?.Holds != true) return false;
+            var typingId = chats.TypingId;
+            if (chats.Get(typingId) is not { } typing) return false;
             var focused = SurfaceById(_inputRouter.FocusedSurfaceId);
             if (focused?.Panel.WantsKeyboard == true || _chatPort?.RetailFieldHasKeyboard() != false) return false;
-            main.FocusInput();
-            _inputRouter.FocusSurface(ChatWindowId);
+            typing.FocusInput();
+            _inputRouter.FocusSurface(typingId);
             return true;
         }
         catch (Exception exception)
@@ -3530,8 +3652,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Ctrl+C while text is selected in a chat log copies it, and the game sees none of the C's down, character or up, so it does not act on
-    /// the key. A press outside the chat windows lets go of the selection, so the key is the game's again. True eats the message. A field of
-    /// ours with the keyboard gets its keys as before: the chat box copies the log's selection itself.
+    /// the key. A press outside the chat windows lets go of the selection, so the key is the game's again, and a press picks the active chat
+    /// window (none outside them). True eats the message. A field of ours with the keyboard gets its keys as before: the chat box copies the
+    /// log's selection itself.
     /// </summary>
     private bool CopyChatSelection(int message, int wParam, int lParam)
     {
@@ -3540,7 +3663,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (message is InputRouterService.WmLButtonDown or InputRouterService.WmRButtonDown)
         {
             var at = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
-            Guard(() => chats.ClearLogSelections(_windows?.HitTest(at)?.Id));
+            Guard(() => chats.Pressed(_windows?.HitTest(at)?.Id));
             return false;
         }
         if (_eatingCtrlC && (message == InputRouterService.WmChar && wParam == CtrlC || message == InputRouterService.WmKeyUp && wParam == VkC))
@@ -3637,8 +3760,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
             if (_radarTakeover != null && (!canDraw || _radarFailed || !switchOn))
                 ReleaseRetailRadar();
-            // Switched off, the ground's DATs go too once no radar reads them; switching on loads them again.
-            if (!switchOn && _radar == null && _radarDatLoad != null) DisposeRadarGround();
+            // Switched off, the indoor plans' DATs go too once no radar reads them; switching on loads them again.
+            if (!switchOn && _radar == null && (_radarTiles != null || _radarIndoorLoad != null)) DisposeRadarTiles();
             if (!canDraw || !switchOn || _radarFailed) return;
             if (_radarTakeover == null && !HoldRetailRadar()) return;
             _radarTakeover!.Tick(GameDevice.ViewportSize(_device));
@@ -3664,27 +3787,31 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _radarPlace = retail == IntPtr.Zero ? null : NativeUi.GetBounds(retail).Location;
         _radarTakeover = new RetailHeldWindows(RetailHudCatalogue.RadarWindows);
         // The ground's DATs open off the UI thread; the radar draws dots on dark until its first tiles are built.
-        _radarDatLoad ??= LoadRadarGround(_portal);
+        Ground();
         _radarIndoorLoad ??= LoadRadarIndoors(_portal.Path);
         Log("Retail's radar held.");
         return true;
     }
 
-    private static Task<GroundDat?> LoadRadarGround(PortalDat portal) => Task.Run(() =>
+    private Task<GroundDat?> Ground()
     {
-        try { return new GroundDat(portal); }
-        catch (Exception exception)
+        var portal = _portal!;
+        return _ground ??= Task.Run(() =>
         {
-            Log($"Dereth radar has no ground; it draws dots on dark: {exception.Message}");
-            return null;
-        }
-    });
+            try { return new GroundDat(portal); }
+            catch (Exception exception)
+            {
+                Log($"The ground's DATs did not open; the radar draws dots on dark, water is left as retail draws it and weather is hidden indoors: {exception.Message}");
+                return (GroundDat?)null;
+            }
+        });
+    }
 
     // The ground's tiles, once its DATs have opened; null before that or without them.
     private GroundTiles? RadarGround()
     {
         if (_radarTiles != null) return _radarTiles;
-        if (_radarDatLoad is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
+        if (_ground is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
         return _radarTiles = new GroundTiles(dat, Log);
     }
 
@@ -3776,15 +3903,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Drops the ground's and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone. A load still running is
-    /// disposed when it lands; the plans' DAT is disposed once their reads in flight have finished.
+    /// Drops the radar's tiles and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone; the shared ground
+    /// stays. A load still running is disposed when it lands; the plans' DAT is disposed once their reads in flight have finished.
     /// </summary>
-    private void DisposeRadarGround()
+    private void DisposeRadarTiles()
     {
-        if (_radarDatLoad is { } load) DisposeWhenLoaded(load);
         if (_radarPlans != null) _radarPlans.Dispose();
         else if (_radarIndoorLoad is { } indoors) DisposeWhenLoaded(indoors);
-        _radarDatLoad = null;
         _radarTiles = null;
         _radarIndoorLoad = null;
         _radarPlans = null;
@@ -4002,6 +4127,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_settings != null) _settings.VitalsRetailBars = new OptionChoice<bool>(on, SetVitalsRetailBars);
     }
 
+    // The appraisal window's layout for the character: 1 for retail's, else the sections (backlog 082).
+    private const string AppraisalLayoutKey = "dereth-appraisal-retail-layout";
+
+    private bool AppraisalRetailLayout() => _settingsStore.Load(SessionServer(), SessionCharacter(), AppraisalLayoutKey) is { Location.X: 1 };
+
+    /// <summary>Keeps the character's appraisal layout; an open appraisal window draws again in it.</summary>
+    private void SetAppraisalRetailLayout(bool on)
+    {
+        _settingsStore.Save(SessionServer(), SessionCharacter(), AppraisalLayoutKey, (new Point(on ? 1 : 0, 0), null));
+        if (_settings != null) _settings.AppraisalRetailLayout = new OptionChoice<bool>(on, SetAppraisalRetailLayout);
+        _appraisal.Relayout();
+    }
+
     /// <summary>
     /// The chat's text size set from the Settings window: applied to the open chat, which then publishes the value itself; or kept for the
     /// chat to open with when the chat is closed, and published here.
@@ -4187,6 +4325,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                         DragToolbarRows(point);
                     else if (_gameMessageDragOffset != null)
                         DragGameMessages(point);
+                    else if (_splitTabDragOffset != null)
+                        DragSplitTab(point);
                     else
                     {
                         var handingOff = _handOff == null;
@@ -4244,6 +4384,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     _toolbarRowDragY = null;
                     if (_gameMessageDragOffset != null)
                         EndGameMessageDrag();
+                    if (_splitTabDragOffset != null)
+                        EndSplitTabDrag();
                     eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
@@ -4325,7 +4467,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private IntPtr WindowCursorAt(Point point)
     {
-        if (_toolbarDragOffset != null || _gameMessageDragOffset != null || _windows?.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
+        if (_splitTabResize != null) return RetailCursor(DatCursorWE, IdcSizeWE);
+        if (_toolbarDragOffset != null || _gameMessageDragOffset != null || _splitTabDragOffset != null || _windows?.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
         // The pointer goes to a capture, else to the topmost surface under it, as the router decides. Only the window that owns
         // it gets the move or resize cursor, so the retail bar and any other surface keep the game's cursor.
         var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
@@ -4333,6 +4476,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (owner == ToolbarSurfaceId && OnToolbarMoveEdge(point)) return RetailCursor(DatCursorMove, IdcSizeAll);
         if (owner == ToolbarSurfaceId && OnToolbarRowEdge(point)) return RetailCursor(DatCursorNS, IdcSizeNS);
         if (owner == GameMessagesSurfaceId) return RetailCursor(DatCursorMove, IdcSizeAll);
+        if (owner == SplitTabSurfaceId && SplitTabEdgeAt(point) != 0) return RetailCursor(DatCursorWE, IdcSizeWE);
         if (_windows == null) return IntPtr.Zero;
         if (owner != null && _windows.MoveEdgeAt(point) == owner) return RetailCursor(DatCursorMove, IdcSizeAll);
         var hover = _windows.HoverAt(point);
@@ -4470,6 +4614,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarDragOffset = null;
         _toolbarRowDragY = null;
         _gameMessageDragOffset = null;
+        _splitTabDragOffset = null;
+        _splitTabResize = null;
         _windows?.Release();
     }
 
@@ -4489,13 +4635,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private static int WholePixels(double length) => (int)Math.Ceiling(length - 0.001);
 
-    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window, chat included.</summary>
+    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, the split tab, or a LegACEy window, chat included.</summary>
     private bool Rescalable(string? id) => id == ToolbarSurfaceId
         ? _toolbarTakeover?.Holds == true
-        : id != null && _windows?.Get(id) != null;
+        : id == SplitTabSurfaceId || id != null && _windows?.Get(id) != null;
 
-    /// <summary>The id a surface's size is saved under: the toolbar's place, or the window's own id.</summary>
-    private static string PlaceIdOf(string id) => id == ToolbarSurfaceId ? ToolbarPlaceId : id;
+    /// <summary>The id a surface's size is saved under: the toolbar's or split tab's place, or the window's own id.</summary>
+    private static string PlaceIdOf(string id) => id switch { ToolbarSurfaceId => ToolbarPlaceId, SplitTabSurfaceId => SplitTabPlaceId, _ => id };
 
     // How long a window's size shows over it after a wheel notch.
     private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);
@@ -4511,6 +4657,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_windows.Rescale(placeId, steps))
         {
             if (id == ToolbarSurfaceId) ScaleToolbar();
+            else if (id == SplitTabSurfaceId) PlaceSplitTab();
             else SyncWindowLocations();
         }
         // The window's size shows over it while the wheel turns, at a limit too, as the Settings slider shows the UI size.
@@ -4698,7 +4845,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_attack?.Holds == true) Log("Retail's attack panel is still held after two tries at unload; it stays hidden until the client restarts.");
         // Kept while still held, so a disabled UI's frames go on retrying the give-back.
         else _attack = null;
-        DisposeRadarGround();
+        DisposeRadarTiles();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
         _itemDragActive = false;

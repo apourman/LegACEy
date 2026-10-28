@@ -24,10 +24,13 @@ public sealed record UiSizeChoice(int Percent, Action<int> Set)
 public sealed record UpdateChoice(string Label, bool Enabled, Action Check);
 
 /// <summary>A window the player can have as LegACEy's (custom) or retail's (native): whether it is custom now, and the switch.</summary>
-public sealed record UiWindowChoice(string Title, Func<bool> IsCustom, Action<bool> SetCustom, WindowSizeChoice? Size = null);
+public sealed record UiWindowChoice(string Title, Func<bool> IsCustom, Action<bool> SetCustom, WindowSizeChoice? Size = null, WindowOpacityChoice? Opacity = null);
 
 /// <summary>A window's own size in percent, for this character, and the change that makes it some steps bigger (or, negative, smaller).</summary>
 public sealed record WindowSizeChoice(Func<int> Percent, Action<int> Step);
+
+/// <summary>A window's opacity in percent, for this character, and the change that sets it.</summary>
+public sealed record WindowOpacityChoice(Func<int> Percent, Action<int> Set);
 
 /// <summary>A per-character option the Settings window shows: its current value, and the change that sets it.</summary>
 public sealed record OptionChoice<T>(T Value, Action<T> Set);
@@ -62,12 +65,14 @@ public sealed class ClientSettings
     private LockUiChoice? _lockUi;
     private OptionChoice<VitalsLayout>? _vitals;
     private OptionChoice<bool>? _vitalsRetailBars;
+    private OptionChoice<bool>? _appraisalRetailLayout;
     private OptionChoice<bool>? _shortcutRow2;
     private OptionChoice<int>? _chatTextSize;
     private OptionChoice<int>? _chatFade;
     private OptionChoice<int>? _chatActiveOpacity;
     private OptionChoice<int>? _chatInactiveOpacity;
     private OptionChoice<int>? _chatNameColour;
+    private OptionChoice<int>? _windowsOpacity;
     private OptionChoice<RadarOptions>? _radar;
     private OptionChoice<WeatherKind>? _testWeather;
     private OptionChoice<bool>? _testFog;
@@ -105,6 +110,9 @@ public sealed class ClientSettings
     /// <summary>Whether the Vitals window's bars are retail-style, for this character. Null hides its row.</summary>
     public OptionChoice<bool>? VitalsRetailBars { get => _vitalsRetailBars; set => Moved(ref _vitalsRetailBars, value); }
 
+    /// <summary>Whether the appraisal window draws the retail layout instead of its sections, for this character. Null hides its row.</summary>
+    public OptionChoice<bool>? AppraisalRetailLayout { get => _appraisalRetailLayout; set => Moved(ref _appraisalRetailLayout, value); }
+
     /// <summary>Whether the toolbar's second shortcut row is shown, for this character. Null hides its row.</summary>
     public OptionChoice<bool>? ShortcutRow2 { get => _shortcutRow2; set => Moved(ref _shortcutRow2, value); }
 
@@ -122,6 +130,9 @@ public sealed class ClientSettings
 
     /// <summary>The colour chat draws names in, for this character, as an index into <see cref="RetailChatWindows.NameColours"/>. Null hides its row.</summary>
     public OptionChoice<int>? ChatNameColour { get => _chatNameColour; set => Moved(ref _chatNameColour, value); }
+
+    /// <summary>The opacity every window but chat draws at, for this character; setting it sets each window's. Null hides its row.</summary>
+    public OptionChoice<int>? WindowsOpacity { get => _windowsOpacity; set => Moved(ref _windowsOpacity, value); }
 
     /// <summary>The radar's options for this character. Null hides its rows.</summary>
     public OptionChoice<RadarOptions>? Radar { get => _radar; set => Moved(ref _radar, value); }
@@ -334,6 +345,8 @@ public sealed class SettingsPanel : UserControl
     {
         var pane = new StackPanel { Spacing = 10 };
         if (_settings.Windows.Count > 1) pane.Children.Add(AllWindowsRow());
+        if (_settings.WindowsOpacity != null) pane.Children.Add(new Border { Margin = new Thickness(10, 0), Child = OpacityRow(() => _settings.WindowsOpacity?.Value,
+            percent => _settings.WindowsOpacity?.Set(percent)) });
         foreach (var window in _settings.Windows) pane.Children.Add(WindowCard(window));
         return pane;
     }
@@ -383,6 +396,7 @@ public sealed class SettingsPanel : UserControl
 
         var options = new StackPanel { Spacing = 6 };
         if (window.Size != null) options.Children.Add(SizeRow(window.Size));
+        if (window.Opacity is { } opacity) options.Children.Add(OpacityRow(() => opacity.Percent(), opacity.Set));
         foreach (var row in OptionRows(window.Title)) options.Children.Add(row);
         var frame = new Rectangle
         {
@@ -434,10 +448,15 @@ public sealed class SettingsPanel : UserControl
         return OptionRow("Size", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { smaller, readout, bigger } });
     }
 
+    /// <summary>"Opacity": how opaque a window draws, or every window but chat, for this character. A window being moved or resized shows whole.</summary>
+    private Control OpacityRow(Func<int?> current, Action<int> commit) =>
+        SliderRow("Opacity", WindowOpacities.Faintest, WindowOpacities.Opaque, WindowOpacities.Step, current, commit, thisCharacter: true);
+
     /// <summary>The options a window shows on Dereth. A window has a row only for the options the settings carry.</summary>
     private List<Control> OptionRows(string window)
     {
         var rows = new List<Control>();
+        if (window == "Appraisal" && _settings.AppraisalRetailLayout != null) rows.Add(AppraisalLayoutRow());
         if (window == "Toolbar" && _settings.ShortcutRow2 != null) rows.Add(ToggleRow("Second shortcut row", () => _settings.ShortcutRow2));
         if (window == "Chat" && _settings.ChatTextSize != null) rows.Add(ChatTextSizeRow());
         if (window == "Chat" && _settings.ChatFade != null) rows.Add(ChatFadeRow());
@@ -520,6 +539,16 @@ public sealed class SettingsPanel : UserControl
         var layout = new DerethSegmented(new[] { "Stacked", "Side by side" });
         void Show() => layout.Selected = _settings.Vitals is { Value: VitalsLayout.SideBySide } ? 1 : 0;
         layout.Chosen += index => _settings.Vitals?.Set(index == 1 ? VitalsLayout.SideBySide : VitalsLayout.Stacked);
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Layout", layout);
+    }
+
+    private Control AppraisalLayoutRow()
+    {
+        var layout = new DerethSegmented(new[] { "Sections", "Retail" });
+        void Show() => layout.Selected = _settings.AppraisalRetailLayout is { Value: true } ? 1 : 0;
+        layout.Chosen += index => _settings.AppraisalRetailLayout?.Set(index == 1);
         _redraws.Add(Show);
         Show();
         return OptionRow("Layout", layout);
@@ -698,7 +727,7 @@ public sealed class SettingsPanel : UserControl
     private Control WaterStrengthRow() => SliderRow("Wave strength", WaterOption.Smallest, WaterOption.Largest, WaterOption.Step,
         () => _settings.Water?.Percent, percent => _settings.Water?.Set(true, percent));
 
-    /// <summary>The visible plugins by name, each with its menu entries as the launcher lists them. A picked entry runs.</summary>
+    /// <summary>The visible plugins by name, each with its menu entries. A picked entry runs.</summary>
     private Control PluginsPane()
     {
         RebuildPlugins();

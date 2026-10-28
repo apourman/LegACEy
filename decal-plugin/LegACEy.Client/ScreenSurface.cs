@@ -82,6 +82,9 @@ internal sealed unsafe class ScreenSurface : IDisposable
 
     public Rectangle Bounds => new(Location, new Size(Panel.Frame.Width, Panel.Frame.Height));
 
+    /// <summary>How opaque the surface draws, 0 to 1: the whole frame is faded as it is drawn, so a change costs no new capture.</summary>
+    public double Opacity { get; set; } = 1;
+
     /// <summary>Upload the frame this game frame's compositor advance captured, without drawing it.</summary>
     public void Prepare()
     {
@@ -110,9 +113,19 @@ internal sealed unsafe class ScreenSurface : IDisposable
         if (!Visible || !_uploaded)
             return;
         var start = Stopwatch.GetTimestamp();
-        Draw(Panel.Frame.Width, Panel.Frame.Height);
+        Draw(FrameBounds);
         DrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
     }
+
+    /// <summary>Draw the panel's note again, if one shows, in its place: 3D views draw over the window's frame and would hide it.</summary>
+    public void DrawNote()
+    {
+        if (!Visible || !_uploaded || Panel.NoteArea is not { } note) return;
+        note.Intersect(FrameBounds);
+        if (!note.IsEmpty) Draw(note);
+    }
+
+    private Rectangle FrameBounds => new(0, 0, Panel.Frame.Width, Panel.Frame.Height);
 
     public void Dispose()
     {
@@ -204,8 +217,8 @@ internal sealed unsafe class ScreenSurface : IDisposable
         }
     }
 
-    /// <summary>Draw one textured quad with premultiplied alpha, then put every device state back.</summary>
-    private void Draw(int width, int height)
+    /// <summary>Draw one textured quad of the frame's part with premultiplied alpha, then put every device state back.</summary>
+    private void Draw(Rectangle part)
     {
         var saved = SaveState(_device);
         try
@@ -220,10 +233,16 @@ internal sealed unsafe class ScreenSurface : IDisposable
             SetRenderState(_device, RenderState.SrcBlend, BlendOne);
             SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
 
-            SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
+            // The texels are premultiplied, so a faded surface scales all four channels by the same factor.
+            var faded = Opacity < 1;
+            var factor = (uint)Math.Round(Math.Clamp(Opacity, 0, 1) * 255);
+            SetRenderState(_device, RenderState.TextureFactor, unchecked((int)(factor << 24 | factor << 16 | factor << 8 | factor)));
+            SetStageState(_device, 0, StageState.ColorOp, faded ? OpModulate : OpSelectArg1);
             SetStageState(_device, 0, StageState.ColorArg1, ArgTexture);
-            SetStageState(_device, 0, StageState.AlphaOp, OpSelectArg1);
+            SetStageState(_device, 0, StageState.ColorArg2, ArgFactor);
+            SetStageState(_device, 0, StageState.AlphaOp, faded ? OpModulate : OpSelectArg1);
             SetStageState(_device, 0, StageState.AlphaArg1, ArgTexture);
+            SetStageState(_device, 0, StageState.AlphaArg2, ArgFactor);
             SetStageState(_device, 0, StageState.TexCoordIndex, 0);
             SetStageState(_device, 0, StageState.TextureTransformFlags, 0);
 
@@ -234,15 +253,17 @@ internal sealed unsafe class ScreenSurface : IDisposable
             SetSamplerState(_device, 0, SamplerState.AddressV, AddressClamp);
 
             // Pixel centres sit at half-pixel offsets in Direct3D 9, so shift by half a pixel for 1:1 texels.
-            float left = Location.X - 0.5f, top = Location.Y - 0.5f;
-            float right = left + width, bottom = top + height;
+            float left = Location.X + part.X - 0.5f, top = Location.Y + part.Y - 0.5f;
+            float right = left + part.Width, bottom = top + part.Height;
+            float u0 = (float)part.Left / _textureWidth, v0 = (float)part.Top / _textureHeight;
+            float u1 = (float)part.Right / _textureWidth, v1 = (float)part.Bottom / _textureHeight;
             // Four XYZRHW + TEX1 vertices, 24 bytes each.
             var quad = stackalloc float[]
             {
-                left, top, 0, 1, 0, 0,
-                right, top, 0, 1, 1, 0,
-                left, bottom, 0, 1, 0, 1,
-                right, bottom, 0, 1, 1, 1
+                left, top, 0, 1, u0, v0,
+                right, top, 0, 1, u1, v0,
+                left, bottom, 0, 1, u0, v1,
+                right, bottom, 0, 1, u1, v1
             };
             DrawPrimitiveUP(_device, TriangleStrip, 2, quad, 24);
         }

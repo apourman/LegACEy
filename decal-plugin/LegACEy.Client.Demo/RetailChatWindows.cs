@@ -118,20 +118,29 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>The text selected in a window's log, or empty when no window has any.</summary>
     public string LogSelection => _chats.Select(chat => chat.Window.LogSelection).FirstOrDefault(text => text.Length > 0) ?? string.Empty;
 
-    /// <summary>Lets go of every log's selection but the one in <paramref name="windowId"/>'s window, as a click outside it does.</summary>
-    public void ClearLogSelections(string? windowId = null)
+    /// <summary>
+    /// A press on <paramref name="windowId"/>, or on no chat window when null: that window becomes the active one, and every other lets go of
+    /// its log selection and is no longer active.
+    /// </summary>
+    public void Pressed(string? windowId)
     {
         foreach (var (id, window) in _chats)
+        {
+            window.Active = id == windowId;
             if (id != windowId) window.ClearLogSelection();
+        }
     }
 
     /// <summary>The main window, or null before <see cref="Open"/>.</summary>
     public RetailChatWindow? Main => Get(MainId);
 
-    /// <summary>Every open window, the main window first.</summary>
+    /// <summary>The id of the window Enter types into: the active one, else the main window.</summary>
+    public string TypingId => _chats.FirstOrDefault(chat => chat.Window.Active).Id ?? MainId;
+
     /// <summary>Whether a window id is a chat window's: the main one or one torn off it.</summary>
     public static bool IsChat(string id) => id == MainId || id.StartsWith(TornIdPrefix, StringComparison.Ordinal);
 
+    /// <summary>Every open window, the main window first.</summary>
     public IReadOnlyList<RetailChatWindow> Windows => _chats.Select(chat => chat.Window).ToArray();
 
     /// <summary>
@@ -400,7 +409,8 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public static void SaveFadeSeconds(IWindowPositionStore positions, string server, string character, int seconds) =>
         positions.Save(server, character, FadeKey, (new Point(seconds, 0), null));
 
-    private RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
+    /// <summary>The window with that id, or null when none is open.</summary>
+    public RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
 
     private string? IdOf(RetailChatWindow window) => _chats.FirstOrDefault(chat => chat.Window == window).Id;
 

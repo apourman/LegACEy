@@ -313,6 +313,22 @@ public sealed class AvaloniaPanel : IDisposable
         _noteClock.Restart();
     }
 
+    /// <summary>
+    /// Where the note from <see cref="ShowNote"/> is in <see cref="Frame"/>, in pixels, or null while none shows. The host draws this part
+    /// of the frame again over 3D views, which draw over the window's frame and would hide the note.
+    /// </summary>
+    public Rectangle? NoteArea
+    {
+        get
+        {
+            if (!_note.IsVisible || _note.TransformToVisual(_window) is not { } transform) return null;
+            var area = new Rect(_note.Bounds.Size).TransformToAABB(transform);
+            // A pixel more all round holds the border's antialiased edge.
+            return Rectangle.FromLTRB((int)Math.Floor(area.Left * _scale) - 1, (int)Math.Floor(area.Top * _scale) - 1,
+                (int)Math.Ceiling(area.Right * _scale) + 1, (int)Math.Ceiling(area.Bottom * _scale) + 1);
+        }
+    }
+
     /// <summary>Capture the frame Avalonia rendered, if this panel is shown and its content changed. A failure goes to the error handler.</summary>
     internal void Capture()
     {

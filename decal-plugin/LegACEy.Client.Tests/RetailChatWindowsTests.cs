@@ -243,16 +243,21 @@ public sealed class RetailChatWindowsTests
         first.Chat.SetInactiveOpacity(30);
         port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
         first.Tick();
-        // The frame, tabs and input fade with the backdrop, in the main window and a torn-off one alike.
-        void Shows(double opacity)
+        // The frame fades with the backdrop, in the main window and a torn-off one alike, and a torn-off window's input stays solid until idle;
+        // the main window's input never fades. With a backdrop left, the tab labels stay solid, as the lines do.
+        void Shows(double opacity, double input)
         {
             foreach (var window in first.Chat.Windows)
-                foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) }) Assert.Equal(opacity, Seen(part), 6);
+            {
+                foreach (var part in new Visual[] { Groove(window), Frame(window) }) Assert.Equal(opacity, Seen(part), 6);
+                Assert.Equal(window.TornOff ? input : 1, Seen(InputBox(window)), 6);
+                Assert.Equal(1.0, Seen(FirstLabel(window)));
+            }
         }
-        Shows(0.8);
+        Shows(0.8, 1.0);
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds));
         first.Tick();
-        Shows(0.3);
+        Shows(0.3, 0.3);
         // With a backdrop left, the line outlasts its stay instead of fading.
         Assert.Equal(1.0, Seen(first.Main.GetVisualDescendants().OfType<Control>().First(part => part.Tag is DateTime)));
         first.Dispose();
@@ -336,10 +341,45 @@ public sealed class RetailChatWindowsTests
 
         foreach (var window in new[] { main, torn })
         {
-            Assert.Equal(0.0, Seen(StripPanel(window)));
+            Assert.Equal(0.0, Seen(FirstLabel(window)));
             Assert.Equal(0.0, Seen(Frame(window)));
-            Assert.Equal(0.0, Seen(InputBox(window)));
         }
+        Assert.Equal(0.0, Seen(InputBox(torn)));
+        // The main window's chat bar is always there, as retail's is.
+        Assert.Equal(1.0, Seen(InputBox(main)));
+    }));
+
+    [Fact]
+    public void A_click_makes_a_window_active_until_a_click_lands_elsewhere() => RenderThread.Run(() => WithStore(path =>
+    {
+        var clock = new DeskClock(Stamp);
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var desk = ChatDesk.Open(port, path, Character, clock: () => clock.Now);
+        var main = desk.Main;
+        desk.Drag(desk.At(main, TabView(main, "Fellowship")), desk.Place(main, new System.Drawing.Point(600, 110)));
+        var torn = desk.Chat.Windows[1];
+
+        Assert.Equal(RetailChatWindows.MainId, desk.Chat.TypingId);
+        desk.Chat.Pressed(RetailChatWindows.MainId);
+        desk.Tick();
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
+        desk.Tick();
+        Assert.Equal(1.0, Seen(Frame(main)));
+        Assert.Equal(0.0, Seen(Frame(torn)));
+
+        // Enter types into the window clicked last, and into the main one once a click lands outside them.
+        desk.Chat.Pressed(desk.IdOf(torn));
+        Assert.Equal(desk.IdOf(torn), desk.Chat.TypingId);
+        desk.Chat.Pressed(null);
+        Assert.Equal(RetailChatWindows.MainId, desk.Chat.TypingId);
+
+        // A click on the game lets it go, and it fades as one left alone does.
+        desk.Chat.Pressed(RetailChatWindows.MainId);
+        desk.Chat.Pressed(null);
+        desk.Tick();
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
+        desk.Tick();
+        Assert.Equal(0.0, Seen(Frame(main)));
     }));
 
     [Fact]
@@ -473,6 +513,9 @@ public sealed class RetailChatWindowsTests
 
     private static TextBox InputBox(RetailChatWindow window) =>
         window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Watermark == "Say something…");
+
+    /// <summary>The first tab's label and unread count.</summary>
+    private static Control FirstLabel(RetailChatWindow window) => StripPanel(window).Children.OfType<Border>().First().Child!;
 
     private static StackPanel StripPanel(RetailChatWindow window) =>
         window.GetVisualDescendants().OfType<StackPanel>().First(strip => strip.Orientation == Orientation.Horizontal && strip.Height == 19);
@@ -633,7 +676,7 @@ public sealed class RetailChatWindowsTests
 
         public void Dispose() => Chat.Dispose();
 
-        private string IdOf(RetailChatWindow window) => _contents.Single(pair => pair.Value == window).Key;
+        public string IdOf(RetailChatWindow window) => _contents.Single(pair => pair.Value == window).Key;
 
         private WindowManager Windows => _windows;
 
