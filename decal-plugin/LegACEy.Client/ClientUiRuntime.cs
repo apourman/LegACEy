@@ -3269,7 +3269,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
-        _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
+        _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort(NativeUi.ReadMemory, Log));
         var toolbar = new RetailToolbar(_toolbarPort, ToggleSettings, MoveToMainPack, BeginToolbarDrag, _portal);
         // Drawn at LegACEy's window scale, as the other LegACEy windows are. The Dereth theme makes it larger than it measures
         // without one, so it is measured again under the theme and the panel takes that size, rounded up so no edge is cut.
