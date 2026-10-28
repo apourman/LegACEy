@@ -243,12 +243,16 @@ public sealed class RetailChatWindowsTests
         first.Chat.SetInactiveOpacity(30);
         port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
         first.Tick();
-        // The frame and tabs fade with the backdrop, in the main window and a torn-off one alike; only a torn-off window's input fades too.
+        // The frame fades with the backdrop, in the main window and a torn-off one alike; only a torn-off window's input fades too. With a
+        // backdrop left, the tab labels stay solid, as the lines do.
         void Shows(double opacity)
         {
             foreach (var window in first.Chat.Windows)
-                foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) })
+            {
+                foreach (var part in new Visual[] { Groove(window), Frame(window), InputBox(window) })
                     Assert.Equal(part is TextBox && !window.TornOff ? 1 : opacity, Seen(part), 6);
+                Assert.Equal(1.0, Seen(FirstLabel(window)));
+            }
         }
         Shows(0.8);
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds));
@@ -337,7 +341,7 @@ public sealed class RetailChatWindowsTests
 
         foreach (var window in new[] { main, torn })
         {
-            Assert.Equal(0.0, Seen(StripPanel(window)));
+            Assert.Equal(0.0, Seen(FirstLabel(window)));
             Assert.Equal(0.0, Seen(Frame(window)));
         }
         Assert.Equal(0.0, Seen(InputBox(torn)));
@@ -509,6 +513,9 @@ public sealed class RetailChatWindowsTests
 
     private static TextBox InputBox(RetailChatWindow window) =>
         window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Watermark == "Say something…");
+
+    /// <summary>The first tab's label and unread count.</summary>
+    private static Control FirstLabel(RetailChatWindow window) => StripPanel(window).Children.OfType<Border>().First().Child!;
 
     private static StackPanel StripPanel(RetailChatWindow window) =>
         window.GetVisualDescendants().OfType<StackPanel>().First(strip => strip.Orientation == Orientation.Horizontal && strip.Height == 19);

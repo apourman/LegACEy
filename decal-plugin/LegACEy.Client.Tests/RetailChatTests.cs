@@ -832,17 +832,18 @@ public sealed class RetailChatTests
         window.Refresh();
         // The first frame is the window's own; the Send button draws its frame too.
         var frame = window.GetVisualDescendants().OfType<DerethFrame>().First();
-        var scrollBar = window.GetVisualDescendants().OfType<ScrollBar>().First(bar => bar.Orientation == Orientation.Vertical);
+        // The log's scroll bar: the tab strip's own comes first.
+        var scrollBar = window.GetVisualDescendants().OfType<ScrollBar>().Last(bar => bar.Orientation == Orientation.Vertical);
         Assert.Equal(Awake, Seen(scrollBar));
 
         clock.Advance(0.125);
         window.Refresh();
-        Assert.InRange(Seen(TabView(window, "All")), 0.2, 0.8);
+        Assert.InRange(Seen(Frame(window)), 0.2, 0.8);
 
         clock.Advance(0.125);
         window.Refresh();
         Assert.Equal(0.0, Seen(frame));
-        Assert.Equal(0.0, Seen(TabView(window, "All")));
+        Assert.Equal(0.0, Seen(Frame(window)));
         Assert.Equal(1.0, Seen(InputBox(window)));
         Assert.Equal(0.0, Seen(scrollBar));
         Assert.Equal(1.0, Seen(LineOf(panel, "line 30 of the log")));
@@ -858,33 +859,35 @@ public sealed class RetailChatTests
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
-        Assert.Equal(0.0, Seen(TabView(window, "All")));
+        Assert.Equal(0.0, Seen(Frame(window)));
 
         panel.PointerMove(Width / 2, Height / 2);
         window.Refresh();
-        Assert.Equal(Awake, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(Frame(window)));
+        // The tab labels stay solid while the window is see-through: thin text faded over the game reads as a blur.
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
         panel.PointerLeave();
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
-        Assert.Equal(0.0, Seen(TabView(window, "All")));
+        Assert.Equal(0.0, Seen(Frame(window)));
 
         Click(panel, InputBox(window));
         clock.Advance(1);
         window.Refresh();
         Assert.Equal(1.0, Seen(InputBox(window)));
-        Assert.Equal(Awake, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(Frame(window)));
 
         Click(panel, ChipText(panel, "Local"));
         panel.PointerLeave();
         clock.Advance(1);
         window.Refresh();
-        Assert.Equal(Awake, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(Frame(window)));
         Click(panel, ChipText(panel, "Local"));
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
-        Assert.Equal(0.0, Seen(TabView(window, "All")));
+        Assert.Equal(0.0, Seen(Frame(window)));
     });
 
     [Fact]
@@ -918,12 +921,12 @@ public sealed class RetailChatTests
         clock.Advance(5);
         // Held by the host, the window shows whole, whatever its active opacity.
         window.Refresh(keepAwake: true);
-        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Assert.Equal(1.0, Seen(Frame(window)));
 
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
-        Assert.Equal(0.0, Seen(TabView(window, "All")));
+        Assert.Equal(0.0, Seen(Frame(window)));
     });
 
     [Fact]
@@ -935,13 +938,13 @@ public sealed class RetailChatTests
         window.Active = true;
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
-        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Assert.Equal(1.0, Seen(Frame(window)));
 
         window.Active = false;
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
-        Assert.Equal(0.0, Seen(TabView(window, "All")));
+        Assert.Equal(0.0, Seen(Frame(window)));
     });
 
     [Theory]
@@ -958,11 +961,11 @@ public sealed class RetailChatTests
         window.Refresh();
         clock.Advance(seconds - 1);
         window.Refresh();
-        Assert.Equal(Awake, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(Frame(window)));
 
         clock.Advance(1 + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
-        Assert.Equal(0.0, Seen(TabView(window, "All")));
+        Assert.Equal(0.0, Seen(Frame(window)));
     });
 
     [Fact]
@@ -985,7 +988,7 @@ public sealed class RetailChatTests
         clock.Advance(4.6);
         window.Refresh();
         Assert.Equal(0.75, Seen(LineOf(panel, "an old line")), 2);
-        Assert.Equal(0.6 * Awake, Seen(TabView(window, "All")), 2);
+        Assert.Equal(0.6 * Awake, Seen(Frame(window)), 2);
     });
 
     [Fact]
@@ -998,14 +1001,14 @@ public sealed class RetailChatTests
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
-        Assert.Equal(0.0, Seen(TabView(window, "All")));
+        Assert.Equal(0.0, Seen(Frame(window)));
 
         window.IdleAfterSeconds = null;
         window.Refresh();
-        Assert.Equal(Awake, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(Frame(window)));
         clock.Advance(3600);
         window.Refresh();
-        Assert.Equal(Awake, Seen(TabView(window, "All")));
+        Assert.Equal(Awake, Seen(Frame(window)));
     });
 
     // ---- helpers ----
@@ -1024,6 +1027,8 @@ public sealed class RetailChatTests
     }
 
     /// <summary>How opaque a part shows on screen: its opacity times its ancestors'.</summary>
+    private static DerethFrame Frame(RetailChatWindow window) => window.GetVisualDescendants().OfType<DerethFrame>().First();
+
     private static double Seen(Visual part) => part.GetSelfAndVisualAncestors().OfType<Visual>().Aggregate(1.0, (seen, visual) => seen * visual.Opacity);
 
     private static TextBlock LineOf(AvaloniaPanel panel, string fragment) =>

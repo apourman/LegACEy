@@ -68,6 +68,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly Border _groove;
     private readonly Border _grooveEdge;
     private readonly List<Control> _chrome = new();
+    private readonly Border _tabBar;
+    private (double Backing, double Ink) _tabFade = (-1, -1);
     private readonly RetailChatFade _fade;
     private readonly Func<DateTime> _clock;
     private readonly Action<string> _copy;
@@ -141,7 +143,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _tabRow.Children.Add(tabSpace);
         Grid.SetColumn(_tabEnd, 1);
         _tabRow.Children.Add(_tabEnd);
-        var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 3), Child = _tabRow };
+        var tabBar = _tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 3), Child = _tabRow };
 
         // The log: a dark groove with a scroll bar, and the jump pill over its bottom edge while the player is scrolled up.
         // The groove fades with the rest of the window; the lines sit over it, inset by the edge's border and padding, and fade by their own age.
@@ -227,7 +229,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // all over, so the pointer counts as over the window wherever it is in the frame.
         // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
         // The main window's input row never fades, as retail's chat bar does not; a torn-off window's fades with its frame.
-        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, _grooveEdge });
+        _chrome.AddRange(new Control[] { _frame, _groove, _grooveEdge });
         if (tornOff) _chrome.Add(inputRow);
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, _scaled } };
         // A tab press that moves out of the strip is a drag; a press released on the tab is a click. Both are read from the window's own
@@ -421,6 +423,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // the lines keep their own. Held by the host (moved or resized) or active it shows whole, so even at 0% it can be found.
         var opacity = keepAwake ? 1 : (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
         foreach (var part in _chrome) SetOpacity(part, opacity);
+        FadeTabs(opacity, InactiveOpacity > 0 ? 1 : _fade.ChromeOpacity(now));
         _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
         if (_scrollBar != null) SetOpacity(_scrollBar, opacity);
         if (!_linesSettled) _linesSettled = ApplyLines(now);
@@ -447,6 +450,31 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         return !idle || allGone;
     }
 
+    /// <summary>
+    /// The tab strip's line and tab backings fade with the window, but its labels keep the lines' rule: solid unless the window fades away
+    /// entirely, as thin text faded over the game reads as a blur.
+    /// </summary>
+    private void FadeTabs(double backing, double ink)
+    {
+        if (_tabFade == (backing, ink)) return;
+        _tabFade = (backing, ink);
+        FadeBrushes(_tabBar, backing);
+        foreach (var tab in _tabStrip.Children.OfType<Border>())
+        {
+            FadeBrushes(tab, backing);
+            if (tab.Child != null) SetOpacity(tab.Child, ink);
+        }
+        if (_tabEnd.Child != null) SetOpacity(_tabEnd.Child, ink);
+    }
+
+    private static void FadeBrushes(Border border, double opacity)
+    {
+        static IBrush? Faded(IBrush? brush, double opacity) =>
+            brush is ISolidColorBrush solid && solid.Color.A > 0 && solid.Opacity != opacity ? new SolidColorBrush(solid.Color, opacity) : brush;
+        border.Background = Faded(border.Background, opacity);
+        border.BorderBrush = Faded(border.BorderBrush, opacity);
+    }
+
     private static void SetOpacity(Control control, double opacity)
     {
         if (control.Opacity != opacity) control.Opacity = opacity;
@@ -460,6 +488,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     private void RebuildTabs()
     {
+        _tabFade = (-1, -1);
         _tabStrip.Children.Clear();
         for (var i = 0; i < _tabs.Count; i++)
         {
