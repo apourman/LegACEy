@@ -7,57 +7,57 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// Retail's spew box (gmSpewBoxUI): the yellow line that drops in at the top of the screen and fades, such as "You can't move that!" or "The
-/// chest is locked". It takes only lines of chat type 0x1A, which no chat window shows, from the DisplayFinalStringInfo notice (0x186B6).
-/// This points the spew box's notice slot at our callback, so its lines are queued for LegACEy's own toast and <see cref="Poll"/> hands them
-/// out between frames. While <see cref="Taking"/> is false, or a line can't be read, the line goes on to retail's spew box as before.
+/// chest is locked". It takes only lines of chat type 0x1A, which no chat window shows, queues them, and draws them later from its display
+/// loop. This points the loop's call that sets a line's text at our callback, so the finished lines are queued for LegACEy's own toast and
+/// <see cref="Poll"/> hands them out between frames; retail's line gets an empty text. While <see cref="Taking"/> is false, or a line can't
+/// be read, the line goes on to retail's spew box as before.
 /// </summary>
 /// <remarks>
-/// The slot is in gmSpewBoxUI's notice handler vtable, so it holds for every spew box retail makes, at every login. <see cref="Dispose"/>
-/// puts retail's handler back; one that could not keeps this object, its callback and its queue alive, as retail may still call it.
+/// The text is taken at display and not when the line arrives: some lines ("The Trade Notes (250,000) can't be split") arrive as a
+/// StringInfo with no text yet, which only the display loop's StringInfo::ToString fills in. The call is in gmSpewBoxUI's code, so it holds
+/// for every spew box retail makes, at every login. <see cref="Dispose"/> puts retail's call back; one that could not keeps this object, its
+/// callback and its queue alive, as retail may still call it.
 /// </remarks>
 internal sealed class RetailGameMessages : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xC60 in this region) for names; our objdump read of installed acclient.exe";
-    // gmSpewBoxUI's notice handler vtable (at element +0x5F8) and its DisplayFinalStringInfo slot (+0x38).
-    private const uint NoticeVtable = 0x007BDE20, Slot = NoticeVtable + 0x38;
-    // gmSpewBoxUI::RecvNotice_DisplayFinalStringInfo: queues the line when its type is SpewType.
-    private const uint SpewHandler = 0x004D6D00;
-    private const uint SpewType = 0x1A;
-    // The notice's text is a StringInfo whose literal sits at +0x80.
-    private const int StringLiteral = 0x80;
-    private const uint PageReadWrite = 0x04;
+    // gmSpewBoxUI's display loop (0x004D6A50) builds each queued line with StringInfo::ToString, trims it, then sets it on its element here.
+    private const uint SetTextCall = 0x004D6B06;
+    // A PStringBase<wchar_t> holding retail's shared empty string.
+    private const uint EmptyWide = 0x00818340;
+    private const uint PageExecuteReadWrite = 0x40;
     private static readonly List<RetailGameMessages> Stranded = new();
 
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
     {
-        Entry("gmSpewBoxUI's constructor sets its notice handler vtable at +0x5F8", 0x004D66B6, "C7 86 F8 05 00 00 20 DE 7B 00", "instruction reference"),
-        Entry("gmSpewBoxUI::PostInit registers +0x5F8 for DisplayFinalStringInfo (0x186B6)", 0x004D6816, "81 C6 F8 05 00 00 56 68 B6 86 01 00 8B C8 FF 52 04",
-            "instruction reference (push handler; push 0x186B6; call [edx+4])"),
-        Entry("gmSpewBoxUI notice vtable +0x38 is its DisplayFinalStringInfo", Slot, "00 6D 4D 00", "data reference (vtable slot)"),
-        Entry("gmSpewBoxUI::RecvNotice_DisplayFinalStringInfo takes only type 0x1A", SpewHandler, "83 7C 24 04 1A 75 0D 8B 44 24 08 50 83 C1 08 E8 8C FF FF FF C2 10 00",
-            "ThisCall (type, text, prefix, target), ret 0x10"),
-        Entry("ECM_UI::SendNotice_DisplayFinalStringInfo calls handler slot +0x38 (type, text, prefix, target)", 0x006934D9,
-            "8B 54 24 14 8B 01 57 53 55 52 FF 50 38", "instruction reference (the notice loop's call)"),
-        Entry("StringInfo::SetLiteralValue stores the literal at +0x80", 0x0042CC34, "8B 03 89 86 80 00 00 00", "instruction reference (mov [esi+0x80], eax)")
+        // Ends at the call's E8; its rel32 is read live, as Decal patches some call sites.
+        Entry("gmSpewBoxUI's display loop sets the built line on its element (lea eax, [esp+0x10]; push eax; mov ecx, esi; call)", SetTextCall - 7,
+            "8D 44 24 10 50 8B CE E8", "ThisCall (PStringBase<wchar_t>* text), ret 4; result unused"),
+        Entry("gmSpewBoxUI's display loop sets the line's font colour next", SetTextCall + 5, "68 A0 C5 81 00 8B CE", "instruction reference"),
+        Entry("retail's empty PStringBase<wchar_t>", EmptyWide, "90 83 81 00", "data reference (string buffer pointer)")
     };
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate void NoticeFn(IntPtr handler, uint chatType, IntPtr text, IntPtr timestampPrefix, uint targetWindow);
+    private delegate void SetTextFn(IntPtr element, IntPtr text);
 
-    private readonly NoticeFn _callback;
-    private readonly NoticeFn _retail = Marshal.GetDelegateForFunctionPointer<NoticeFn>(new IntPtr(SpewHandler));
+    private readonly SetTextFn _callback;
+    private readonly int _retailRel32;
+    private readonly SetTextFn _retail;
+    private readonly IntPtr _empty = new(unchecked((int)EmptyWide));
     private readonly ConcurrentQueue<string> _pending = new();
     private readonly Action<string> _log;
     private bool _patched;
 
-    /// <summary>Points the spew box at our callback. Throws when the running client does not match, and nothing is changed.</summary>
+    /// <summary>Points the spew box's text call at our callback. Throws when the running client does not match, and nothing is changed.</summary>
     public RetailGameMessages(Func<uint, int, byte[]> readMemory, Action<string> log)
     {
         _log = log;
         if (!NativeUiCatalogue.Validate(readMemory, log, Entries))
             throw new InvalidOperationException("the running client does not match its native entries.");
-        _callback = OnNotice;
-        WriteSlot(Marshal.GetFunctionPointerForDelegate(_callback));
+        _retailRel32 = Marshal.ReadInt32(At(SetTextCall + 1));
+        _retail = Marshal.GetDelegateForFunctionPointer<SetTextFn>(IntPtr.Add(At(SetTextCall + 5), _retailRel32));
+        _callback = OnSetText;
+        WriteRel32(Marshal.GetFunctionPointerForDelegate(_callback).ToInt32() - (int)(SetTextCall + 5));
         _patched = true;
     }
 
@@ -75,7 +75,7 @@ internal sealed class RetailGameMessages : IDisposable
         if (!_patched) return;
         try
         {
-            WriteSlot(new IntPtr(SpewHandler));
+            WriteRel32(_retailRel32);
             _patched = false;
         }
         catch (Exception exception)
@@ -85,24 +85,25 @@ internal sealed class RetailGameMessages : IDisposable
         }
     }
 
-    /// <summary>Retail's notice loop calls this for every DisplayFinalStringInfo. Never throws into the client.</summary>
-    private void OnNotice(IntPtr handler, uint chatType, IntPtr text, IntPtr timestampPrefix, uint targetWindow)
+    /// <summary>Retail's display loop calls this for every spew box line. Never throws into the client.</summary>
+    private void OnSetText(IntPtr element, IntPtr text)
     {
         try
         {
-            if (chatType == SpewType && Taking)
+            if (Taking)
             {
-                var literal = Marshal.ReadIntPtr(text, StringLiteral);
+                var chars = Marshal.ReadIntPtr(text);
                 // Retail's text escapes ("You're too busy\!") are drawn, as chat's are, without the backslash; a line break joins the band's one line.
-                var line = literal == IntPtr.Zero ? null
-                    : Marshal.PtrToStringUni(literal) is { } raw ? NativeRetailChatPort.RetailChatTypes.Unescape(raw).Replace('\n', ' ').Trim() : null;
+                var line = chars == IntPtr.Zero ? null
+                    : Marshal.PtrToStringUni(chars) is { } raw ? NativeRetailChatPort.RetailChatTypes.Unescape(raw).Replace('\n', ' ').Trim() : null;
                 if (!string.IsNullOrEmpty(line))
                 {
                     _pending.Enqueue(line);
+                    _retail(element, _empty);
                     return;
                 }
             }
-            _retail(handler, chatType, text, timestampPrefix, targetWindow);
+            _retail(element, text);
         }
         catch
         {
@@ -110,17 +111,29 @@ internal sealed class RetailGameMessages : IDisposable
         }
     }
 
-    private static void WriteSlot(IntPtr target)
+    private static void WriteRel32(int rel32)
     {
-        var slot = new IntPtr(unchecked((int)Slot));
-        if (!VirtualProtect(slot, (UIntPtr)4, PageReadWrite, out var old))
-            throw new InvalidOperationException($"Could not unprotect 0x{Slot:X8}: error {Marshal.GetLastWin32Error()}.");
-        try { Marshal.WriteIntPtr(slot, target); }
-        finally { VirtualProtect(slot, (UIntPtr)4, old, out _); }
+        var operand = At(SetTextCall + 1);
+        if (!VirtualProtect(operand, (UIntPtr)4, PageExecuteReadWrite, out var old))
+            throw new InvalidOperationException($"Could not unprotect 0x{SetTextCall + 1:X8}: error {Marshal.GetLastWin32Error()}.");
+        try { Marshal.WriteInt32(operand, rel32); }
+        finally
+        {
+            VirtualProtect(operand, (UIntPtr)4, old, out _);
+            FlushInstructionCache(GetCurrentProcess(), operand, (UIntPtr)4);
+        }
     }
+
+    private static IntPtr At(uint address) => new(unchecked((int)address));
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool VirtualProtect(IntPtr address, UIntPtr size, uint protection, out uint oldProtection);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool FlushInstructionCache(IntPtr process, IntPtr address, UIntPtr size);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
 
     private static NativeUiEntry Entry(string name, uint address, string bytes, string convention) =>
         new(name, address, NativeUiCatalogue.Bytes(bytes), Source, convention);
