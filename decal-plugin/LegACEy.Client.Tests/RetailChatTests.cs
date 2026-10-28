@@ -575,6 +575,27 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void Scrolled_up_with_a_full_log_new_lines_leave_the_view_in_place() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        for (var n = 1; n <= RetailChatHistory.Capacity; n++) port.Say(Line(RetailChatKind.System, $"line {n:D4} of the log"));
+        panel.Tick();
+        var log = window.GetVisualDescendants().OfType<ScrollViewer>().First(scroll => scroll.Content is StackPanel { Orientation: Orientation.Vertical });
+        log.Offset = new Vector(0, log.Extent.Height / 2);
+        panel.Tick();
+        var shown = Enumerable.Range(1, RetailChatHistory.Capacity).Select(n => $"line {n:D4} of the log").Where(text => Shows(panel, text)).ToList();
+        Assert.NotEmpty(shown);
+
+        // Each new line drops the oldest from the top of the log, which must not slide the lines being read.
+        for (var n = 1; n <= 5; n++) port.Say(Line(RetailChatKind.System, $"new line {n}"));
+        panel.Tick();
+
+        Assert.All(shown, text => Assert.True(Shows(panel, text), text));
+        Assert.True(Shows(panel, "5 new ↓"));
+    });
+
+    [Fact]
     public void A_send_that_retail_cannot_take_keeps_the_text_in_the_box() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort { CanSend = false };

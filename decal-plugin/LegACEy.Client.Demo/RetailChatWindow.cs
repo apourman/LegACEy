@@ -305,7 +305,14 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     {
         if (_disposed) return;
         _linesSettled = false;
-        if (dropped != null && _tabs[_tab].Shows(dropped) && _lines.Children.Count > 0) _lines.Children.RemoveAt(0);
+        var atEnd = AtEnd();
+        if (dropped != null && _tabs[_tab].Shows(dropped) && _lines.Children.Count > 0)
+        {
+            // Scrolled up, the view moves up with the lines so the ones being read stay put.
+            var top = _lines.Children[0];
+            _lines.Children.RemoveAt(0);
+            if (!atEnd) _scroll.Offset = new Vector(_scroll.Offset.X, Math.Max(0, _scroll.Offset.Y - top.Bounds.Height - top.Margin.Top - top.Margin.Bottom));
+        }
         var counted = false;
         for (var i = 0; i < _tabs.Count; i++)
         {
@@ -317,7 +324,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
         if (counted) RebuildTabs();
         if (!_tabs[_tab].Shows(line)) return;
-        var atEnd = AtEnd();
         _lines.Children.Add(LineView(line));
         if (atEnd) JumpToEnd();
         else
