@@ -3456,19 +3456,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const int ExtendedKey = 1 << 24;
 
     /// <summary>
-    /// Gives the chat window's box the keyboard when retail's chat is held and neither a field of ours nor one of retail's has it. True when
-    /// it did, so the Enter is eaten. Never without the Enter entries: retail's hidden entry could not be let go then. A failure turns the
-    /// chat window off, not the whole UI.
+    /// Gives the active chat window's box, else the main one's, the keyboard when retail's chat is held and neither a field of ours nor one
+    /// of retail's has it. True when it did, so the Enter is eaten. Never without the Enter entries: retail's hidden entry could not be let
+    /// go then. A failure turns the chat window off, not the whole UI.
     /// </summary>
     private bool TryFocusRetailChat()
     {
         try
         {
-            if (_chatNatives?.Enter != true || _chatWindows?.Main is not { } main || _chatTakeover?.Holds != true) return false;
+            if (_chatNatives?.Enter != true || _chatWindows is not { } chats || chats.Get(chats.TypingId) is not { } typing || _chatTakeover?.Holds != true)
+                return false;
             var focused = SurfaceById(_inputRouter.FocusedSurfaceId);
             if (focused?.Panel.WantsKeyboard == true || _chatPort?.RetailFieldHasKeyboard() != false) return false;
-            main.FocusInput();
-            _inputRouter.FocusSurface(ChatWindowId);
+            typing.FocusInput();
+            _inputRouter.FocusSurface(chats.TypingId);
             return true;
         }
         catch (Exception exception)

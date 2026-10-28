@@ -355,6 +355,7 @@ public sealed class RetailChatWindowsTests
         desk.Drag(desk.At(main, TabView(main, "Fellowship")), desk.Place(main, new System.Drawing.Point(600, 110)));
         var torn = desk.Chat.Windows[1];
 
+        Assert.Equal(RetailChatWindows.MainId, desk.Chat.TypingId);
         desk.Chat.Pressed(RetailChatWindows.MainId);
         desk.Tick();
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
@@ -362,7 +363,14 @@ public sealed class RetailChatWindowsTests
         Assert.Equal(1.0, Seen(Frame(main)));
         Assert.Equal(0.0, Seen(Frame(torn)));
 
+        // Enter types into the window clicked last, and into the main one once a click lands outside them.
+        desk.Chat.Pressed(desk.IdOf(torn));
+        Assert.Equal(desk.IdOf(torn), desk.Chat.TypingId);
+        desk.Chat.Pressed(null);
+        Assert.Equal(RetailChatWindows.MainId, desk.Chat.TypingId);
+
         // A click on the game lets it go, and it fades as one left alone does.
+        desk.Chat.Pressed(RetailChatWindows.MainId);
         desk.Chat.Pressed(null);
         desk.Tick();
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
@@ -661,7 +669,7 @@ public sealed class RetailChatWindowsTests
 
         public void Dispose() => Chat.Dispose();
 
-        private string IdOf(RetailChatWindow window) => _contents.Single(pair => pair.Value == window).Key;
+        public string IdOf(RetailChatWindow window) => _contents.Single(pair => pair.Value == window).Key;
 
         private WindowManager Windows => _windows;
 

@@ -134,6 +134,9 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>The main window, or null before <see cref="Open"/>.</summary>
     public RetailChatWindow? Main => Get(MainId);
 
+    /// <summary>The id of the window Enter types into: the active one, else the main window.</summary>
+    public string TypingId => _chats.FirstOrDefault(chat => chat.Window.Active).Id ?? MainId;
+
     /// <summary>Every open window, the main window first.</summary>
     /// <summary>Whether a window id is a chat window's: the main one or one torn off it.</summary>
     public static bool IsChat(string id) => id == MainId || id.StartsWith(TornIdPrefix, StringComparison.Ordinal);
@@ -406,7 +409,8 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public static void SaveFadeSeconds(IWindowPositionStore positions, string server, string character, int seconds) =>
         positions.Save(server, character, FadeKey, (new Point(seconds, 0), null));
 
-    private RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
+    /// <summary>The window with that id, or null when none is open.</summary>
+    public RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
 
     private string? IdOf(RetailChatWindow window) => _chats.FirstOrDefault(chat => chat.Window == window).Id;
 
