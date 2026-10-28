@@ -137,10 +137,10 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>The id of the window Enter types into: the active one, else the main window.</summary>
     public string TypingId => _chats.FirstOrDefault(chat => chat.Window.Active).Id ?? MainId;
 
-    /// <summary>Every open window, the main window first.</summary>
     /// <summary>Whether a window id is a chat window's: the main one or one torn off it.</summary>
     public static bool IsChat(string id) => id == MainId || id.StartsWith(TornIdPrefix, StringComparison.Ordinal);
 
+    /// <summary>Every open window, the main window first.</summary>
     public IReadOnlyList<RetailChatWindow> Windows => _chats.Select(chat => chat.Window).ToArray();
 
     /// <summary>

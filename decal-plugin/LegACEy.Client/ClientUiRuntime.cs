@@ -3464,12 +3464,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         try
         {
-            if (_chatNatives?.Enter != true || _chatWindows is not { } chats || chats.Get(chats.TypingId) is not { } typing || _chatTakeover?.Holds != true)
-                return false;
+            if (_chatNatives?.Enter != true || _chatWindows is not { } chats || _chatTakeover?.Holds != true) return false;
+            var typingId = chats.TypingId;
+            if (chats.Get(typingId) is not { } typing) return false;
             var focused = SurfaceById(_inputRouter.FocusedSurfaceId);
             if (focused?.Panel.WantsKeyboard == true || _chatPort?.RetailFieldHasKeyboard() != false) return false;
             typing.FocusInput();
-            _inputRouter.FocusSurface(chats.TypingId);
+            _inputRouter.FocusSurface(typingId);
             return true;
         }
         catch (Exception exception)
@@ -3652,8 +3653,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>
     /// Ctrl+C while text is selected in a chat log copies it, and the game sees none of the C's down, character or up, so it does not act on
     /// the key. A press outside the chat windows lets go of the selection, so the key is the game's again, and a press picks the active chat
-    /// window (none outside them). True eats the message. A field of
-    /// ours with the keyboard gets its keys as before: the chat box copies the log's selection itself.
+    /// window (none outside them). True eats the message. A field of ours with the keyboard gets its keys as before: the chat box copies the
+    /// log's selection itself.
     /// </summary>
     private bool CopyChatSelection(int message, int wParam, int lParam)
     {

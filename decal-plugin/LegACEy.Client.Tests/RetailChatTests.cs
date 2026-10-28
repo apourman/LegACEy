@@ -1028,9 +1028,9 @@ public sealed class RetailChatTests
         public void Advance(double seconds) => Now = Now.AddSeconds(seconds);
     }
 
-    /// <summary>How opaque a part shows on screen: its opacity times its ancestors'.</summary>
     private static DerethFrame Frame(RetailChatWindow window) => window.GetVisualDescendants().OfType<DerethFrame>().First();
 
+    /// <summary>How opaque a part shows on screen: its opacity times its ancestors'.</summary>
     private static double Seen(Visual part) => part.GetSelfAndVisualAncestors().OfType<Visual>().Aggregate(1.0, (seen, visual) => seen * visual.Opacity);
 
     private static TextBlock LineOf(AvaloniaPanel panel, string fragment) =>

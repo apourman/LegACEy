@@ -70,7 +70,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly List<Control> _chrome = new();
     private readonly Control _inputRow;
     private readonly Border _tabBar;
-    private (double Backing, double Ink) _tabFade = (-1, -1);
     private readonly RetailChatFade _fade;
     private readonly Func<DateTime> _clock;
     private readonly Action<string> _copy;
@@ -144,7 +143,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _tabRow.Children.Add(tabSpace);
         Grid.SetColumn(_tabEnd, 1);
         _tabRow.Children.Add(_tabEnd);
-        var tabBar = _tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 3), Child = _tabRow };
+        _tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 3), Child = _tabRow };
 
         // The log: a dark groove with a scroll bar, and the jump pill over its bottom edge while the player is scrolled up.
         // The groove fades with the rest of the window; the lines sit over it, inset by the edge's border and padding, and fade by their own age.
@@ -210,7 +209,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var content = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         _scaled.Margin = new Thickness(inset.Left + 5, inset.Top + 4, inset.Right + 5, inset.Bottom + 5);
         _scaled.Child = content;
-        content.Children.Add(tabBar);
+        content.Children.Add(_tabBar);
         Grid.SetRow(logArea, 1);
         content.Children.Add(logArea);
         Grid.SetRow(inputRow, 2);
@@ -460,8 +459,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// </summary>
     private void FadeTabs(double backing, double ink)
     {
-        if (_tabFade == (backing, ink)) return;
-        _tabFade = (backing, ink);
         FadeBrushes(_tabBar, backing);
         foreach (var tab in _tabStrip.Children.OfType<Border>())
         {
@@ -492,7 +489,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     private void RebuildTabs()
     {
-        _tabFade = (-1, -1);
         _tabStrip.Children.Clear();
         for (var i = 0; i < _tabs.Count; i++)
         {
