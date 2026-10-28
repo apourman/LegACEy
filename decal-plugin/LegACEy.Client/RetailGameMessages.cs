@@ -90,6 +90,14 @@ internal sealed class RetailGameMessages : IDisposable
     {
         try
         {
+            // ponytail: diagnostic for backlog 104; remove once the split line is found.
+            try
+            {
+                var seen = Marshal.ReadIntPtr(text);
+                var raw = seen == IntPtr.Zero ? "<null buffer>" : Marshal.PtrToStringUni(seen);
+                _log($"[104] spew SetText: taking {Taking}, element 0x{element.ToInt32():X8}, text 0x{text.ToInt32():X8} -> 0x{seen.ToInt32():X8}, \"{raw}\" ({raw?.Length ?? 0} chars).");
+            }
+            catch (Exception exception) { _log($"[104] spew SetText could not be read: {exception.Message}"); }
             if (Taking)
             {
                 var chars = Marshal.ReadIntPtr(text);
