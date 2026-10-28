@@ -420,10 +420,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // the lines keep their own. Held by the host (moved or resized) it shows whole, so even at 0% it can be found.
         var opacity = keepAwake ? 1 : (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
         foreach (var part in _chrome) SetOpacity(part, opacity);
-        // The input row stays solid while awake, as retail's does, and fades only with the idle fade, down to the inactive opacity.
-        SetOpacity(_inputRow, keepAwake ? 1 : (InactiveOpacity + (100 - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0);
+        // The input row and the scroll bar stay solid while awake, as retail's do, and fade only with the idle fade, down to the inactive opacity.
+        var solid = keepAwake ? 1 : (InactiveOpacity + (100 - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
+        SetOpacity(_inputRow, solid);
         _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
-        if (_scrollBar != null) SetOpacity(_scrollBar, opacity);
+        if (_scrollBar != null) SetOpacity(_scrollBar, solid);
         if (!_linesSettled) _linesSettled = ApplyLines(now);
     }
 
