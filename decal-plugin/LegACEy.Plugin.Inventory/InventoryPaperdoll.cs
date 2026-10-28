@@ -12,10 +12,11 @@ namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
 /// The paperdoll block: retail's paperdoll on six columns at retail's 32 px pitch (<see cref="Cells"/>): the left
-/// jewellery column, three armour columns over the doll and two right columns, which head with the aetheria. Rows keep retail's spacing.
+/// jewellery column, three armour columns over the doll and two right columns. The aetheria are one row across the top right, as retail's,
+/// the first over the doll area's corner, beside the doll's head. Rows keep retail's spacing.
 /// The block is as wide as retail's, whatever width it is given, so its columns sit where retail's do and the window's room to their right
-/// stays empty, as retail's does. The doll area is the one control the 3D character fills, a plain rectangle no slot reaches into; the
-/// Slots toggle sits in its bottom-left corner, under the doll's feet, as retail's does. Slots are placed by <see cref="Show"/>.
+/// stays empty, as retail's does. The doll area is the one control the 3D character fills; the Slots toggle sits in its bottom-left corner,
+/// under the doll's feet, as retail's does. Slots are placed by <see cref="Show"/>.
 /// </summary>
 internal sealed class InventoryPaperdoll : Canvas
 {
@@ -37,6 +38,12 @@ internal sealed class InventoryPaperdoll : Canvas
     // rather than hide the toggle under a foot.
     private const int CornerInset = 3;
     private const int CornerRowHeight = DerethWindow.HeaderButtonSize;
+    // How far the doll area keeps clear of the first aetheria, beside and under it.
+    private const double AetheriaGap = 4;
+    // The doll's view starts this far down, the same for every race, so only the head stands beside the aetheria row: a Lugian's
+    // shoulders, the highest and widest, start under the first aetheria rather than over it (Backlog 067).
+    private const double DollTop = 16;
+    private static readonly HashSet<PaperdollSlot> Aetheria = new() { PaperdollSlot.AetheriaOne, PaperdollSlot.AetheriaTwo, PaperdollSlot.AetheriaThree };
 
     private static readonly (PaperdollSlot Slot, int Column, int Y)[] Positions =
     {
@@ -45,9 +52,8 @@ internal sealed class InventoryPaperdoll : Canvas
         (PaperdollSlot.Head, 2, 20), (PaperdollSlot.UpperArms, 1, 56), (PaperdollSlot.Chest, 2, 56), (PaperdollSlot.LowerArms, 1, 92),
         (PaperdollSlot.Abdomen, 2, 92), (PaperdollSlot.UpperLegs, 3, 92), (PaperdollSlot.Hands, 1, 128), (PaperdollSlot.LowerLegs, 3, 128),
         (PaperdollSlot.Feet, 3, 164),
-        // The aetheria head the right columns, the third in the free cell under the first, beside the cloak: over the doll area's corner,
-        // as retail's first is, a wide race's shoulder covered it (Backlog 067).
-        (PaperdollSlot.AetheriaOne, 4, 0), (PaperdollSlot.AetheriaTwo, 5, 0), (PaperdollSlot.AetheriaThree, 4, 36),
+        // The aetheria are one row, as retail's, the first over the doll area's corner; the cloak heads the clothing column.
+        (PaperdollSlot.AetheriaOne, 3, 0), (PaperdollSlot.AetheriaTwo, 4, 0), (PaperdollSlot.AetheriaThree, 5, 0),
         (PaperdollSlot.Cloak, 5, 36),
         (PaperdollSlot.LeftWrist, 4, 72), (PaperdollSlot.LeftRing, 4, 108), (PaperdollSlot.Weapon, 4, 164), (PaperdollSlot.Ammo, 5, 164),
         (PaperdollSlot.Shirt, 5, 72), (PaperdollSlot.Pants, 5, 108),
@@ -109,9 +115,15 @@ internal sealed class InventoryPaperdoll : Canvas
         DollArea.Width = 3 * Cells.Pitch + 2 * SideGap - 2 * DollClearance;
         DollArea.Height = BlockHeight;
         SetLeft(DollArea, ArmourLeft * Cells.Pitch + DollClearance);
-        // The camera fits the whole figure, the widest race's shoulders and arms too, in the view above the corner row, so every race
-        // stands whole in the same rectangle and covers nothing.
-        DollArea.Padding = new Thickness(0, 0, 0, CornerRowHeight + 2 * CornerInset);
+        // The first aetheria reaches over the doll area's top-right corner, so that corner is cut away round it, a gap clear of its
+        // cell, and the cell sits in the window's own space beside the doll.
+        var rowBottom = Cells.Cell + AetheriaGap;
+        var notchLeft = 3 * Cells.Pitch + 2 * SideGap - AetheriaGap - GetLeft(DollArea);
+        DollArea.Clip = new CombinedGeometry(GeometryCombineMode.Exclude,
+            new RectangleGeometry(new Rect(0, 0, DollArea.Width, BlockHeight)), new RectangleGeometry(new Rect(notchLeft, 0, DollArea.Width - notchLeft, rowBottom)));
+        // The camera fits the whole figure, the widest race's arms too, in the view between DollTop and the corner row, so every race
+        // stands whole in the same rectangle and covers no slot.
+        DollArea.Padding = new Thickness(0, DollTop, 0, CornerRowHeight + 2 * CornerInset);
         SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
         SetTop(SlotsToggle, BlockHeight - CornerRowHeight - CornerInset);
         SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - CornerInset);
@@ -162,7 +174,7 @@ internal sealed class InventoryPaperdoll : Canvas
         {
             if (!showArmour && Armour.Contains(slot)) continue;
             var cell = slotFor(slot);
-            var right = x >= RightLeft;
+            var right = x >= RightLeft || Aetheria.Contains(slot);
             PlaceCell(cell, x, y, right);
             Children.Add(cell);
             _placed.Add((cell, x, y, right));
