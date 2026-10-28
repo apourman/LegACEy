@@ -888,7 +888,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private void RenderBurden(InventorySnapshot snapshot)
     {
-        var percent = snapshot.BurdenLimit > 0 ? snapshot.Burden * 100 / snapshot.BurdenLimit : 0;
+        // Retail stops the reading at 300%, the most a character can carry.
+        var percent = snapshot.BurdenLimit > 0 ? Math.Min(300, snapshot.Burden * 100 / snapshot.BurdenLimit) : 0;
         _burdenMeter.Content = BurdenMeter(snapshot);
         _burdenText.Text = $"{percent}%";
     }
