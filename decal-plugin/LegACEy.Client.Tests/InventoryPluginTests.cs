@@ -151,11 +151,17 @@ public sealed class InventoryPluginTests
         var model = Assert.Single(ModelViews(panel));
         Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
 
-        // The model takes the height beside the aetheria row and stays above the Slots toggle, which the host draws it over.
+        // The host draws the model over the window, and fits the whole figure in the view whatever the race: the view covers no slot, nor the
+        // Slots toggle and the expand button under its feet. Only the head stands beside the first aetheria, as retail's does.
         InventoryDriver.Tick(panel);
         var bounds = OnPanel(model, panel);
-        Assert.True(bounds.Top < OnPanel(InventoryDriver.SlotOrNull(panel, PaperdollSlot.AetheriaOne)!, panel).Bottom);
-        Assert.False(bounds.Intersects(OnPanel(InventoryDriver.SlotsToggle(panel), panel)));
+        var aetheria = OnPanel(InventoryDriver.SlotOrNull(panel, PaperdollSlot.AetheriaOne)!, panel);
+        Assert.InRange(bounds.Top, aetheria.Top + 1, aetheria.Bottom - 1);
+        var expand = panel.Content.GetVisualDescendants().OfType<Control>().Single(control => control.Name == "ExpandDoll");
+        var covered = InventoryDriver.Slots(panel).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Paperdoll && InventoryDriver.Id(slot).Equipment != PaperdollSlot.AetheriaOne)
+            .Select(slot => OnPanel(slot, panel))
+            .Append(OnPanel(InventoryDriver.SlotsToggle(panel), panel)).Append(OnPanel(expand, panel));
+        Assert.DoesNotContain(covered, rect => rect.Intersects(bounds));
 
         // The server says the look changed, as it does when the player equips something: the doll asks again.
         channel.Receive(LookChanged());
