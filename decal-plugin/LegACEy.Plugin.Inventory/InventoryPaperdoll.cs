@@ -22,7 +22,8 @@ internal sealed class InventoryPaperdoll : Canvas
     // Retail's cells are 32 px; rows keep retail's spacing scaled to the Dereth pitch (35 px at scale 1), and columns sit one pitch apart.
     private const int RetailCell = 32;
     private const int Columns = 6;
-    private const int RetailHeight = 214;
+    // Retail's rows less its 8 px above the first and 10 px below the last, so the grid under the block shows more rows (Backlog 067).
+    private const int RetailHeight = 196;
     // The armour columns run from 1 to 3, round which the doll area is drawn, 2 DIPs clear of them on each side; 4 and 5 are the right side.
     // A gap on each side of the armour columns keeps the doll area clear of the left and right columns.
     private const int ArmourLeft = 1, ArmourRight = 3, RightLeft = 4;
@@ -33,23 +34,23 @@ internal sealed class InventoryPaperdoll : Canvas
     private const int CornerInset = 4;
     private const int CornerRowHeight = 20;
     // The aetheria row's top. The row moves with the right side, so its cells stay one pitch apart.
-    private const int AetheriaY = 8;
+    private const int AetheriaY = 0;
     // How far the doll area keeps clear of the aetheria row, beside and under the first aetheria.
     private const double AetheriaGap = 4;
     private static readonly HashSet<PaperdollSlot> Aetheria = new() { PaperdollSlot.AetheriaOne, PaperdollSlot.AetheriaTwo, PaperdollSlot.AetheriaThree };
 
     private static readonly (PaperdollSlot Slot, int Column, int Y)[] Positions =
     {
-        (PaperdollSlot.Neck, 0, 8), (PaperdollSlot.Trinket, 0, 44), (PaperdollSlot.RightWrist, 0, 80), (PaperdollSlot.RightRing, 0, 116),
-        (PaperdollSlot.Shield, 0, 172),
-        (PaperdollSlot.Head, 2, 28), (PaperdollSlot.UpperArms, 1, 64), (PaperdollSlot.Chest, 2, 64), (PaperdollSlot.LowerArms, 1, 100),
-        (PaperdollSlot.Abdomen, 2, 100), (PaperdollSlot.UpperLegs, 3, 100), (PaperdollSlot.Hands, 1, 136), (PaperdollSlot.LowerLegs, 3, 136),
-        (PaperdollSlot.Feet, 3, 172),
+        (PaperdollSlot.Neck, 0, 0), (PaperdollSlot.Trinket, 0, 36), (PaperdollSlot.RightWrist, 0, 72), (PaperdollSlot.RightRing, 0, 108),
+        (PaperdollSlot.Shield, 0, 164),
+        (PaperdollSlot.Head, 2, 20), (PaperdollSlot.UpperArms, 1, 56), (PaperdollSlot.Chest, 2, 56), (PaperdollSlot.LowerArms, 1, 92),
+        (PaperdollSlot.Abdomen, 2, 92), (PaperdollSlot.UpperLegs, 3, 92), (PaperdollSlot.Hands, 1, 128), (PaperdollSlot.LowerLegs, 3, 128),
+        (PaperdollSlot.Feet, 3, 164),
         // The aetheria are one row, as retail's, the first over the doll area's corner; the cloak heads the clothing column.
         (PaperdollSlot.AetheriaOne, 3, AetheriaY), (PaperdollSlot.AetheriaTwo, 4, AetheriaY), (PaperdollSlot.AetheriaThree, 5, AetheriaY),
-        (PaperdollSlot.Cloak, 5, 44),
-        (PaperdollSlot.LeftWrist, 4, 80), (PaperdollSlot.LeftRing, 4, 116), (PaperdollSlot.Weapon, 4, 172), (PaperdollSlot.Ammo, 5, 172),
-        (PaperdollSlot.Shirt, 5, 80), (PaperdollSlot.Pants, 5, 116),
+        (PaperdollSlot.Cloak, 5, 36),
+        (PaperdollSlot.LeftWrist, 4, 72), (PaperdollSlot.LeftRing, 4, 108), (PaperdollSlot.Weapon, 4, 164), (PaperdollSlot.Ammo, 5, 164),
+        (PaperdollSlot.Shirt, 5, 72), (PaperdollSlot.Pants, 5, 108),
     };
     /// <summary>The armour slots, which sit over the doll and show only while the Slots toggle is on.</summary>
     private static readonly HashSet<PaperdollSlot> Armour = new()

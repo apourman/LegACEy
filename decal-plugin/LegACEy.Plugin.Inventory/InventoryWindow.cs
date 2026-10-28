@@ -990,10 +990,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
         var body = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(2, 8, 2, 6)
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(2, 3, 2, 2)
         };
         body.Children.Add(At(_paperdoll, 0));
-        body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
+        body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 3, 0, 0), Opacity = 0.7 }, 1));
         body.Children.Add(At(pack, 2));
         body.Children.Add(At(column, 0, 1));
         Grid.SetRowSpan(column, 3);
@@ -1003,7 +1003,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private Control ContentsLine()
     {
         // The count hugs the right edge, its margin a gap from a long pack name, which shrinks rather than running into it (Backlog 107).
-        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 0, 6) };
+        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 3, 0, 3) };
         line.Children.Add(_contentsName);
         line.Children.Add(At(_contentsCount, 0, 1));
         return line;
