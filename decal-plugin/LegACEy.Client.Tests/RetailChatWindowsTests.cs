@@ -243,11 +243,12 @@ public sealed class RetailChatWindowsTests
         first.Chat.SetInactiveOpacity(30);
         port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
         first.Tick();
-        // The frame, tabs and input fade with the backdrop, in the main window and a torn-off one alike.
+        // The frame and tabs fade with the backdrop, in the main window and a torn-off one alike; only a torn-off window's input fades too.
         void Shows(double opacity)
         {
             foreach (var window in first.Chat.Windows)
-                foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) }) Assert.Equal(opacity, Seen(part), 6);
+                foreach (var part in new Visual[] { Groove(window), Frame(window), StripPanel(window), InputBox(window) })
+                    Assert.Equal(part is TextBox && !window.TornOff ? 1 : opacity, Seen(part), 6);
         }
         Shows(0.8);
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds));
@@ -338,8 +339,35 @@ public sealed class RetailChatWindowsTests
         {
             Assert.Equal(0.0, Seen(StripPanel(window)));
             Assert.Equal(0.0, Seen(Frame(window)));
-            Assert.Equal(0.0, Seen(InputBox(window)));
         }
+        Assert.Equal(0.0, Seen(InputBox(torn)));
+        // The main window's chat bar is always there, as retail's is.
+        Assert.Equal(1.0, Seen(InputBox(main)));
+    }));
+
+    [Fact]
+    public void A_click_makes_a_window_active_until_a_click_lands_elsewhere() => RenderThread.Run(() => WithStore(path =>
+    {
+        var clock = new DeskClock(Stamp);
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var desk = ChatDesk.Open(port, path, Character, clock: () => clock.Now);
+        var main = desk.Main;
+        desk.Drag(desk.At(main, TabView(main, "Fellowship")), desk.Place(main, new System.Drawing.Point(600, 110)));
+        var torn = desk.Chat.Windows[1];
+
+        desk.Chat.Pressed(RetailChatWindows.MainId);
+        desk.Tick();
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
+        desk.Tick();
+        Assert.Equal(1.0, Seen(Frame(main)));
+        Assert.Equal(0.0, Seen(Frame(torn)));
+
+        // A click on the game lets it go, and it fades as one left alone does.
+        desk.Chat.Pressed(null);
+        desk.Tick();
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
+        desk.Tick();
+        Assert.Equal(0.0, Seen(Frame(main)));
     }));
 
     [Fact]

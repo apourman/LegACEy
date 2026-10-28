@@ -226,7 +226,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The frame is a sibling of the content, not its parent, so it fades without the lines fading with it. The root is hit-testable
         // all over, so the pointer counts as over the window wherever it is in the frame.
         // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
-        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, _grooveEdge, inputRow });
+        // The main window's input row never fades, as retail's chat bar does not; a torn-off window's fades with its frame.
+        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, _grooveEdge });
+        if (tornOff) _chrome.Add(inputRow);
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, _scaled } };
         // A tab press that moves out of the strip is a drag; a press released on the tab is a click. Both are read from the window's own
         // events, so a press that moves outside the tab (where the tab itself gets no moves) still reaches the window.
@@ -405,6 +407,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     internal void Refresh(bool keepAwake = false)
     {
         if (_disposed) return;
+        keepAwake |= Active;
         // An open tab editor counts like an open menu.
         var awake = keepAwake || IsPointerOver || _input.IsFocused || _menu.IsVisible || _editor.IsVisible;
         var now = _clock();
@@ -415,7 +418,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             _linesSettled = false;
         }
         // The whole window, frame and backdrop alike, goes from the active opacity to the inactive one as it fades, as retail's does; only
-        // the lines keep their own. Held by the host (moved or resized) it shows whole, so even at 0% it can be found.
+        // the lines keep their own. Held by the host (moved or resized) or active it shows whole, so even at 0% it can be found.
         var opacity = keepAwake ? 1 : (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
         foreach (var part in _chrome) SetOpacity(part, opacity);
         _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
@@ -496,6 +499,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         };
         _tabEnd.Child = add;
     }
+
+    /// <summary>Whether this is the chat window last clicked, until a click lands anywhere else: it shows whole and does not fade.</summary>
+    public bool Active { get; set; }
 
     /// <summary>How long the window is left alone before it fades, in seconds; null keeps it awake. A change applies on the next frame.</summary>
     public int? IdleAfterSeconds

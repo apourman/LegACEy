@@ -3650,7 +3650,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Ctrl+C while text is selected in a chat log copies it, and the game sees none of the C's down, character or up, so it does not act on
-    /// the key. A press outside the chat windows lets go of the selection, so the key is the game's again. True eats the message. A field of
+    /// the key. A press outside the chat windows lets go of the selection, so the key is the game's again, and a press picks the active chat
+    /// window (none outside them). True eats the message. A field of
     /// ours with the keyboard gets its keys as before: the chat box copies the log's selection itself.
     /// </summary>
     private bool CopyChatSelection(int message, int wParam, int lParam)
@@ -3660,7 +3661,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (message is InputRouterService.WmLButtonDown or InputRouterService.WmRButtonDown)
         {
             var at = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
-            Guard(() => chats.ClearLogSelections(_windows?.HitTest(at)?.Id));
+            Guard(() => chats.Pressed(_windows?.HitTest(at)?.Id));
             return false;
         }
         if (_eatingCtrlC && (message == InputRouterService.WmChar && wParam == CtrlC || message == InputRouterService.WmKeyUp && wParam == VkC))

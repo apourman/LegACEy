@@ -818,7 +818,7 @@ public sealed class RetailChatTests
     });
 
     [Fact]
-    public void A_window_left_alone_goes_idle_and_fades_its_frame_tabs_input_and_scrollbar_in_a_quarter_second_and_keeps_its_new_lines() => RenderThread.Run(() =>
+    public void A_window_left_alone_goes_idle_and_fades_its_frame_tabs_and_scrollbar_in_a_quarter_second_and_keeps_its_input_and_new_lines() => RenderThread.Run(() =>
     {
         var clock = new TestClock();
         var port = new FakeChatPort();
@@ -843,7 +843,7 @@ public sealed class RetailChatTests
         window.Refresh();
         Assert.Equal(0.0, Seen(frame));
         Assert.Equal(0.0, Seen(TabView(window, "All")));
-        Assert.Equal(0.0, Seen(InputBox(window)));
+        Assert.Equal(1.0, Seen(InputBox(window)));
         Assert.Equal(0.0, Seen(scrollBar));
         Assert.Equal(1.0, Seen(LineOf(panel, "line 30 of the log")));
     });
@@ -872,7 +872,7 @@ public sealed class RetailChatTests
         Click(panel, InputBox(window));
         clock.Advance(1);
         window.Refresh();
-        Assert.Equal(Awake, Seen(InputBox(window)));
+        Assert.Equal(1.0, Seen(InputBox(window)));
         Assert.Equal(Awake, Seen(TabView(window, "All")));
 
         Click(panel, ChipText(panel, "Local"));
@@ -920,6 +920,24 @@ public sealed class RetailChatTests
         window.Refresh(keepAwake: true);
         Assert.Equal(1.0, Seen(TabView(window, "All")));
 
+        window.Refresh();
+        clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(TabView(window, "All")));
+    });
+
+    [Fact]
+    public void The_active_window_shows_whole_until_it_is_no_longer_active() => RenderThread.Run(() =>
+    {
+        var clock = new TestClock();
+        using var panel = Open(new FakeChatPort(), out var window, clock: () => clock.Now);
+        panel.Tick();
+        window.Active = true;
+        clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
+        window.Refresh();
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
+
+        window.Active = false;
         window.Refresh();
         clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();

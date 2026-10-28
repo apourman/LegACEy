@@ -118,11 +118,17 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>The text selected in a window's log, or empty when no window has any.</summary>
     public string LogSelection => _chats.Select(chat => chat.Window.LogSelection).FirstOrDefault(text => text.Length > 0) ?? string.Empty;
 
-    /// <summary>Lets go of every log's selection but the one in <paramref name="windowId"/>'s window, as a click outside it does.</summary>
-    public void ClearLogSelections(string? windowId = null)
+    /// <summary>
+    /// A press on <paramref name="windowId"/>, or on no chat window when null: that window becomes the active one, and every other lets go of
+    /// its log selection and is no longer active.
+    /// </summary>
+    public void Pressed(string? windowId)
     {
         foreach (var (id, window) in _chats)
+        {
+            window.Active = id == windowId;
             if (id != windowId) window.ClearLogSelection();
+        }
     }
 
     /// <summary>The main window, or null before <see cref="Open"/>.</summary>
