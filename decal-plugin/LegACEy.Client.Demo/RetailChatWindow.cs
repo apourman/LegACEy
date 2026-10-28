@@ -416,8 +416,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             _idle = _fade.Idle;
             _linesSettled = false;
         }
-        // The whole window, frame and backdrop alike, goes from the active opacity to the inactive one as it fades, as retail's does; only
-        // the lines keep their own. Held by the host (moved or resized) it shows whole, so even at 0% it can be found.
+        // The frame and backdrop go from the active opacity to the inactive one as the window fades, as retail's do; the lines, input row
+        // and scroll bar keep their own. Held by the host (moved or resized) it shows whole, so even at 0% it can be found.
         var opacity = keepAwake ? 1 : (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * _fade.ChromeOpacity(now)) / 100.0;
         foreach (var part in _chrome) SetOpacity(part, opacity);
         // The input row and the scroll bar stay solid while awake, as retail's do, and fade only with the idle fade, down to the inactive opacity.
@@ -513,7 +513,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
     }
 
-    /// <summary>The window's opacity in percent while it is awake, frame and backdrop alike; the lines stay solid. A change applies on the next frame.</summary>
+    /// <summary>The window's opacity in percent while it is awake, frame and backdrop alike; the lines, input row and scroll bar stay solid. A change applies on the next frame.</summary>
     public int ActiveOpacity { get; set; } = RetailChatWindows.DefaultActiveOpacity;
 
     /// <summary>
