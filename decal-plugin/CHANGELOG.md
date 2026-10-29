@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.21.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.20.0...decal-plugin-v0.21.0) (2026-10-29)
+
+
+### Features
+
+* attack bar shows the Recklessness range ([#217](https://github.com/apourman/LegACEy/issues/217)) ([23aebee](https://github.com/apourman/LegACEy/commit/23aebeef8b989310c6389b7614723de12ae16447))
+
+
+### Bug Fixes
+
+* a refused split says the stack can't be split ([#213](https://github.com/apourman/LegACEy/issues/213)) ([471835c](https://github.com/apourman/LegACEy/commit/471835ce0a4578a903407690e1310265d9680d9f))
+* character window header and XP strips, windows resize from the top ([#219](https://github.com/apourman/LegACEy/issues/219)) ([037a6ae](https://github.com/apourman/LegACEy/commit/037a6aed1d033535a23bda3d31a2b7562ba38df5))
+* Dereth appraisal window follows clicks as fast as retail ([#214](https://github.com/apourman/LegACEy/issues/214)) ([e9d0005](https://github.com/apourman/LegACEy/commit/e9d00053e9b10b0602731e67b67142d562a62856))
+* Dereth inventory laid out like retail's ([#215](https://github.com/apourman/LegACEy/issues/215)) ([3bef27e](https://github.com/apourman/LegACEy/commit/3bef27eb120d825ce811ae781d7f7b5e1e7d359e))
+* faded text stays crisp ([#218](https://github.com/apourman/LegACEy/issues/218)) ([19eeaff](https://github.com/apourman/LegACEy/commit/19eeaffe202719bc9c362737c1ed77008d94fddf))
+* items added to a pack go to its front ([#220](https://github.com/apourman/LegACEy/issues/220)) ([fdbde27](https://github.com/apourman/LegACEy/commit/fdbde27d7c8a134cbba7a923a7c83e6fa23e29f9))
+* scrolled-up chat stays put when new lines arrive ([#216](https://github.com/apourman/LegACEy/issues/216)) ([81fec6c](https://github.com/apourman/LegACEy/commit/81fec6c96db53f475b96e962e04ca847076a857b))
+* smoky game message bands ([#221](https://github.com/apourman/LegACEy/issues/221)) ([ec0e93d](https://github.com/apourman/LegACEy/commit/ec0e93db04a94147a37055265fb976021f7fb21f))
+
 ## [0.20.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.19.0...decal-plugin-v0.20.0) (2026-10-28)
 
 
