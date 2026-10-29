@@ -6,9 +6,13 @@ using Avalonia.Media;
 
 namespace LegACEy.Client.Themes;
 
-/// <summary>What the attack bar shows: the bar's Accuracy or Power label and set point, the charge on it, the lit height plaque and the three options.</summary>
+/// <summary>
+/// What the attack bar shows: the bar's Accuracy or Power label and set point, the charge on it, the lit height plaque, the three options and
+/// whether the Recklessness range is marked.
+/// </summary>
 /// <param name="LitPlaque">The lit height: 0 High, 1 Medium, 2 Low.</param>
-public readonly record struct DerethAttackFace(bool Accuracy, double SetPoint, double Charge, int LitPlaque, bool RepeatAttacks, bool AutoTarget, bool KeepInView);
+public readonly record struct DerethAttackFace(bool Accuracy, double SetPoint, double Charge, int LitPlaque, bool RepeatAttacks, bool AutoTarget,
+    bool KeepInView, bool Reckless);
 
 /// <summary>
 /// Where the attack bar's parts sit for a size in DIPs. At the design size, 320 by 58, it is the mockup's layout. A taller window draws the
@@ -66,7 +70,7 @@ public sealed class DerethAttackLayout
 /// <summary>
 /// The attack bar's art, laid out by <see cref="DerethAttackLayout"/> for its size: the Speed ↔ Power (or Accuracy) bar in the vitals' glass
 /// groove between gold end caps, its set point as a green gem on a gold pin, the charge filling from the left, three height plaques behind a
-/// gold divider with the lit one's arrows, and three option gems. It draws only when its face or its size changes, so a still bar draws no
+/// gold divider with the lit one's arrows, and three option gems. With Recklessness trained, its range is tinted ember in the groove. It draws only when its face or its size changes, so a still bar draws no
 /// new frame.
 /// </summary>
 public sealed class DerethAttackBarArt : Control
@@ -77,6 +81,8 @@ public sealed class DerethAttackBarArt : Control
     public const int MinimumWidth = 280, MaximumWidth = 960, MaximumHeight = 150;
 
     private const double GemRadius = 3.4;
+    /// <summary>The part of the bar where Recklessness applies, as ACE checks it: from 10% to 90%.</summary>
+    public const double RecklessFrom = 0.1, RecklessTo = 0.9;
     private static readonly string[] PlaqueNames = { "High", "Medium", "Low" };
     private static readonly string[] ToggleNames = { "Repeat Attacks", "Auto Target", "Keep in View" };
     // Attack-only colours from the mockup. The rest of the bar is the vitals' gilt and the palette's.
@@ -98,6 +104,8 @@ public sealed class DerethAttackBarArt : Control
     private static readonly IBrush Shade = Linear(new RelativePoint(0, 0, RelativeUnit.Relative), new RelativePoint(0, 1, RelativeUnit.Relative),
         (Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF), 0), (Color.FromArgb(0, 0xFF, 0xFF, 0xFF), 0.35), (Color.FromArgb(0x73, 0, 0, 0), 1));
     private static readonly IBrush Zone = DerethPalette.Brush(DerethPalette.Cream.WithAlpha(0x12));
+    private static readonly IBrush RecklessZone = DerethPalette.Brush(Ember.WithAlpha(0x2C));
+    private static readonly IPen RecklessEdge = new Pen(DerethPalette.Brush(Ember.WithAlpha(0xC0)), 0.9);
     private static readonly IBrush PlateLit = Linear(new RelativePoint(0, 0, RelativeUnit.Relative), new RelativePoint(0, 1, RelativeUnit.Relative),
         (PlateLitTop, 0), (DerethPalette.Gold, 0.5), (PlateLitBottom, 1));
     private static readonly IBrush LitText = DerethPalette.Brush(LitTextColor);
@@ -110,7 +118,7 @@ public sealed class DerethAttackBarArt : Control
     private static readonly IPen UnlitEdge = new Pen(DerethPalette.GoldDarkBrush, 0.9);
     private static readonly IPen GemEdge = new Pen(DerethGilt.Outline.Brush, 0.4);
 
-    private DerethAttackFace _face = new(false, 0, 0, 0, false, false, false);
+    private DerethAttackFace _face = new(false, 0, 0, 0, false, false, false, false);
 
     public DerethAttackBarArt() => IsHitTestVisible = false;
 
@@ -154,6 +162,9 @@ public sealed class DerethAttackBarArt : Control
             {
                 // The part up to the set point is washed pale, so where the charge should stop reads at a glance.
                 context.DrawRectangle(Zone, null, new Rect(0, 0, body.Width * set, body.Height));
+                // Recklessness's range: an ember wash under the charge, between ember edges drawn over it.
+                double from = body.Width * RecklessFrom, to = body.Width * RecklessTo;
+                if (face.Reckless) context.DrawRectangle(RecklessZone, null, new Rect(from, 0, to - from, body.Height));
                 var charge = Clamp01(face.Charge);
                 if (charge > 0)
                     using (context.PushClip(new Rect(0, 0, body.Width * charge, body.Height)))
@@ -161,6 +172,11 @@ public sealed class DerethAttackBarArt : Control
                         context.DrawRectangle(face.Accuracy ? AccuracyFill : PowerFill, null, glass);
                         context.DrawRectangle(Shade, null, glass);
                     }
+                if (face.Reckless)
+                {
+                    context.DrawLine(RecklessEdge, new Point(from, 0), new Point(from, body.Height));
+                    context.DrawLine(RecklessEdge, new Point(to, 0), new Point(to, body.Height));
+                }
             }
             DerethGroove.End(context, body.Width, body.Height, ticks: true);
         }

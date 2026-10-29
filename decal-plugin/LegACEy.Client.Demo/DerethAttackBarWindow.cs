@@ -113,7 +113,7 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
         var accuracy = stance == RetailStance.Missile;
         _root.IsVisible = stance is RetailStance.Melee or RetailStance.Missile;
         _art.Show(new DerethAttackFace(accuracy, _port.SetPoint, _port.Charge, (int)_port.Height,
-            _port.AutoRepeatAttack, _port.AutoTarget, _port.ViewCombatTarget));
+            _port.AutoRepeatAttack, _port.AutoTarget, _port.ViewCombatTarget, _port.Reckless));
         var percent = (int)Math.Round(_port.SetPoint * 100);
         ToolTip.SetTip(_groove, $"{(accuracy ? "Accuracy" : "Power")} {percent}%");
     }

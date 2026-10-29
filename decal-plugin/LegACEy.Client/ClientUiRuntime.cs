@@ -3998,7 +3998,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IDisposable? OpenAttackBar(Point at)
     {
         if (!CanOpenWindows) return null;
-        var port = new NativeAttackBarPort(HudNatives().Lock);
+        var port = new NativeAttackBarPort(HudNatives().Lock, Reckless, Log);
         var window = new DerethAttackBarWindow(port, () => _windows?.BeginMove(DerethAttackBarWindow.WindowId, _pointer));
         var definition = DerethAttackBarWindow.DefinitionOf(() => port.UiLocked);
         try { OpenWindowCore(definition, window, at, AttackFailed); }
@@ -4012,6 +4012,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     private void AttackFailed(Exception exception) => _attack?.Fail(exception);
+
+    // ACE's Skill.Recklessness.
+    private const uint RecklessnessSkill = 50;
+
+    /// <summary>Whether the character has Recklessness trained or specialized, as the server described the character.</summary>
+    private bool Reckless() => _character?.Sheet.Skills.TryGetValue(RecklessnessSkill, out var skill) == true && skill.Training >= SkillTraining.Trained;
 
     private sealed class AttackWindowHandle : IDisposable
     {

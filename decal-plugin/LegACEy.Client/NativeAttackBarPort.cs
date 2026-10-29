@@ -49,10 +49,24 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
     private static readonly (GetOptionFn Get, SetOptionFn Set) KeepInViewOption = Option(RetailAttackCatalogue.ViewCombatTarget, RetailAttackCatalogue.SetViewCombatTarget);
 
     private readonly bool _lockAvailable;
+    private readonly Func<bool> _reckless;
+    private readonly Action<string> _log;
     private Values? _last;
+    // Diagnostic for backlog 116 (the bar not filling): retail's build flag and power bar mode last logged, the peak charge read since, and
+    // how many lines are left this session.
+    private (byte Building, int Mode)? _lastBuild;
+    private double _peak;
+    private int _buildLines = 60;
 
     /// <param name="lockAvailable">Whether retail's Lock UI natives matched; the window does not move while the UI is locked.</param>
-    public NativeAttackBarPort(bool lockAvailable) => _lockAvailable = lockAvailable;
+    /// <param name="reckless">Whether the character has Recklessness trained or specialized, from the server's description of the character.</param>
+    /// <param name="log">Writes the plugin log.</param>
+    public NativeAttackBarPort(bool lockAvailable, Func<bool> reckless, Action<string> log)
+    {
+        _lockAvailable = lockAvailable;
+        _reckless = reckless ?? throw new ArgumentNullException(nameof(reckless));
+        _log = log ?? throw new ArgumentNullException(nameof(log));
+    }
 
     public event EventHandler? Changed;
 
@@ -92,6 +106,8 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
 
     public bool ViewCombatTarget { get => ReadOption(KeepInViewOption); set => WriteOption(KeepInViewOption, value); }
 
+    public bool Reckless => _reckless();
+
     public bool UiLocked => _lockAvailable && NativeUi.IsUiLocked;
 
     /// <summary>
@@ -100,10 +116,29 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
     /// </summary>
     public void Poll()
     {
-        var now = new Values(Stance, SetPoint, Height, Charge, AutoRepeatAttack, AutoTarget, ViewCombatTarget);
+        var now = new Values(Stance, SetPoint, Height, Charge, AutoRepeatAttack, AutoTarget, ViewCombatTarget, Reckless);
+        LogBuild(now.Charge);
         if (now == _last) return;
         _last = now;
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Diagnostic for backlog 116: logs retail's build flag (+0x30), power bar mode (+0x34), the charge (+0x38), the target (+0x40) and the
+    /// set point (+0x4C) each time the build flag or the mode changes, with the peak charge read since the last line.
+    /// </summary>
+    private void LogBuild(double charge)
+    {
+        if (_buildLines == 0 || CombatSystem() is not { } system) return;
+        _peak = Math.Max(_peak, charge);
+        var build = (Marshal.ReadByte(system, 0x30), Marshal.ReadInt32(system, 0x34));
+        if (build == _lastBuild) return;
+        _lastBuild = build;
+        _buildLines--;
+        var target = BitConverter.Int32BitsToSingle(Marshal.ReadInt32(system, 0x40));
+        _log($"Attack bar charge: building={build.Item1} mode={build.Item2} charge={charge:0.000} peak={_peak:0.000} target={target:0.000} " +
+            $"set={SetPoint:0.000} stance={Stance} listened={Changed != null}");
+        _peak = 0;
     }
 
     /// <summary>A value clamped to 0 to 1, as retail's power bar clamps the set point. NaN reads as 0.</summary>
@@ -148,5 +183,5 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
     }
 
     private readonly record struct Values(RetailStance Stance, double SetPoint, AttackHeight Height, double Charge, bool AutoRepeatAttack,
-        bool AutoTarget, bool ViewCombatTarget);
+        bool AutoTarget, bool ViewCombatTarget, bool Reckless);
 }
