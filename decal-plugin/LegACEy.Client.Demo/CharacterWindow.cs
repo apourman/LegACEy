@@ -284,10 +284,10 @@ public sealed class CharacterWindow
         var pk = CharacterRows.PlayerKillerText(_sheet.PlayerKillerStatus);
         if (pk.Length > 0) names.Children.Add(Centred(Label(pk, 11, DerethPalette.MutedBrush)));
         // Retail's two experience strips run the plaque's width under the name; the second fills brown with the progress to the next level.
-        var who = new StackPanel();
-        who.Children.Add(names);
-        who.Children.Add(ExperienceStrip("Total Experience (XP):", Number(_sheet.TotalExperience), 0));
-        who.Children.Add(ExperienceStrip("XP for next level:", Number(needed), fraction));
+        var body = new StackPanel();
+        body.Children.Add(names);
+        body.Children.Add(ExperienceStrip("Total Experience (XP):", Number(_sheet.TotalExperience), 0));
+        body.Children.Add(ExperienceStrip("XP for next level:", Number(needed), fraction));
 
         var level = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
         level.Children.Add(Centred(Label("LEVEL", 10.5, DerethPalette.MutedBrush)));
@@ -295,7 +295,7 @@ public sealed class CharacterWindow
         var levelBox = new Border { BorderBrush = LineBrush, BorderThickness = new Thickness(1, 0, 0, 0), Child = level };
 
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,64") };
-        grid.Children.Add(who);
+        grid.Children.Add(body);
         Grid.SetColumn(levelBox, 1);
         grid.Children.Add(levelBox);
         _plaque.Content = Plate(grid, padding: 0);
@@ -573,10 +573,10 @@ public sealed class CharacterWindow
         Padding = new Thickness(padding + 1, padding - 1, padding + 1, padding), Child = child
     };
 
-    private static Control Pair(string label, string value, bool short_ = false)
+    private static Control Pair(string label, string value, bool short_ = false, IBrush? labelBrush = null)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 6 };
-        grid.Children.Add(Label(label, 11, DerethPalette.MutedBrush));
+        grid.Children.Add(Label(label, 11, labelBrush ?? DerethPalette.MutedBrush));
         var text = Label(value, 11, short_ ? DerethPalette.InvalidBrush : DerethPalette.TextBrush);
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
@@ -587,11 +587,8 @@ public sealed class CharacterWindow
     private static Control ExperienceStrip(string label, string value, double fraction)
     {
         var fill = new Border { HorizontalAlignment = HorizontalAlignment.Left, Background = ExperienceFillBrush };
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 6, Margin = new Thickness(4, 1) };
-        row.Children.Add(Label(label, 11, DerethPalette.TextBrush));
-        var figure = Label(value, 11, DerethPalette.TextBrush);
-        Grid.SetColumn(figure, 1);
-        row.Children.Add(figure);
+        var row = Pair(label, value, labelBrush: DerethPalette.TextBrush);
+        row.Margin = new Thickness(4, 1);
         var well = new Grid();
         well.Children.Add(fill);
         well.Children.Add(row);
