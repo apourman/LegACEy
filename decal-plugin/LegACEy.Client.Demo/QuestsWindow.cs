@@ -130,7 +130,7 @@ public sealed class QuestsWindow
         _minutes = PageEntry(2);
         // The text property itself, not TextChanged, which Avalonia raises later: a page turn must not carry the old page's words over.
         foreach (var box in new[] { _label, _title, _notes, _days, _hours, _minutes })
-            box.PropertyChanged += (_, e) => { if (e.Property == TextBox.TextProperty) Edited(); };
+            box.PropertyChanged += (_, e) => { if (e.Property == TextBox.TextProperty) CopyBoxesToPage(); };
         _location = Ink("None");
         _running = Ink(string.Empty);
         _pageNumber = Ink("~ 1 ~");
@@ -237,10 +237,10 @@ public sealed class QuestsWindow
     {
         var table = _contracts();
         var now = _state.Now;
-        var rows = _state.Contracts.Where(c => table.ContainsKey(c.Id)).Select(c => (c, table[c.Id], QuestState.Status(c, table[c.Id], now)));
+        var rows = _state.Contracts.Where(c => table.ContainsKey(c.Id)).Select(c => (Contract: c, Info: table[c.Id], Status: QuestState.Status(c, table[c.Id], now)));
         rows = _sortContracts == 0
-            ? rows.OrderBy(r => r.Item2.Name, StringComparer.OrdinalIgnoreCase)
-            : rows.OrderBy(r => r.Item3, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Item2.Name, StringComparer.OrdinalIgnoreCase);
+            ? rows.OrderBy(r => r.Info.Name, StringComparer.OrdinalIgnoreCase)
+            : rows.OrderBy(r => r.Status, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Info.Name, StringComparer.OrdinalIgnoreCase);
         var list = rows.ToList();
         if (_reverseContracts) list.Reverse();
         return list;
@@ -336,7 +336,7 @@ public sealed class QuestsWindow
         }
         else
         {
-            var seconds = page.Days * 86400.0 + page.Hours * 3600.0 + page.Minutes * 60.0;
+            var seconds = (double)page.Days * QuestState.Day + page.Hours * QuestState.Hour + page.Minutes * QuestState.Minute;
             if (seconds <= 0) return;
             (page.TimerRunning, page.TimerEnd) = (true, _game.Time + seconds);
         }
@@ -353,7 +353,7 @@ public sealed class QuestsWindow
     public TextBox MinutesBox => _minutes;
     public TextBox SearchBox => _search;
 
-    private void Edited()
+    private void CopyBoxesToPage()
     {
         if (_loading) return;
         var page = _journal.Pages[_current];

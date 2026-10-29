@@ -23,7 +23,11 @@ public sealed class QuestState
 {
     private const int GameEventMessage = 0xF7B0;
     internal const uint TableEvent = 0x0314, ContractEvent = 0x0315;
-    private const uint InProgressStage = 2, DoneStage = 3, ProgressStage = 4;
+    private const uint AvailableStage = 1, InProgressStage = 2, DoneStage = 3, ProgressStage = 4;
+    // Outdoor cells are numbered 1 to 64 in each landblock's 8 × 8 grid.
+    private const uint LastOutdoorCell = 0x40;
+    /// <summary>Seconds in retail's time units.</summary>
+    public const long Month = 2592000, Day = 86400, Hour = 3600, Minute = 60;
 
     private readonly Dictionary<uint, Contract> _contracts = new();
     private readonly Func<double> _clock;
@@ -99,7 +103,7 @@ public sealed class QuestState
     {
         switch (contract.Stage)
         {
-            case 1: return "Available";
+            case AvailableStage: return "Available";
             case InProgressStage: return "In Progress";
             case DoneStage:
                 if (contract.RepeatsIn > 0)
@@ -140,7 +144,7 @@ public sealed class QuestState
     {
         if (cell == 0) return string.Empty;
         var index = cell & 0xFFFF;
-        if (index is < 1 or > 0x40) return "Indoors";
+        if (index is < 1 or > LastOutdoorCell) return "Indoors";
         var east = ((int)(cell >> 24) * 8 + (int)(index - 1) / 8 - 1024) * 0.1 + 0.5;
         var north = ((int)((cell >> 16) & 0xFF) * 8 + (int)(index - 1) % 8 - 1024) * 0.1 + 0.5;
         return Coordinates(north, east);
@@ -158,7 +162,7 @@ public sealed class QuestState
     {
         var left = (long)Math.Max(0, seconds);
         var text = new StringBuilder();
-        foreach (var (size, unit) in new[] { (2592000L, "mo"), (86400L, "d"), (3600L, "h"), (60L, "m") })
+        foreach (var (size, unit) in new[] { (Month, "mo"), (Day, "d"), (Hour, "h"), (Minute, "m") })
         {
             if (left >= size) text.Append(left / size).Append(unit).Append(' ');
             left %= size;

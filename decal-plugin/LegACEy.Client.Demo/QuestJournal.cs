@@ -193,7 +193,7 @@ public sealed class QuestJournal
 
     /// <summary>The Dereth journal's own file for a character, in the plugin's folder.</summary>
     public static string OwnPath(string pluginDirectory, string server, string character) =>
-        Path.Combine(pluginDirectory, "journals", $"Journal-{Safe(server)}-{Safe(character)}.txt");
+        Path.Combine(pluginDirectory, "journals", $"Journal-{SafeFileName(server)}-{SafeFileName(character)}.txt");
 
-    private static string Safe(string name) => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+    private static string SafeFileName(string name) => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
 }
