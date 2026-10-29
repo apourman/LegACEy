@@ -3382,24 +3382,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Moves the items to the main pack's free slots in order, as retail's backpack takes them. An item already in the main pack is skipped,
-    /// and the rest stop when the pack is full. True when one moved.
+    /// Moves the items to the front of the main pack in order, as retail's backpack takes them. An item already in the main pack is
+    /// skipped, and the rest stop when the pack is full. True when one moved.
     /// </summary>
-    private bool MoveToMainPack(IReadOnlyList<uint> itemIds)
-    {
-        var snapshot = _inventory.Snapshot;
-        var main = snapshot.MainPack;
-        using var free = snapshot.FreeSlots(main).GetEnumerator();
-        var moved = false;
-        foreach (var itemId in itemIds)
-        {
-            if (snapshot.Items.Any(item => item.Id == itemId && item.Container == main.Id)) continue;
-            if (!free.MoveNext()) break;
-            _inventory.MoveToContainer(itemId, main.Id, free.Current);
-            moved = true;
-        }
-        return moved;
-    }
+    private bool MoveToMainPack(IReadOnlyList<uint> itemIds) => _inventory.MoveToFront(itemIds, _inventory.Snapshot.MainPack) > 0;
 
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
     private void ReleaseRetailToolbar()

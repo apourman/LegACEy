@@ -387,7 +387,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>
     /// A retail drag released over this window. An item from outside our inventory goes onto the slot it is released on, or, released
-    /// elsewhere in the window, to the first free slot of the open pack. An item of ours is only moved by its slots, so it is declined
+    /// elsewhere in the window, to the front of the open pack. An item of ours is only moved by its slots, so it is declined
     /// elsewhere. Returns true when the item was used; declined items go back to where they came from.
     /// </summary>
     public bool RetailDrop(uint itemId, string itemName, Point position)
@@ -708,20 +708,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 var swaps = slot is PaperdollSlot.Weapon or PaperdollSlot.Shield;
                 var held = s.Wielded.Where(item => swaps && item.Id != dragged && (item.Slots.Contains(slot) || (item.EquippedMask & mask) != 0))
                     .Select(item => item.Id).ToList();
-                var free = s.FreeSlots(s.MainPack).Take(held.Count).ToList();
-                if (free.Count < held.Count) return Refused;
+                if (s.FreeSlots(s.MainPack).Count() < held.Count) return Refused;
                 return (true, p =>
                 {
-                    for (var index = 0; index < held.Count; index++) p.MoveToContainer(held[index], s.MainPack.Id, free[index]);
+                    p.MoveToFront(held, s.MainPack);
                     p.Wield(dragged, slot);
                 });
             }
 
             case SlotPlace.Pack:
             {
+                // An item dropped on its own pack stays put, as a set does.
                 if (PackOf(s, target.Container) is not { } into) return Refused;
-                var free = FirstFree(s, into);
-                return free < 0 ? Refused : (true, p => p.MoveToContainer(dragged, into.Id, free));
+                if (s.Items.Any(item => item.Id == dragged && item.Container == into.Id)) return null;
+                return s.FreeSlots(into).Any() ? (true, p => p.MoveToFront(new[] { dragged }, into)) : Refused;
             }
 
             case SlotPlace.Cell:
@@ -739,8 +739,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
-    /// What dropping a set does: into a pack's cell or onto its tile, the items move there in turn, in order, from that cell or the pack's first
-    /// free slot. A pack without room for the items not already in it is red, as is the paperdoll. Onto one of the set's own cells: nothing.
+    /// What dropping a set does: into a pack's cell, the items move there in turn, in order, from that cell; onto its tile, the items not
+    /// already in it go to its front. A pack without room for the items not already in it is red, as is the paperdoll. Onto one of the set's
+    /// own cells: nothing.
     /// </summary>
     private static (bool Accepted, Action<IInventoryPort> Send)? JudgeSet(InventorySnapshot s, IReadOnlyList<uint> carried, InventorySlotId target)
     {
@@ -749,7 +750,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var arriving = carried.Count(id => s.Items.FirstOrDefault(item => item.Id == id)?.Container != into.Id);
         if (target.Place == SlotPlace.Pack && arriving == 0) return null;
         if (ItemsIn(s, into.Id) + arriving > into.Capacity) return Refused;
-        var start = target.Place == SlotPlace.Cell ? target.SlotIndex : FirstFree(s, into);
+        if (target.Place == SlotPlace.Pack) return (true, p => p.MoveToFront(carried, into));
+        var start = target.SlotIndex;
         return (true, p =>
         {
             for (var index = 0; index < carried.Count; index++) p.MoveToContainer(carried[index], into.Id, start + index);
@@ -780,9 +782,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private static InventoryPack? PackOf(InventorySnapshot s, uint id) =>
         id == 0 ? null : s.MainPack.Id == id ? s.MainPack : s.SidePacks.FirstOrDefault(pack => pack.Id == id);
-
-    /// <summary>The first slot of a pack that holds no item, or -1 when the pack is full.</summary>
-    private static int FirstFree(InventorySnapshot s, InventoryPack pack) => s.FreeSlots(pack).DefaultIfEmpty(-1).First();
 
     /// <summary>The name, stack maximum and weenie class id (WCID) of an item the snapshot holds, carried or worn.</summary>
     private static (string Name, int StackMax, int Wcid) KindOf(InventorySnapshot s, uint id)
