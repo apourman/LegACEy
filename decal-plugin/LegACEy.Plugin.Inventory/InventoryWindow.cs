@@ -708,20 +708,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 var swaps = slot is PaperdollSlot.Weapon or PaperdollSlot.Shield;
                 var held = s.Wielded.Where(item => swaps && item.Id != dragged && (item.Slots.Contains(slot) || (item.EquippedMask & mask) != 0))
                     .Select(item => item.Id).ToList();
-                // They go to the front of the main pack, where retail puts a new item.
                 if (s.FreeSlots(s.MainPack).Count() < held.Count) return Refused;
                 return (true, p =>
                 {
-                    for (var index = 0; index < held.Count; index++) p.MoveToContainer(held[index], s.MainPack.Id, index);
+                    p.MoveToFront(held, s.MainPack);
                     p.Wield(dragged, slot);
                 });
             }
 
             case SlotPlace.Pack:
             {
-                // An item dropped on a pack goes to its front, as retail puts a new item.
-                if (PackOf(s, target.Container) is not { } into || !s.FreeSlots(into).Any()) return Refused;
-                return (true, p => p.MoveToContainer(dragged, into.Id, 0));
+                // An item dropped on its own pack stays put, as a set does.
+                if (PackOf(s, target.Container) is not { } into) return Refused;
+                if (s.Items.Any(item => item.Id == dragged && item.Container == into.Id)) return null;
+                return s.FreeSlots(into).Any() ? (true, p => p.MoveToFront(new[] { dragged }, into)) : Refused;
             }
 
             case SlotPlace.Cell:
@@ -739,8 +739,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
-    /// What dropping a set does: into a pack's cell or onto its tile, the items move there in turn, in order, from that cell or the pack's
-    /// front. A pack without room for the items not already in it is red, as is the paperdoll. Onto one of the set's own cells: nothing.
+    /// What dropping a set does: into a pack's cell, the items move there in turn, in order, from that cell; onto its tile, the items not
+    /// already in it go to its front. A pack without room for the items not already in it is red, as is the paperdoll. Onto one of the set's
+    /// own cells: nothing.
     /// </summary>
     private static (bool Accepted, Action<IInventoryPort> Send)? JudgeSet(InventorySnapshot s, IReadOnlyList<uint> carried, InventorySlotId target)
     {
@@ -749,7 +750,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var arriving = carried.Count(id => s.Items.FirstOrDefault(item => item.Id == id)?.Container != into.Id);
         if (target.Place == SlotPlace.Pack && arriving == 0) return null;
         if (ItemsIn(s, into.Id) + arriving > into.Capacity) return Refused;
-        var start = target.Place == SlotPlace.Cell ? target.SlotIndex : 0;
+        if (target.Place == SlotPlace.Pack) return (true, p => p.MoveToFront(carried, into));
+        var start = target.SlotIndex;
         return (true, p =>
         {
             for (var index = 0; index < carried.Count; index++) p.MoveToContainer(carried[index], into.Id, start + index);

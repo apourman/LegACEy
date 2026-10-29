@@ -428,6 +428,33 @@ public sealed class InventoryWindowTests
         Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Potions:X8} slot 0" }, InventoryDriver.Sent(port));
     });
 
+    [Fact]
+    public void Dropping_an_item_on_its_own_pack_leaves_it_where_it_is() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, showSlots: true);
+
+        InventoryDriver.Drop(host.Host, host.Cells[4], InventoryDriver.PackSlot(host.Host, InventorySample.Character));
+
+        Assert.Empty(InventoryDriver.Sent(port));
+    });
+
+    [Fact]
+    public void Moving_to_a_packs_front_skips_items_already_in_it_and_stops_when_it_is_full()
+    {
+        var port = new FakeInventoryPort();
+        // Six more vials fill the potions pack to 23 of 24, so it has room for one.
+        var vials = Enumerable.Range(17, 6).Select(slot => InventorySample.Item(0x80000200u + (uint)slot, "Vial", InventorySample.Potions, slot, 0x06001013));
+        port.Push(InventorySample.Snapshot(extra: vials));
+        var potions = port.Snapshot.SidePacks.Single(pack => pack.Id == InventorySample.Potions);
+
+        var moved = port.MoveToFront(new[] { InventorySample.BluePotion, InventorySample.Apple, InventorySample.Scroll }, potions);
+
+        Assert.Equal(1, moved);
+        Assert.Equal(new[] { $"move 0x{InventorySample.Apple:X8} to 0x{InventorySample.Potions:X8} slot 0" }, port.Commands);
+    }
+
     // Armour doesn't swap: the worn helm stays, the drop sends only the wield, and the server refuses it until the helm comes off.
     [Fact]
     public void Dropping_on_an_equipment_slot_wields_the_item_there() => RenderThread.Run(() =>
