@@ -308,9 +308,9 @@ public sealed class InventoryWindowTests
         Click(host.Host, host.Cells[0], Avalonia.Input.KeyModifiers.Control);
         Click(host.Host, host.Cells[5], Avalonia.Input.KeyModifiers.Control);
 
-        // The main pack holds slots 0, 4, 7 and 9, so the set takes its first free slots, 1 and 2.
+        // The set goes to the front of the main pack, in order.
         InventoryDriver.Drop(host.Host, host.Cells[0], InventoryDriver.PackSlot(host.Host, InventorySample.Character));
-        Assert.Equal(new[] { $"move 0x{InventorySample.BluePotion:X8} to 0x{InventorySample.Character:X8} slot 1", $"move 0x{InventorySample.YellowPotion:X8} to 0x{InventorySample.Character:X8} slot 2" },
+        Assert.Equal(new[] { $"move 0x{InventorySample.BluePotion:X8} to 0x{InventorySample.Character:X8} slot 0", $"move 0x{InventorySample.YellowPotion:X8} to 0x{InventorySample.Character:X8} slot 1" },
             InventoryDriver.Sent(port));
         Assert.Null(host.Host.LastError);
     });
@@ -416,18 +416,44 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
-    public void Dropping_on_a_pack_moves_the_item_into_its_first_free_slot() => RenderThread.Run(() =>
+    public void Dropping_on_a_pack_moves_the_item_to_its_front() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
         using var host = new InventoryHost(port, showSlots: true);
         var potions = InventoryDriver.PackSlot(host.Host, InventorySample.Potions);
 
-        // The potions pack holds seventeen items in slots 0 to 16, so the scroll goes to slot 17.
         InventoryDriver.Drop(host.Host, host.Cells[4], potions);
 
-        Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Potions:X8} slot 17" }, InventoryDriver.Sent(port));
+        Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Potions:X8} slot 0" }, InventoryDriver.Sent(port));
     });
+
+    [Fact]
+    public void Dropping_an_item_on_its_own_pack_leaves_it_where_it_is() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, showSlots: true);
+
+        InventoryDriver.Drop(host.Host, host.Cells[4], InventoryDriver.PackSlot(host.Host, InventorySample.Character));
+
+        Assert.Empty(InventoryDriver.Sent(port));
+    });
+
+    [Fact]
+    public void Moving_to_a_packs_front_skips_items_already_in_it_and_stops_when_it_is_full()
+    {
+        var port = new FakeInventoryPort();
+        // Six more vials fill the potions pack to 23 of 24, so it has room for one.
+        var vials = Enumerable.Range(17, 6).Select(slot => InventorySample.Item(0x80000200u + (uint)slot, "Vial", InventorySample.Potions, slot, 0x06001013));
+        port.Push(InventorySample.Snapshot(extra: vials));
+        var potions = port.Snapshot.SidePacks.Single(pack => pack.Id == InventorySample.Potions);
+
+        var moved = port.MoveToFront(new[] { InventorySample.BluePotion, InventorySample.Apple, InventorySample.Scroll }, potions);
+
+        Assert.Equal(1, moved);
+        Assert.Equal(new[] { $"move 0x{InventorySample.Apple:X8} to 0x{InventorySample.Potions:X8} slot 0" }, port.Commands);
+    }
 
     // Armour doesn't swap: the worn helm stays, the drop sends only the wield, and the server refuses it until the helm comes off.
     [Fact]
@@ -455,7 +481,7 @@ public sealed class InventoryWindowTests
 
         Assert.True(target.RetailDrop(bow, "Bow", InventoryDriver.Centre(host.Host, Slot(host, PaperdollSlot.Weapon))));
 
-        Assert.Equal(new[] { $"move 0x{InventorySample.WieldedSword:X8} to 0x{InventorySample.Character:X8} slot 1", $"wield 0x{bow:X8} to Weapon" },
+        Assert.Equal(new[] { $"move 0x{InventorySample.WieldedSword:X8} to 0x{InventorySample.Character:X8} slot 0", $"wield 0x{bow:X8} to Weapon" },
             port.Commands);
     });
 

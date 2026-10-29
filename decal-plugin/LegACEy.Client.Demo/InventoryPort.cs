@@ -44,6 +44,27 @@ public interface IInventoryPort
     void MergeStack(uint itemId, uint targetStackId);
 }
 
+public static class InventoryPortMoves
+{
+    /// <summary>
+    /// Moves items to the front of a pack in turn, in order: slots 0, 1, 2…, where retail and the server put a new item. An item already in
+    /// the pack stays where it is, and the rest stop when the pack is full. Returns how many moved.
+    /// </summary>
+    public static int MoveToFront(this IInventoryPort port, IEnumerable<uint> itemIds, InventoryPack pack)
+    {
+        var snapshot = port.Snapshot;
+        var room = snapshot.FreeSlots(pack).Count();
+        var moved = 0;
+        foreach (var itemId in itemIds)
+        {
+            if (moved == room) break;
+            if (snapshot.Items.Any(item => item.Id == itemId && item.Container == pack.Id)) continue;
+            port.MoveToContainer(itemId, pack.Id, moved++);
+        }
+        return moved;
+    }
+}
+
 /// <summary>A pack in the pack column. The main pack comes first, then the side packs in slot order. Id zero is an empty side-pack slot.</summary>
 public sealed class InventoryPack : IEquatable<InventoryPack>
 {

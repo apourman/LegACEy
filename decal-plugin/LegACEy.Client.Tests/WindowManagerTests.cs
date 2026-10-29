@@ -423,7 +423,7 @@ public sealed class WindowManagerTests
     [InlineData(443, 300, WindowEdges.Right)]
     [InlineData(101, 300, WindowEdges.Left)]
     [InlineData(200, 703, WindowEdges.Bottom)]
-    [InlineData(200, 101, WindowEdges.None)]
+    [InlineData(200, 101, WindowEdges.Top)]
     [InlineData(101, 101, WindowEdges.Left | WindowEdges.Top)]
     [InlineData(443, 703, WindowEdges.Right | WindowEdges.Bottom)]
     [InlineData(443, 101, WindowEdges.Right | WindowEdges.Top)]
@@ -448,7 +448,8 @@ public sealed class WindowManagerTests
     [InlineData(101, 300, WindowEdges.None)]
     [InlineData(443, 703, WindowEdges.Bottom)]
     [InlineData(200, 703, WindowEdges.Bottom)]
-    public void A_fixed_width_window_resizes_only_from_its_bottom_edge(int x, int y, WindowEdges expected)
+    [InlineData(200, 101, WindowEdges.Top)]
+    public void A_fixed_width_window_resizes_only_from_its_top_and_bottom_edges(int x, int y, WindowEdges expected)
     {
         var manager = NewManager(1920, 1080);
         manager.Open(new WindowDefinition("inventory", "Inventory", 344, 606, resizing: new WindowResizing(new Size(344, 300), new Size(344, 10_000))),
@@ -458,14 +459,20 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
-    public void A_press_on_the_top_edge_moves_any_window_and_a_top_corner_still_resizes()
+    public void A_press_on_the_top_edge_resizes_a_titled_window_and_moves_one_that_drags_from_its_content()
     {
         var manager = NewManager(1920, 1080);
         manager.Open(Resizable("vault"), new Point(100, 100));
         manager.Open(new WindowDefinition("bar", "Bar", 120, 40, dragsFromContent: true), new Point(600, 100));
 
-        Assert.Equal("vault", manager.MoveEdgeAt(new Point(200, 101)));
+        Assert.Null(manager.MoveEdgeAt(new Point(200, 101)));
         Assert.Null(manager.MoveEdgeAt(new Point(101, 101)));
+        manager.Press(new Point(200, 101));
+        manager.Move(new Point(200, 81));
+        manager.Release();
+        Assert.Equal(new Point(100, 80), manager.Get("vault")!.Location);
+        Assert.Equal(new Size(344, 626), manager.Get("vault")!.Size);
+
         Assert.Equal("bar", manager.MoveEdgeAt(new Point(650, 102)));
         Assert.Null(manager.MoveEdgeAt(new Point(650, 120)));
 
