@@ -31,6 +31,8 @@ internal static class NativeUi
     public const uint CharacterPanel = 0x1000018E;
     /// <summary>The social panel (Allegiance, Fellowship, Friends, Squelch), placed under PanelPages as panel 12.</summary>
     public const uint SocialPanel = 0x1000018F;
+    /// <summary>The map panel (Map, House), placed under PanelPages as panel 16.</summary>
+    public const uint MapPanel = 0x1000018C;
     /// <summary>The quest panel (Contracts, Journal, Page List), placed under PanelPages as panel 25.</summary>
     public const uint QuestsPanel = 0x10000559;
     /// <summary>
@@ -147,7 +149,7 @@ internal static class NativeUi
 
     public static void SetVisible(IntPtr element, bool visible) { EnsureReady(); SetVisibleNative(element, visible ? (byte)1 : (byte)0); }
 
-    /// <summary>The element's rectangle in screen pixels.</summary>
+    /// <summary>The element's rectangle in its parent's pixels: screen pixels for a root element.</summary>
     public static Rectangle GetBounds(IntPtr element)
     {
         EnsureReady();

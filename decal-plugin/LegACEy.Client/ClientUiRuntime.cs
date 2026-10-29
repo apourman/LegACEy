@@ -137,6 +137,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Beside the DLL: while this file exists, retail's character panel stays retail's. Without it the Dereth character window replaces it.
     private const string RetailCharacterSwitchFile = "retail-character-native";
     private const string RetailSocialSwitchFile = "retail-social-native";
+    private const string RetailMapSwitchFile = "retail-map-native";
     private const string RetailQuestsSwitchFile = "retail-quests-native";
     // Present: retail's yellow game messages stay retail's; absent: LegACEy's bands show them.
     private const string RetailGameMessagesSwitchFile = "retail-game-messages-native";
@@ -329,6 +330,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private SocialFeature? _social;
     private bool _retailSocialSwitch;
     private DateTime _lastSocialSwitchCheck;
+    // The Dereth map window, which reads retail's own map and house pages.
+    private MapFeature? _map;
+    private bool _retailMapSwitch;
+    private DateTime _lastMapSwitchCheck;
     // The Dereth quests window: the server's contracts and the character's journal.
     private QuestsFeature? _quests;
     private bool _retailQuestsSwitch;
@@ -461,6 +466,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _social = new SocialFeature(this,
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.SocialPanel, NativeRetailPanelPort.SocialPanelId) : null,
                 () => _portal?.ReadCharacterTables(Log) ?? CharacterTables.None, () => _channelTransport, StartTell, Log);
+            _map = new MapFeature(this,
+                NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.MapPanel, NativeRetailPanelPort.MapPanelId) : null, Log);
             _quests = new QuestsFeature(this,
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.QuestsPanel, NativeRetailPanelPort.QuestsPanelId) : null,
                 () => _portal?.ReadContracts(Log) ?? new Dictionary<uint, ContractInfo>(), () => _channelTransport, PlayerPosition,
@@ -1157,6 +1164,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }, AppraisalFeature.WindowId),
         Choice("Character", RetailCharacterSwitchFile, () => _lastCharacterSwitchCheck = default, CharacterWindow.WindowId),
         Choice("Social", RetailSocialSwitchFile, () => _lastSocialSwitchCheck = default, SocialWindow.WindowId),
+        Choice("Map", RetailMapSwitchFile, () => _lastMapSwitchCheck = default, MapWindow.WindowId),
         Choice("Quests", RetailQuestsSwitchFile, () => _lastQuestsSwitchCheck = default, QuestsWindow.WindowId),
         Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default, ToolbarSurfaceId),
         Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default, ChatWindowId),
@@ -1892,7 +1900,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void TickRetailPanels(bool loggingIn = false)
     {
-        if (_retailPanels.Count == 0 && _examination == null && _character == null && _social == null && _quests == null)
+        if (_retailPanels.Count == 0 && _examination == null && _character == null && _social == null && _map == null && _quests == null)
         {
             // Nothing to hand over to: a switch made now must not fire later.
             _appraisalSwitched = false;
@@ -1907,6 +1915,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _examination?.Tick(canOpen && appraisalOn, canShow: !loggingIn);
         _character?.Tick(canOpen && SwitchOn(RetailCharacterSwitchFile, ref _lastCharacterSwitchCheck, ref _retailCharacterSwitch), canShow: !loggingIn);
         _social?.Tick(canOpen && SwitchOn(RetailSocialSwitchFile, ref _lastSocialSwitchCheck, ref _retailSocialSwitch), canShow: !loggingIn);
+        _map?.Tick(canOpen && SwitchOn(RetailMapSwitchFile, ref _lastMapSwitchCheck, ref _retailMapSwitch), canShow: !loggingIn);
         _quests?.Tick(canOpen && SwitchOn(RetailQuestsSwitchFile, ref _lastQuestsSwitchCheck, ref _retailQuestsSwitch), canShow: !loggingIn);
         // Turned to retail: the item in our window opens in retail's panel, now given back. The other way, the takeover already parks an
         // open retail panel and examines the selection in our window.
@@ -1929,6 +1938,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _examination?.EndSession();
         _character?.EndSession();
         _social?.EndSession();
+        _map?.EndSession();
         _quests?.EndSession();
     }
 

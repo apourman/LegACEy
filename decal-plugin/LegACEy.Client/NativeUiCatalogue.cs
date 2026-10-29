@@ -48,6 +48,7 @@ internal static class NativeUiCatalogue
         // Placed under PanelPages 0x10000180 in LayoutDesc 0x2100006E, whose property 0x10000029 is the panel number, 11.
         Root("CharacterPanel", NativeUi.CharacterPanel, "installed client_local_English.dat, LayoutDesc 0x2100006E (panel 11)"),
         Root("SocialPanel", NativeUi.SocialPanel, "installed client_local_English.dat, LayoutDesc 0x2100006E (panel 12)"),
+        Root("MapPanel", NativeUi.MapPanel, "installed client_local_English.dat, LayoutDesc 0x2100006E (panel 16)"),
         Root("QuestsPanel", NativeUi.QuestsPanel, "installed client_local_English.dat, LayoutDesc 0x2100006E (panel 25)"),
         // The examination panel: 0x100005F7 in LayoutDesc 0x21000005, placed from the top-level element 0x100005F2 of LayoutDesc 0x2100006B
         // in the installed client_local_English.dat (the placed id is the one the client registers). The DAT holds the
