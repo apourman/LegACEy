@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// The port over the installed client for one of gmPanelUI's panels: the inventory, the character panel (Attributes, Skills, Titles) or the social panel.
+/// The port over the installed client for one of gmPanelUI's panels: the inventory, the character panel (Attributes, Skills, Titles), the social panel or the map panel.
 /// The shared parts are in <see cref="NativePanelPort"/>.
 /// </summary>
 internal sealed class NativeRetailPanelPort : NativePanelPort
@@ -18,6 +18,8 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
     internal const uint CharacterPanelId = 11;
     // The social panel's number (RetailPanel.Social).
     internal const uint SocialPanelId = 12;
+    // The map panel's number (RetailPanel.WorldMap).
+    internal const uint MapPanelId = 16;
 
     private readonly uint _elementId;
     private readonly uint _panelId;
