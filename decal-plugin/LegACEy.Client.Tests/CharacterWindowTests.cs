@@ -239,7 +239,7 @@ public sealed class CharacterWindowTests
         public bool SetTitle(uint title) => true;
     }
 
-    private sealed class Writer
+    internal sealed class Writer
     {
         private readonly MemoryStream _stream = new();
         private readonly BinaryWriter _writer;

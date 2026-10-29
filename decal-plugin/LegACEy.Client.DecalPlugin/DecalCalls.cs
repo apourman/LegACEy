@@ -91,11 +91,11 @@ internal static unsafe class DecalCalls
         {
             BridgeFact.CharacterId => character.Id,
             BridgeFact.Health => character.Health,
-            BridgeFact.MaxHealth => character.EffectiveVital[CharFilterVitalType.Health],
+            BridgeFact.MaxHealth => Maximum(CharFilterVitalType.Health),
             BridgeFact.Stamina => character.Stamina,
-            BridgeFact.MaxStamina => character.EffectiveVital[CharFilterVitalType.Stamina],
+            BridgeFact.MaxStamina => Maximum(CharFilterVitalType.Stamina),
             BridgeFact.Mana => character.Mana,
-            BridgeFact.MaxMana => character.EffectiveVital[CharFilterVitalType.Mana],
+            BridgeFact.MaxMana => Maximum(CharFilterVitalType.Mana),
             BridgeFact.Burden => (int)character.BurdenUnits,
             BridgeFact.Strength => character.EffectiveAttribute[CharFilterAttributeType.Strength],
             BridgeFact.CarryingAugmentations => character.GetCharProperty(CarryingAugmentationProperty),
@@ -109,6 +109,21 @@ internal static unsafe class DecalCalls
             BridgeFact.Vitae => character.Vitae,
             _ => throw new ArgumentOutOfRangeException(nameof(fact), fact, "Unknown bridge fact.")
         };
+    }
+
+    /// <summary>
+    /// A vital's maximum as retail shows it, through Decal's hooks: the character filter's effective value leaves out vitae (43 where retail
+    /// shows 41 with 5% vitae). The filter's value stands in when the hooks give nothing.
+    /// </summary>
+    private static int Maximum(CharFilterVitalType vital)
+    {
+        var hooked = CoreManager.Current.Actions.Vital[vital switch
+        {
+            CharFilterVitalType.Health => VitalType.MaximumHealth,
+            CharFilterVitalType.Stamina => VitalType.MaximumStamina,
+            _ => VitalType.MaximumMana
+        }];
+        return hooked > 0 ? hooked : CoreManager.Current.CharacterFilter.EffectiveVital[vital];
     }
 
     /// <summary>The allegiance, society and Olthoi bits of <see cref="BridgeFact.CharacterMembership"/>. Vassals are the followers count.</summary>
@@ -285,7 +300,7 @@ internal static unsafe class DecalCalls
             case 1:
                 var vital = character.Vitals[(CharFilterVitalType)id];
                 *@base = vital.Base;
-                *buffed = vital.Buffed;
+                *buffed = Maximum((CharFilterVitalType)id);
                 break;
             default:
                 var skill = character.Skills[(CharFilterSkillType)id];

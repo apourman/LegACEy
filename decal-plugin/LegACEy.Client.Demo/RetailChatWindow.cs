@@ -847,6 +847,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
+    /// <summary>The next line goes as a tell to a player, and the box takes the keyboard, as a click on their name does.</summary>
+    public void StartTell(string name, uint id) => TellTo(RetailTalkTarget.Tell(name, id));
+
     /// <summary>A click on a name, or Tab in an empty box: the next line answers with a tell to that name, and the box takes the keyboard.</summary>
     private void TellTo(RetailTalkTarget tell)
     {
