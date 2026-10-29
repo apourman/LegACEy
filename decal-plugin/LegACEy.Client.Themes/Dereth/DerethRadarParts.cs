@@ -121,7 +121,7 @@ public sealed class DerethRadarScope : Control
         set { if (ReferenceEquals(_dots, value)) return; _dots = value; InvalidateVisual(); }
     }
 
-    /// <summary>Where portals' halos are in their breath, 0 to 1: the halo swells and fades from 0 to 0.5 and back.</summary>
+    /// <summary>How far through one breath portals' halos are, 0 to 1: the halo is smallest at 0, widest and faintest at 0.5, and small again at 1.</summary>
     public double PortalPulse { get => _portalPulse; set { if (_portalPulse == value) return; _portalPulse = value; InvalidateVisual(); } }
     private double _portalPulse;
 
