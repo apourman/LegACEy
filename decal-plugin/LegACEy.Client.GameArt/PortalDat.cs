@@ -28,6 +28,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     private IReadOnlyDictionary<uint, SpellInfo>? _spells;
     private CharacterNames? _characterNames;
     private CharacterTables? _characterTables;
+    private IReadOnlyDictionary<uint, ContractInfo>? _contracts;
 
     public PortalDat(string path)
     {
@@ -129,6 +130,26 @@ public sealed class PortalDat : IDisposable, IGameArtSource
                 Read(CharacterTables.AttributeIconMapper, "attribute icons", CharacterTables.ParseDidMapper, new Dictionary<uint, uint>()),
                 Read(CharacterTables.VitalIconMapper, "vital icons", CharacterTables.ParseDidMapper, new Dictionary<uint, uint>()));
             return _characterTables;
+        }
+    }
+
+    /// <summary>The contracts by id, read once. A table that is missing or cannot be read gives none, logged once; the quests window then names contracts by id.</summary>
+    public IReadOnlyDictionary<uint, ContractInfo> ReadContracts(Action<string>? log = null)
+    {
+        lock (_stream)
+        {
+            if (_contracts != null) return _contracts;
+            try
+            {
+                var file = ReadFile(ContractTable.FileId);
+                _contracts = file == null ? new Dictionary<uint, ContractInfo>() : ContractTable.Parse(file);
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"The contracts could not be read from the portal: {exception.Message}");
+                _contracts = new Dictionary<uint, ContractInfo>();
+            }
+            return _contracts;
         }
     }
 

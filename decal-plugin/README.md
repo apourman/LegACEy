@@ -1,8 +1,8 @@
 # LegACEy Decal Plugin
 
 A Decal plugin that replaces Asheron's Call's UI with LegACEy's own Avalonia
-windows (inventory, appraisal, character, social, toolbar, chat, vitals, radar,
-attack bar, game messages) and adds LegACEy features such as the Vault, the Market and
+windows (inventory, appraisal, character, social, quests, toolbar, chat, vitals,
+radar, attack bar, game messages) and adds LegACEy features such as the Vault, the Market and
 custom worlds. It works on any ACE server; some features need a LegACEy server.
 
 ## Install
@@ -26,6 +26,7 @@ Other files beside the main DLL:
 | `no-auto-update` | Turns update checks off |
 | `fail-post-ui-draw` | Fails the next post-UI draw once (tests the hook removal path) |
 | `legacey-avalonia.log` | The client log: crashes, performance, world overlay |
+| `journals/` | Each character's quest journal, first copied from retail's in `Documents\Asheron's Call` |
 
 ## Projects
 

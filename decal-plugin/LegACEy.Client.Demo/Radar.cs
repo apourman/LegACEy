@@ -83,15 +83,14 @@ public readonly record struct RadarPosition(uint Cell, float X, float Y, float Z
     /// Retail's map coordinates as its radar writes them, such as "33.6N, 56.7E". CPlayerSystem::InqPlayerCoords counts 24 m cells across
     /// the world: north = (landblock y × 8 + ⌊y / 24⌋ − 1024) × 0.1 + 0.5, east the same with x; negative is south and west.
     /// </summary>
-    public string Coordinates
-    {
-        get
-        {
-            var north = Coordinate((Cell >> 16) & 0xFF, Y);
-            var east = Coordinate(Cell >> 24, X);
-            return string.Format(CultureInfo.InvariantCulture, "{0:0.0}{1}, {2:0.0}{3}", Math.Abs(north), north < 0 ? 'S' : 'N', Math.Abs(east), east < 0 ? 'W' : 'E');
-        }
-    }
+    public string Coordinates =>
+        string.Format(CultureInfo.InvariantCulture, "{0:0.0}{1}, {2:0.0}{3}", Math.Abs(North), North < 0 ? 'S' : 'N', Math.Abs(East), East < 0 ? 'W' : 'E');
+
+    /// <summary>The map coordinate north, negative south.</summary>
+    public double North => Coordinate((Cell >> 16) & 0xFF, Y);
+
+    /// <summary>The map coordinate east, negative west.</summary>
+    public double East => Coordinate(Cell >> 24, X);
 
     private static double Coordinate(uint landblock, float metres) => (landblock * 8 + Math.Floor(metres / 24) - 1024) * 0.1 + 0.5;
 }
