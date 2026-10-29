@@ -121,14 +121,14 @@ public sealed class DerethRadarScope : Control
         set { if (ReferenceEquals(_dots, value)) return; _dots = value; InvalidateVisual(); }
     }
 
-    /// <summary>
-    /// The pings: each one's point in DIPs from the scope's top-left, its colour, how far through its life it is (0 to 1), and for one past the
-    /// rim the screen angle it lies at, clockwise from up.
-    /// </summary>
     /// <summary>Where portals' halos are in their breath, 0 to 1: the halo swells and fades from 0 to 0.5 and back.</summary>
     public double PortalPulse { get => _portalPulse; set { if (_portalPulse == value) return; _portalPulse = value; InvalidateVisual(); } }
     private double _portalPulse;
 
+    /// <summary>
+    /// The pings: each one's point in DIPs from the scope's top-left, its colour, how far through its life it is (0 to 1), and for one past the
+    /// rim the screen angle it lies at, clockwise from up.
+    /// </summary>
     public IReadOnlyList<(Point At, Color Colour, double Age, double? Edge)> Pings
     {
         get => _pings;
