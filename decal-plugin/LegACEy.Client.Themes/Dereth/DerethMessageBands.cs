@@ -115,10 +115,13 @@ public sealed class DerethMessageBands : StackPanel
     {
         // The smoke: a dense core behind the words, and soft puffs that slide left at their own speeds and thin out towards every edge, so
         // one leaving at the left fades out before it comes back in at the right. Each band draws its own puffs, so a stack never repeats.
+        // The puffs fade out pixel by pixel to nothing at the smoke's edge, so none is cut off square by the surface; the core is gone
+        // well inside it.
         private const int PuffCount = 9;
         private const double DriftSpeed = 16;
         private static readonly IBrush Core = Radial((0, 0.9), (0.3, 0.9), (0.45, 0.72), (0.56, 0.38), (0.7, 0.1), (0.8, 0));
         private static readonly IBrush PuffFill = Radial((0, 1), (0.4, 0.7), (1, 0));
+        private static readonly IBrush EdgeFade = Radial((0, 1), (0.3, 1), (0.55, 0.7), (0.75, 0.3), (0.9, 0.08), (1, 0));
         private static readonly Random Seeds = new();
         private static readonly IPen SampleOutline = new ImmutablePen(DerethPalette.GoldBrush.ToImmutable());
         private readonly TextBlock _text;
@@ -172,6 +175,7 @@ public sealed class DerethMessageBands : StackPanel
             using (context.PushOpacity(Older ? OlderSmoke : 1))
             {
                 context.DrawEllipse(Core, null, smoke);
+                using var edge = context.PushOpacityMask(EdgeFade, smoke);
                 foreach (var puff in _puffs)
                 {
                     // Across 1.4 widths, so a puff wraps where it cannot be seen.

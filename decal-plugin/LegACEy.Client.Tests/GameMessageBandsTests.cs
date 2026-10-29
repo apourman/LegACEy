@@ -73,6 +73,9 @@ public sealed class GameMessageBandsTests
         var bands = new DerethMessageBands(() => now);
         for (var i = 0; i < 3; i++) bands.Show("You're too loaded down to jump");
         using var panel = AvaloniaPanel.Create(() => bands, 560, 200, 1);
+        // Fitted as the game fits its surface, so the smoke's edge is the surface's.
+        bands.Measure(Avalonia.Size.Infinity);
+        panel.Resize((int)Math.Ceiling(bands.DesiredSize.Width), (int)Math.Ceiling(bands.DesiredSize.Height));
         panel.Tick();
         PanelPng.Save(panel, Path.Combine(folder, "burst.png"));
         now += TimeSpan.FromSeconds(2);
