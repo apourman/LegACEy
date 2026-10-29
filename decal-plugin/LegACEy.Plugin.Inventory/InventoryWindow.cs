@@ -967,7 +967,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private Grid Icon(ItemVisual visual, uint tab) => DerethItemCells.Icon(Bitmap(visual, tab));
 
     /// <summary>The key tab of the object's shortcut, drawn over its icon as retail's inventory does; zero when it has none.</summary>
-    private static uint Tab(InventorySnapshot snapshot, uint id) => snapshot.ShortcutOf(id) is var index and >= 0 ? ShortcutBar.TabOf(index) : 0;
+    private static uint Tab(InventorySnapshot snapshot, uint id) => ShortcutEdits.IndexOf(snapshot.Shortcuts, id) is var index and >= 0 ? ShortcutBar.TabOf(index) : 0;
 
     /// <summary>The drawn icon, cached per look and key tab. The grid redraws on every change, so the bitmaps are kept.</summary>
     private WriteableBitmap? Bitmap(ItemVisual visual, uint tab)

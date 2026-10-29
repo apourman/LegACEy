@@ -239,9 +239,6 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
     public InventorySnapshot WithShortcuts(IReadOnlyList<RetailShortcut> shortcuts) =>
         new(MainPack, SidePacks, Items, Wielded, Burden, BurdenLimit, OpenContainer, Selected, CharacterName, shortcuts);
 
-    /// <summary>The shortcut slot holding the object, or -1 when none does.</summary>
-    public int ShortcutOf(uint id) => ShortcutEdits.IndexOf(Shortcuts, id);
-
     /// <summary>Whether the id is the main pack, a side pack, or an item or wielded item in this snapshot.</summary>
     public bool Contains(uint id) => id != 0 && (MainPack.Id == id || SidePacks.Any(pack => pack.Id == id)
         || Items.Any(item => item.Id == id) || Wielded.Any(item => item.Id == id));
