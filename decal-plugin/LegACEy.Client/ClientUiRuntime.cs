@@ -275,9 +275,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The layout the player picked on the vitals gear, kept per character; the window reopens in it on the next frame.
     private readonly VitalsLayoutChoice _vitalsLayouts;
     private bool _vitalsLayoutPicked;
-    private int? _loggedVitae;
-    private bool _vitaeReadLogged;
-    private TimeSpan _nextVitaeRead;
     // The Dereth radar over retail's radar: its natives, held root, port, window and ground. Held while the switch is on.
     private const string RadarWindowId = "dereth-radar";
     private const string RadarOptionsKey = "dereth-radar-options";
@@ -4095,7 +4092,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _vitals.CloseWindow();
         }
         _vitals.Tick(switchOn, canDraw, _inGame, GameDevice.ViewportSize(_device), _vitalsClock.Elapsed);
-        if (_inGame && _vitals.Holds) LogVitae();
     }
 
     /// <summary>Retail's vitals windows, held, once the running client's addresses match. Null leaves retail's alone; the next frame asks again.</summary>
@@ -4239,29 +4235,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             Log($"Dereth HUD is off: its native addresses could not be checked: {exception.Message}");
             return new RetailHudNatives(false, false, false, false, false);
         }
-    }
-
-    /// <summary>
-    /// Logs the raw vitae value when it changes, so the play-test can settle its unit. The vitals draw no hatching from it until the unit is
-    /// known. It is read at most once a second, and only while retail's vitals are held.
-    /// </summary>
-    private void LogVitae()
-    {
-        var now = _vitalsClock.Elapsed;
-        if (now < _nextVitaeRead) return;
-        _nextVitaeRead = now + TimeSpan.FromSeconds(1);
-        int vitae;
-        try { vitae = Bridge.Fact(BridgeFact.Vitae); }
-        catch (Exception exception)
-        {
-            // Logged once, not every frame: the vitals keep drawing without the vitae value.
-            if (!_vitaeReadLogged) Log($"Could not read the vitae fact: {exception.Message}");
-            _vitaeReadLogged = true;
-            return;
-        }
-        if (vitae == _loggedVitae) return;
-        _loggedVitae = vitae;
-        Log($"Dereth vitals: CharacterFilter.Vitae is {vitae} (unit unconfirmed; no vitae hatching is drawn).");
     }
 
     private sealed class VitalsWindowHandle : IRetailVitalsWindow

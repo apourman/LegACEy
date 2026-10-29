@@ -88,12 +88,24 @@ internal static class RetailHudCatalogue
         Entry("LoadScreenLayout maps <RADA> to the radar", 0x004EB913, "68 D2 06 00 10", "instruction reference (push 0x100006D2)")
     };
 
+    // Shared by every feature that finds the player's weenie (the radar, the split port, the native vitals); declared before the lists.
+    internal static readonly NativeUiEntry PlayerIdRead = Entry("gmRadarUI::AddObject skips the player's id (SmartBox +0xF4)", 0x004DA681,
+        "A1 58 DA 83 00 85 C0 74 08 8B 80 F4 00 00 00", "instruction reference");
+    internal static readonly NativeUiEntry WeenieLookup = Entry("ACCObjectMaint::GetWeenieObject body: calls through ACCObjectMaint (0x00842ADC)",
+        GetWeenieObject + 6, "85 C9 74 0B 8B 44 24 04 50 E8 DC 04 FB FF C3", "Cdecl (uint id) -> ACCWeenieObject*, null when unknown");
+
+    /// <summary>The player's id, 0 before the world exists. Gate: <see cref="PlayerIdRead"/>.</summary>
+    internal static unsafe uint PlayerId()
+    {
+        var smartBox = *(byte**)(nuint)SmartBox;
+        return smartBox == null ? 0 : *(uint*)(smartBox + SmartBoxPlayerId);
+    }
+
     internal static readonly IReadOnlyList<NativeUiEntry> Player = new[]
     {
         Entry("gmRadarUI reads the player at SmartBox::smartbox (0x0083DA58) +0xF8 for its heading", 0x004D9D3E,
             "8B 0D 58 DA 83 00 8B 89 F8 00 00 00 3B CB 75 0F", "instruction reference"),
-        Entry("gmRadarUI::AddObject skips the player's id (SmartBox +0xF4)", 0x004DA681, "A1 58 DA 83 00 85 C0 74 08 8B 80 F4 00 00 00",
-            "instruction reference"),
+        PlayerIdRead,
         Entry("SmartBox::convert_to_player_space body: an object in a cell (+0x90), its Position at +0x48", 0x00452DE6,
             "83 EC 18 85 C9 74 12 8B 44 24 1C 85 C0 74 0A 8B 90 90 00 00 00 85 D2 75 08 33 C0 83 C4 18 C2 08 00 8D 54 24 00 52 83 C0 48 50 8D 44 24 14 50 83 C1 48",
             "ThisCall (SmartBox*, CPhysicsObj*, Vector3*) at 0x00452DE0"),
@@ -118,8 +130,7 @@ internal static class RetailHudCatalogue
             "ThisCall (CObjectMaint*, uint id) -> CPhysicsObj* at 0x00508890"),
         Entry("gmRadarUI::DrawObjects skips an object with no cell (+0x90) or cell id (+0x4C)", 0x004DA0D7,
             "E8 B4 E7 02 00 85 C0 0F 84 11 02 00 00 8B 88 90 00 00 00 85 C9 0F 84 03 02 00 00 8B 48 4C 85 C9 0F 86 F8 01 00", "instruction reference"),
-        Entry("ACCObjectMaint::GetWeenieObject body: calls through ACCObjectMaint (0x00842ADC)", GetWeenieObject + 6,
-            "85 C9 74 0B 8B 44 24 04 50 E8 DC 04 FB FF C3", "Cdecl (uint id) -> ACCWeenieObject*"),
+        WeenieLookup,
         Entry("ACCWeenieObject's physics-object setter (0x00401DC0) stores it at +0x94", 0x00401DC4, "89 81 94 00 00 00 C2 04 00",
             "ThisCall (ACCWeenieObject*, CPhysicsObj*)"),
         Entry("ACCWeenieObject::InqShowableOnRadar body: a physics object, and radar behaviour (+0x108) 2, 3 or 4", 0x0058D086,

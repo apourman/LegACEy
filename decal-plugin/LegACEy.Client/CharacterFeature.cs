@@ -158,6 +158,9 @@ internal sealed class CharacterFeature : ICharacterGame, IDisposable
 
     StatValue? ICharacterGame.Value(StatKind kind, uint id)
     {
+        // A vital's maximum (ACE's 1, 3 or 5) from the client, as retail's character window shows it: base without spells, buffed with them.
+        if (kind == StatKind.Vital && NativeVitals.TryRead(id, raw: true, _log, out var unbuffed) && NativeVitals.TryRead(id, raw: false, _log, out var buffedMaximum))
+            return new StatValue(unbuffed, buffedMaximum);
         try
         {
             // Decal numbers the vitals' maximums 2, 4 and 6; ACE 1, 3 and 5.
