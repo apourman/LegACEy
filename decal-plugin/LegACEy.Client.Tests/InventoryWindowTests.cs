@@ -226,6 +226,25 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void Packs_released_over_the_toolbar_are_handed_to_it_and_never_to_another_window() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, showSlots: true);
+        var outside = new Avalonia.Point(-50, -50);
+
+        host.Drag.Target = ItemDropTarget.Elsewhere;
+        DragOut(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack), outside);
+        Assert.Empty(host.Drag.Delivered);
+
+        host.Drag.Target = ItemDropTarget.Toolbar;
+        DragOut(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack), outside);
+        DragOut(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Character), outside);
+        Assert.Equal(new[] { InventorySample.Sack, InventorySample.Character }, host.Drag.Delivered.Select(drop => drop.Item1));
+        Assert.Empty(InventoryDriver.Sent(port));
+    });
+
+    [Fact]
     public void A_side_pack_dropped_on_the_ground_goes_back_into_an_empty_side_slot() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

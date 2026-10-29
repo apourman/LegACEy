@@ -2107,6 +2107,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             // A LegACEy inventory window is the inventory, with or without the takeover.
             if (_owner._windows is { } windows && ItemDropRouting.InventoryAt(windows, _owner.ContentOf, _owner._pointer) is { } inventory) return inventory;
+            if (_owner.TopSurfaceAt(_owner._pointer) == ToolbarSurfaceId) return ItemDropTarget.Toolbar;
             // Any other LegACEy window (the Vault, which refused the item) covers the world: a release there drops nothing.
             if (_owner.TopSurfaceAt(_owner._pointer) is { } surface)
             {
@@ -3388,9 +3389,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Moves the items to the front of the main pack in order, as retail's backpack takes them. An item already in the main pack is
-    /// skipped, and the rest stop when the pack is full. True when one moved.
+    /// skipped, and the rest stop when the pack is full. A pack is never moved: the backpack only binds packs through the shortcut rows.
+    /// True when one moved.
     /// </summary>
-    private bool MoveToMainPack(IReadOnlyList<uint> itemIds) => _inventory.MoveToFront(itemIds, _inventory.Snapshot.MainPack) > 0;
+    private bool MoveToMainPack(IReadOnlyList<uint> itemIds)
+    {
+        var snapshot = _inventory.Snapshot;
+        var items = itemIds.Where(id => id != snapshot.MainPack.Id && snapshot.SidePacks.All(pack => pack.Id != id)).ToList();
+        return _inventory.MoveToFront(items, snapshot.MainPack) > 0;
+    }
 
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
     private void ReleaseRetailToolbar()
