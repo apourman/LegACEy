@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Tests;
@@ -48,19 +49,39 @@ public sealed class GameMessageBandsTests
         Assert.True(bands.IsVisible);
         foreach (var text in new[] { "One", "Two", "Three", "Four" }) bands.Show(text);
         Assert.Equal(new[] { DerethMessageBands.SampleText, "Four", "Three", "Two" }, Lines(bands));
-        Assert.Equal(17 * 1.5, ((TextBlock)((Border)bands.Children[0]).Child!).FontSize);
+        Assert.Equal(17 * 1.5, ((TextBlock)((Decorator)bands.Children[0]).Child!).FontSize);
 
         // The messages run out; the sample stays until placing ends.
         now += TimeSpan.FromSeconds(5);
         bands.Tick();
         Assert.Equal(new[] { DerethMessageBands.SampleText }, Lines(bands));
         bands.TextScale = 1;
-        Assert.Equal(17, ((TextBlock)((Border)bands.Children[0]).Child!).FontSize);
+        Assert.Equal(17, ((TextBlock)((Decorator)bands.Children[0]).Child!).FontSize);
         bands.Moving = false;
         Assert.False(bands.IsVisible);
     });
 
+    [Fact]
+    public void The_bands_render_to_pngs_when_asked() => RenderThread.Run(() =>
+    {
+        // Looked at by a person, not asserted: LEGACEY_MESSAGES_RENDER names the folder the PNGs are written to, a burst and its smoke
+        // two seconds on.
+        var folder = Environment.GetEnvironmentVariable("LEGACEY_MESSAGES_RENDER");
+        if (folder == null) return;
+        Directory.CreateDirectory(folder);
+        var now = new DateTime(2026, 10, 28, 12, 0, 0, DateTimeKind.Utc);
+        var bands = new DerethMessageBands(() => now);
+        for (var i = 0; i < 3; i++) bands.Show("You're too loaded down to jump");
+        using var panel = AvaloniaPanel.Create(() => bands, 560, 200, 1);
+        panel.Tick();
+        PanelPng.Save(panel, Path.Combine(folder, "burst.png"));
+        now += TimeSpan.FromSeconds(2);
+        bands.Tick();
+        panel.Tick();
+        PanelPng.Save(panel, Path.Combine(folder, "burst-2s.png"));
+    });
+
     private static string[] Lines(DerethMessageBands bands) => bands.Children
-        .Select(band => ((TextBlock)((Border)band).Child!).Text!)
+        .Select(band => ((TextBlock)((Decorator)band).Child!).Text!)
         .ToArray();
 }

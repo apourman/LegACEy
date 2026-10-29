@@ -2650,7 +2650,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Retail's yellow game messages ("You can't move that!") as Dereth soft bands at the top centre, where retail's stood. They are their own
     // surface, as the update toast is, drawn under it, and not an input surface: the pointer goes through them to the game, as through
     // retail's text. Unlike the windows they show before world entry too, through the portal space at login. A logoff drops them.
-    private const int GameMessageDrop = 48;
+    // The bands' top, less the room their smoke spills above them.
+    private const int GameMessageDrop = 34;
     private const string GameMessagesSurfaceId = "game-messages";
     // Their options, kept for every character since they show before one is chosen: the text size in percent, hidden (1) or shown (0), and
     // their top centre in pixels once moved (a row with a size; none, or no size, is the first place).

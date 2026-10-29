@@ -493,7 +493,7 @@ public sealed class SettingsPanel : UserControl
     {
         var preview = new Border
         {
-            Height = 64, CornerRadius = new CornerRadius(3), ClipToBounds = true, BorderBrush = DerethPalette.Brush(DerethPalette.Line), BorderThickness = new Thickness(1),
+            Height = 96, CornerRadius = new CornerRadius(3), ClipToBounds = true, BorderBrush = DerethPalette.Brush(DerethPalette.Line), BorderThickness = new Thickness(1),
             Background = new LinearGradientBrush
             {
                 StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
