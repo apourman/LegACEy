@@ -487,23 +487,29 @@ public sealed class SettingsPanel : UserControl
 
     /// <summary>
     /// The game messages' text size: a slider, and under it a band as the game draws one over a patch of sky, which follows the thumb as it
-    /// is dragged. The size is set when the pointer lets go.
+    /// is dragged and grows taller with it. The size is set when the pointer lets go.
     /// </summary>
     private Control GameMessageTextSizeRow()
     {
         var preview = new Border
         {
-            Height = 64, CornerRadius = new CornerRadius(3), ClipToBounds = true, BorderBrush = DerethPalette.Brush(DerethPalette.Line), BorderThickness = new Thickness(1),
+            MinHeight = 96, CornerRadius = new CornerRadius(3), ClipToBounds = true, BorderBrush = DerethPalette.Brush(DerethPalette.Line), BorderThickness = new Thickness(1),
             Background = new LinearGradientBrush
             {
                 StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
                 GradientStops = { new GradientStop(Color.Parse("#9AA3A8"), 0), new GradientStop(Color.Parse("#C9C2AE"), 0.55), new GradientStop(Color.Parse("#5E6B3E"), 1) }
             }
         };
+        // The band is often wider than the card: it keeps its width, centred on the card, and its smoke fades out towards the card's sides
+        // instead of being cut off square there.
+        var sideFade = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative),
+            GradientStops = { new GradientStop(Colors.Transparent, 0), new GradientStop(Colors.Black, 0.18), new GradientStop(Colors.Black, 0.82), new GradientStop(Colors.Transparent, 1) }
+        };
         void Preview(int percent)
         {
-            preview.Child = DerethMessageBands.Sample("The chest is locked!", percent);
-            preview.Child.VerticalAlignment = VerticalAlignment.Center;
+            preview.Child = new CentredPreview { OpacityMask = sideFade, Children = { DerethMessageBands.Sample("The chest is locked!", percent) } };
         }
         var slider = SliderRow("Text size", DerethMessageBands.SmallestTextSize, DerethMessageBands.LargestTextSize, DerethMessageBands.TextSizeStep,
             () => _settings.GameMessageTextSize?.Value, percent => _settings.GameMessageTextSize?.Set(percent), dragged: Preview);
@@ -753,6 +759,31 @@ public sealed class SettingsPanel : UserControl
                 button.Click += (_, _) => registry.RunMenuEntry(item);
                 _pluginList.Children.Add(button);
             }
+        }
+    }
+
+    /// <summary>Lays its children out at their own size, centred, however narrow it is: the card clips what spills past it.</summary>
+    private sealed class CentredPreview : Panel
+    {
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            var height = 0.0;
+            foreach (var child in Children)
+            {
+                child.Measure(Size.Infinity);
+                height = Math.Max(height, child.DesiredSize.Height);
+            }
+            return new Size(0, height);
+        }
+
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            foreach (var child in Children)
+            {
+                var size = child.DesiredSize;
+                child.Arrange(new Rect(new Point((finalSize.Width - size.Width) / 2, (finalSize.Height - size.Height) / 2), size));
+            }
+            return finalSize;
         }
     }
 }
