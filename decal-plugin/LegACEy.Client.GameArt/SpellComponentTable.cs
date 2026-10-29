@@ -43,35 +43,18 @@ public sealed class SpellComponentTable
         for (var i = 0; i < count; i++)
         {
             var id = reader.ReadUInt32();
-            var name = ReadString(reader);
-            Align(reader);
+            var name = SpellTable.Text(SpellTable.ReadBytes(reader));
+            SpellTable.Align(reader);
             reader.ReadUInt32(); // the category
             var icon = reader.ReadUInt32();
             var type = reader.ReadUInt32();
             reader.ReadUInt32(); // the gesture
             reader.ReadSingle(); // the time
-            ReadString(reader); // the spell words
-            Align(reader);
+            SpellTable.ReadBytes(reader); // the spell words
+            SpellTable.Align(reader);
             reader.ReadSingle(); // the burn rate
             components[id] = new SpellComponentInfo(id, name, icon, type, wcids.TryGetValue(id, out var wcid) ? wcid : 0);
         }
         return new SpellComponentTable(components);
-    }
-
-    /// <summary>A 16-bit length, then the bytes, each with its nibbles swapped back and read as Windows-1252.</summary>
-    private static string ReadString(BinaryReader reader)
-    {
-        var length = reader.ReadUInt16();
-        var bytes = reader.ReadBytes(length);
-        if (bytes.Length < length) throw new EndOfStreamException("The component table ends inside a string.");
-        var chars = new char[bytes.Length];
-        for (var i = 0; i < bytes.Length; i++) chars[i] = Windows1252.ToChar((byte)((bytes[i] >> 4) | (bytes[i] << 4)));
-        return new string(chars);
-    }
-
-    private static void Align(BinaryReader reader)
-    {
-        var remainder = reader.BaseStream.Position % 4;
-        if (remainder != 0) reader.BaseStream.Seek(4 - remainder, SeekOrigin.Current);
     }
 }

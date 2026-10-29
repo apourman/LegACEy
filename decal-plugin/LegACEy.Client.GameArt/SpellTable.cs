@@ -108,7 +108,7 @@ public static class SpellTable
     }
 
     /// <summary>A 16-bit length, then the bytes, each with its nibbles swapped back: Windows-1252 text.</summary>
-    private static byte[] ReadBytes(BinaryReader reader)
+    internal static byte[] ReadBytes(BinaryReader reader)
     {
         var length = reader.ReadUInt16();
         var bytes = reader.ReadBytes(length);
@@ -117,7 +117,7 @@ public static class SpellTable
         return bytes;
     }
 
-    private static string Text(byte[] bytes)
+    internal static string Text(byte[] bytes)
     {
         var chars = new char[bytes.Length];
         for (var i = 0; i < bytes.Length; i++) chars[i] = Windows1252.ToChar(bytes[i]);
@@ -125,7 +125,7 @@ public static class SpellTable
     }
 
     /// <summary>Strings end on a four-byte boundary of the file, as the DAT's own reader aligns them.</summary>
-    private static void Align(BinaryReader reader)
+    internal static void Align(BinaryReader reader)
     {
         var remainder = reader.BaseStream.Position % 4;
         if (remainder != 0) Skip(reader, (int)(4 - remainder));
