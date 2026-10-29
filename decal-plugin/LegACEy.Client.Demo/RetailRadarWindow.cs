@@ -390,11 +390,12 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _scope.Arrow = Options.NorthUp ? frame.Heading : 0;
 
         var selected = _selected();
-        var dots = new (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)[frame.Dots.Count];
+        var dots = new (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered, bool Portal)[frame.Dots.Count];
         for (var i = 0; i < dots.Length; i++)
         {
             var dot = frame.Dots[i];
-            dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, ArrowOf(dot.Floor), dot.Id == selected, dot.Id == _hovered);
+            dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, ArrowOf(dot.Floor), dot.Id == selected, dot.Id == _hovered,
+                dot.Colour == RadarColor.Purple);
         }
         if (!dots.SequenceEqual(_scope.Dots)) _scope.Dots = dots;
         if (frame.Pings.Count > 0 || _scope.Pings.Count > 0)
