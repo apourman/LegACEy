@@ -108,6 +108,19 @@ public sealed class DerethAttackBarWindowTests
     });
 
     [Fact]
+    public void The_recklessness_range_shows_while_the_character_has_recklessness() => RenderThread.Run(() =>
+    {
+        var port = new FakeAttackBarPort();
+        var view = new DerethAttackBarWindow(port, () => { });
+        Assert.False(view.Face.Reckless);
+
+        // Trained in a session, as a skill train sends it.
+        port.Reckless = true;
+        port.Publish();
+        Assert.True(view.Face.Reckless);
+    });
+
+    [Fact]
     public void Melee_reads_Power_and_missile_reads_Accuracy() => RenderThread.Run(() =>
     {
         var port = new FakeAttackBarPort { Stance = RetailStance.Melee, SetPoint = 0.55 };
@@ -286,7 +299,8 @@ public sealed class DerethAttackBarWindowTests
                 // Mid-charge: the attack is building, short of the set point, with the medium height lit and two options on, as the mockup.
                 var port = new FakeAttackBarPort
                 {
-                    Stance = stance, SetPoint = 0.75, Charge = 0.45, Height = AttackHeight.Medium, AutoRepeatAttack = true, AutoTarget = true
+                    Stance = stance, SetPoint = 0.75, Charge = 0.45, Height = AttackHeight.Medium, AutoRepeatAttack = true, AutoTarget = true,
+                    Reckless = stance == RetailStance.Melee
                 };
                 Render(Path.Combine(folder, $"{name}-{scale:0}x.png"), port, scale);
             }
@@ -319,6 +333,7 @@ public sealed class DerethAttackBarWindowTests
         public bool AutoRepeatAttack { get; set; }
         public bool AutoTarget { get; set; }
         public bool ViewCombatTarget { get; set; }
+        public bool Reckless { get; set; }
         public bool UiLocked { get; set; }
 
         public event EventHandler? Changed;
