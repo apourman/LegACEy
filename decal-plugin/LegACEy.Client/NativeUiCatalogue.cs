@@ -50,6 +50,7 @@ internal static class NativeUiCatalogue
         Root("SocialPanel", NativeUi.SocialPanel, "installed client_local_English.dat, LayoutDesc 0x2100006E (panel 12)"),
         Root("MapPanel", NativeUi.MapPanel, "installed client_local_English.dat, LayoutDesc 0x2100006E (panel 16)"),
         Root("QuestsPanel", NativeUi.QuestsPanel, "installed client_local_English.dat, LayoutDesc 0x2100006E (panel 25)"),
+        Root("OptionsPanel", NativeUi.OptionsPanel, "installed client_local_English.dat, LayoutDesc 0x2100006E (panel 10)"),
         // The examination panel: 0x100005F7 in LayoutDesc 0x21000005, placed from the top-level element 0x100005F2 of LayoutDesc 0x2100006B
         // in the installed client_local_English.dat (the placed id is the one the client registers). The DAT holds the
         // inscription field 0x1000013E under it, whose MaxCharacters the appraisal window's inscription limit (300) was confirmed against; the
