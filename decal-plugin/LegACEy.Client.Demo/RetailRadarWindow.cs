@@ -57,6 +57,8 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly Action _startMove;
     private readonly Func<uint, string?>? _serverName;
     private readonly Func<DateTime> _clock;
+    // One portal breath, 1.3 s.
+    private const long PortalPulseTicks = 13_000_000;
     // The pings showing, the latest from each sender; dropped once they have lasted.
     private readonly Dictionary<string, RadarPing> _pings = new();
     // Each landblock's tile as a bitmap, converted once per tile and dropped once it leaves the nine around the player.
@@ -390,13 +392,16 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _scope.Arrow = Options.NorthUp ? frame.Heading : 0;
 
         var selected = _selected();
-        var dots = new (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)[frame.Dots.Count];
+        var dots = new (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered, bool Portal)[frame.Dots.Count];
         for (var i = 0; i < dots.Length; i++)
         {
             var dot = frame.Dots[i];
-            dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, ArrowOf(dot.Floor), dot.Id == selected, dot.Id == _hovered);
+            dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, ArrowOf(dot.Floor), dot.Id == selected, dot.Id == _hovered,
+                dot.Colour == RadarColor.Purple);
         }
         if (!dots.SequenceEqual(_scope.Dots)) _scope.Dots = dots;
+        // Portals' halos breathe; the scope is redrawn each frame only while a portal is on it.
+        if (dots.Any(dot => dot.Portal)) _scope.PortalPulse = (double)(now.Ticks % PortalPulseTicks) / PortalPulseTicks;
         if (frame.Pings.Count > 0 || _scope.Pings.Count > 0)
             _scope.Pings = frame.Pings.Select(ping => (ping.At, PingColour(ping.Sender), ping.Age, ping.Edge)).ToArray();
         // The ladder shows where the plan is drawn; a peek lasts only while it does.
