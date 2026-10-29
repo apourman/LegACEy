@@ -109,12 +109,13 @@ public static class CharacterRows
         return (Cost(rank + 1), Cost(Math.Min(rank + 10, list.Length - 1)));
     }
 
-    /// <summary>The experience still needed for the next level, and how far through this level the character is (0 to 1).</summary>
+    /// <summary>The experience still needed for the next level, and how far through this level the character is (0 to 1): none before the level is known, all past the end of the table.</summary>
     public static (long Needed, double Fraction) NextLevel(CharacterSheet sheet, CharacterTables tables)
     {
         var levels = tables.Experience.Level;
         var level = sheet.Level;
-        if (level < 1 || level + 1 >= levels.Length) return (0, 1);
+        if (level < 1) return (0, 0);
+        if (level + 1 >= levels.Length) return (0, 1);
         var start = (long)levels[level];
         var end = (long)levels[level + 1];
         var needed = Math.Max(0, end - sheet.TotalExperience);

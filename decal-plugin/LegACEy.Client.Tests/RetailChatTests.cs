@@ -539,7 +539,7 @@ public sealed class RetailChatTests
         window.TextScale = 1.2;
         for (var n = 1; n <= 40; n++) port.Say(Line(RetailChatKind.System, $"line {n:D4} of the log"));
         panel.Tick();
-        var log = window.GetVisualDescendants().OfType<ScrollViewer>().First(scroll => scroll.Content is StackPanel { Orientation: Orientation.Vertical });
+        var log = LogScroll(window);
         var before = log.Offset.Y;
         var centre = log.TranslatePoint(new Point(log.Bounds.Width / 2, log.Bounds.Height / 2), panel.Content)!.Value;
 
@@ -557,7 +557,7 @@ public sealed class RetailChatTests
         for (var n = 1; n <= 40; n++) port.Say(Line(RetailChatKind.System, $"line {n:D4} of the log"));
         panel.Tick();
         // Scroll the log to its top: the first line is on screen and the last is not.
-        window.GetVisualDescendants().OfType<ScrollViewer>().First(scroll => scroll.Content is StackPanel { Orientation: Orientation.Vertical }).Offset = new Vector(0, 0);
+        LogScroll(window).Offset = new Vector(0, 0);
         panel.Tick();
         Assert.True(Shows(panel, "line 0001 of the log"));
         Assert.False(Shows(panel, "line 0040 of the log"));
@@ -572,6 +572,27 @@ public sealed class RetailChatTests
         Assert.False(Shows(panel, "line 0001 of the log"));
         Assert.True(Shows(panel, "line 0041 of the log"));
         Assert.False(Shows(panel, "new ↓"));
+    });
+
+    [Fact]
+    public void Scrolled_up_with_a_full_log_new_lines_leave_the_view_in_place() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        for (var n = 1; n <= RetailChatHistory.Capacity; n++) port.Say(Line(RetailChatKind.System, $"line {n:D4} of the log"));
+        panel.Tick();
+        var log = LogScroll(window);
+        log.Offset = new Vector(0, log.Extent.Height / 2);
+        panel.Tick();
+        var shown = Enumerable.Range(1, RetailChatHistory.Capacity).Select(n => $"line {n:D4} of the log").Where(text => Shows(panel, text)).ToList();
+        Assert.NotEmpty(shown);
+
+        // Each new line drops the oldest from the top of the log, which must not slide the lines being read.
+        for (var n = 1; n <= 5; n++) port.Say(Line(RetailChatKind.System, $"new line {n}"));
+        panel.Tick();
+
+        Assert.All(shown, text => Assert.True(Shows(panel, text), text));
+        Assert.True(Shows(panel, "5 new ↓"));
     });
 
     [Fact]
@@ -1159,6 +1180,10 @@ public sealed class RetailChatTests
     }
 
     /// <summary>The message box, found by its watermark: it fails loudly if the box moves or changes.</summary>
+    /// <summary>The scroll viewer around the log's lines.</summary>
+    private static ScrollViewer LogScroll(RetailChatWindow window) =>
+        window.GetVisualDescendants().OfType<ScrollViewer>().First(scroll => scroll.Content is StackPanel { Orientation: Orientation.Vertical });
+
     private static TextBox InputBox(RetailChatWindow window) =>
         window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Watermark == "Say something…");
 

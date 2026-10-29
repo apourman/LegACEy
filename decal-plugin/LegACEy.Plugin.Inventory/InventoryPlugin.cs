@@ -123,6 +123,6 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     /// grid with the pack column on their right, opening with the grid's six columns eleven rows deep, as retail's does; the minimum keeps
     /// the paperdoll and one row of the grid visible. Scaling, by the UI size or Ctrl and the wheel, changes the whole window.
     /// </summary>
-    private const int DefaultHeight = 741;
+    private const int DefaultHeight = 633;
     private static readonly WindowResizing Sizing = new(new Size(Width, 385), new Size(Width, 10_000));
 }

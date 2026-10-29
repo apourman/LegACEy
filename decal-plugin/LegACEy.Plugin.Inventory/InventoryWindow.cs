@@ -387,7 +387,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>
     /// A retail drag released over this window. An item from outside our inventory goes onto the slot it is released on, or, released
-    /// elsewhere in the window, to the first free slot of the open pack. An item of ours is only moved by its slots, so it is declined
+    /// elsewhere in the window, to the front of the open pack. An item of ours is only moved by its slots, so it is declined
     /// elsewhere. Returns true when the item was used; declined items go back to where they came from.
     /// </summary>
     public bool RetailDrop(uint itemId, string itemName, Point position)
@@ -708,20 +708,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 var swaps = slot is PaperdollSlot.Weapon or PaperdollSlot.Shield;
                 var held = s.Wielded.Where(item => swaps && item.Id != dragged && (item.Slots.Contains(slot) || (item.EquippedMask & mask) != 0))
                     .Select(item => item.Id).ToList();
-                var free = s.FreeSlots(s.MainPack).Take(held.Count).ToList();
-                if (free.Count < held.Count) return Refused;
+                if (s.FreeSlots(s.MainPack).Count() < held.Count) return Refused;
                 return (true, p =>
                 {
-                    for (var index = 0; index < held.Count; index++) p.MoveToContainer(held[index], s.MainPack.Id, free[index]);
+                    p.MoveToFront(held, s.MainPack);
                     p.Wield(dragged, slot);
                 });
             }
 
             case SlotPlace.Pack:
             {
+                // An item dropped on its own pack stays put, as a set does.
                 if (PackOf(s, target.Container) is not { } into) return Refused;
-                var free = FirstFree(s, into);
-                return free < 0 ? Refused : (true, p => p.MoveToContainer(dragged, into.Id, free));
+                if (s.Items.Any(item => item.Id == dragged && item.Container == into.Id)) return null;
+                return s.FreeSlots(into).Any() ? (true, p => p.MoveToFront(new[] { dragged }, into)) : Refused;
             }
 
             case SlotPlace.Cell:
@@ -739,8 +739,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
-    /// What dropping a set does: into a pack's cell or onto its tile, the items move there in turn, in order, from that cell or the pack's first
-    /// free slot. A pack without room for the items not already in it is red, as is the paperdoll. Onto one of the set's own cells: nothing.
+    /// What dropping a set does: into a pack's cell, the items move there in turn, in order, from that cell; onto its tile, the items not
+    /// already in it go to its front. A pack without room for the items not already in it is red, as is the paperdoll. Onto one of the set's
+    /// own cells: nothing.
     /// </summary>
     private static (bool Accepted, Action<IInventoryPort> Send)? JudgeSet(InventorySnapshot s, IReadOnlyList<uint> carried, InventorySlotId target)
     {
@@ -749,7 +750,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var arriving = carried.Count(id => s.Items.FirstOrDefault(item => item.Id == id)?.Container != into.Id);
         if (target.Place == SlotPlace.Pack && arriving == 0) return null;
         if (ItemsIn(s, into.Id) + arriving > into.Capacity) return Refused;
-        var start = target.Place == SlotPlace.Cell ? target.SlotIndex : FirstFree(s, into);
+        if (target.Place == SlotPlace.Pack) return (true, p => p.MoveToFront(carried, into));
+        var start = target.SlotIndex;
         return (true, p =>
         {
             for (var index = 0; index < carried.Count; index++) p.MoveToContainer(carried[index], into.Id, start + index);
@@ -780,9 +782,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private static InventoryPack? PackOf(InventorySnapshot s, uint id) =>
         id == 0 ? null : s.MainPack.Id == id ? s.MainPack : s.SidePacks.FirstOrDefault(pack => pack.Id == id);
-
-    /// <summary>The first slot of a pack that holds no item, or -1 when the pack is full.</summary>
-    private static int FirstFree(InventorySnapshot s, InventoryPack pack) => s.FreeSlots(pack).DefaultIfEmpty(-1).First();
 
     /// <summary>The name, stack maximum and weenie class id (WCID) of an item the snapshot holds, carried or worn.</summary>
     private static (string Name, int StackMax, int Wcid) KindOf(InventorySnapshot s, uint id)
@@ -838,7 +837,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private DerethSlot WornSlot(InventorySnapshot snapshot, Dictionary<PaperdollSlot, WieldedItem> worn, PaperdollSlot slot)
     {
         if (!worn.TryGetValue(slot, out var item))
-            return new DerethSlot(InventoryGlyphs.For(slot)) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
+            return new DerethSlot(InventoryGlyphs.For(slot), flush: true) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
         return Slot(new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot), Layers(item.Visual, item.StackCount), item.Id == snapshot.Selected);
     }
 
@@ -856,8 +855,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         var count = pack.Id == 0 ? 0 : ItemsIn(snapshot, pack.Id);
         var tile = pack.Id == 0
-            ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null))
-            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
+            ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null), flush: false)
+            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open), flush: false);
         // Only a container holding something shows its fill. The bar takes no presses, so the tile under it still does.
         if (pack.Capacity <= 0 || count <= 0) return tile;
         var bar = FillBar(count, pack.Capacity);
@@ -889,9 +888,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             ? Empty(new InventorySlotId(SlotPlace.Cell, 0, container, index, null))
             : Slot(new InventorySlotId(SlotPlace.Cell, item.Id, container, index, null), Layers(item.Visual, item.StackCount, item.PartFull), item.Id == snapshot.Selected);
 
-    private static DerethSlot Slot(InventorySlotId id, Control content, bool selected) => new(content) { Tag = id, Selected = selected };
+    // The paperdoll's and the grid's slots touch, as retail's do; the pack column's keep the Dereth well round them.
+    private static DerethSlot Slot(InventorySlotId id, Control content, bool selected, bool flush = true) => new(content, flush) { Tag = id, Selected = selected };
 
-    private static DerethSlot Empty(InventorySlotId id) => new(null) { Tag = id, Opacity = EmptyOpacity };
+    private static DerethSlot Empty(InventorySlotId id, bool flush = true) => new(null, flush) { Tag = id, Opacity = EmptyOpacity };
 
     private void RenderBurden(InventorySnapshot snapshot)
     {
@@ -969,41 +969,47 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control Body()
     {
-        // The pack's six columns sit under the paperdoll's left column, with the contents line across their width.
+        // The pack's six columns sit under the paperdoll's left column, on its pitch, with the contents line across their width.
         _grid.Columns = RetailColumns;
-        // The paperdoll insets each cell 1 px in its pitch, so the pack's columns do too, and the two sections line up.
-        var pack = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(1, 0, 0, 0) };
+        _grid.ColumnPitch = InventoryPaperdoll.Cells.Pitch;
+        var pack = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), HorizontalAlignment = HorizontalAlignment.Left };
         pack.Children.Add(At(ContentsLine(), 0));
         pack.Children.Add(At(_grid, 1));
 
-        // The pack column stands on the right, as retail's does, the window's full height: burden at its head, then the main pack and
-        // the side packs, which scroll.
+        // The pack column stands on the right, as retail's does, the window's full height: "Burden" and its reading at its head, then the
+        // main pack and the side packs, which scroll. The meter stands at the window's edge beside the reading and the main pack.
         var packs = new ScrollViewer
         {
             Content = _packList, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Margin = new Thickness(0, 4, 0, 0),
+            Margin = new Thickness(0, 2, 0, 0),
         };
-        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 0, 0) };
-        column.Children.Add(At(Centred(_burdenMeter), 0));
-        column.Children.Add(At(Centred(_burdenText), 1));
-        column.Children.Add(At(packs, 2));
+        var label = Label("Burden", TextBrush, 12);
+        label.HorizontalAlignment = _burdenText.HorizontalAlignment = HorizontalAlignment.Right;
+        var burden = new StackPanel { Children = { label, _burdenText } };
+        _burdenMeter.VerticalAlignment = VerticalAlignment.Top;
+        _burdenMeter.Margin = new Thickness(4, 2, 0, 0);
+        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), ColumnDefinitions = new ColumnDefinitions("Auto,Auto") };
+        column.Children.Add(At(burden, 0));
+        column.Children.Add(At(packs, 1));
+        column.Children.Add(At(_burdenMeter, 0, 1));
+        Grid.SetRowSpan(_burdenMeter, 2);
 
         var body = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(2, 8, 2, 6)
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,*"), Margin = new Thickness(2, 3, 2, 2)
         };
+        // No rule between the paperdoll and the contents line: retail has none.
         body.Children.Add(At(_paperdoll, 0));
-        body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
-        body.Children.Add(At(pack, 2));
+        body.Children.Add(At(pack, 1));
         body.Children.Add(At(column, 0, 1));
-        Grid.SetRowSpan(column, 3);
+        Grid.SetRowSpan(column, 2);
         return body;
     }
 
     private Control ContentsLine()
     {
         // The count hugs the right edge, its margin a gap from a long pack name, which shrinks rather than running into it (Backlog 107).
-        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 0, 6) };
+        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 3, 0, 3) };
         line.Children.Add(_contentsName);
         line.Children.Add(At(_contentsCount, 0, 1));
         return line;
@@ -1013,13 +1019,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         Grid.SetRow(control, row);
         Grid.SetColumn(control, column);
-        return control;
-    }
-
-    private static T Centred<T>(T control) where T : Control
-    {
-        control.HorizontalAlignment = HorizontalAlignment.Center;
-        control.VerticalAlignment = VerticalAlignment.Center;
         return control;
     }
 }

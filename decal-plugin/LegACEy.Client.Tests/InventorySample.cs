@@ -81,7 +81,7 @@ internal static class InventorySample
 
     /// <param name="valid">The wield locations the item can take; zero for an item that is not worn.</param>
     /// <param name="stackMax">The most the item stacks to; zero for a non-stacking item.</param>
-    private static InventoryItem Item(uint id, string name, uint container, int slot, uint icon, int stack = 1, uint valid = 0, int stackMax = 0) =>
+    internal static InventoryItem Item(uint id, string name, uint container, int slot, uint icon, int stack = 1, uint valid = 0, int stackMax = 0) =>
         new(id, name, container, slot, new ItemVisual(icon, 0, 0, 0), stack, stackMax, 0, valid);
 
     // Each item is worn in all its valid locations.

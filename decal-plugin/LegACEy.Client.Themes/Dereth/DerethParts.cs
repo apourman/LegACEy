@@ -510,6 +510,12 @@ public sealed class DerethWindow : UserControl
         if (headerActions != null)
         {
             Grid.SetColumn(headerActions, 2);
+            // A window with no icon or title gives its stretched actions the header from the edge, with no gaps for the empty columns.
+            if (stretchActions && icon == null && title.Length == 0)
+            {
+                Grid.SetColumn(headerActions, 0);
+                Grid.SetColumnSpan(headerActions, 3);
+            }
             header.Children.Add(headerActions);
         }
         Grid.SetColumn(close, headerActions == null ? 2 : 3);
@@ -640,8 +646,15 @@ public sealed class DerethSlotGrid : UserControl
     }
     private int _columns;
 
-    /// <summary>The distance between the left edges of neighbouring columns: the pitch. Width that holds no whole column is split between the sides.</summary>
-    public double ColumnPitch => _cells.ItemWidth;
+    /// <summary>
+    /// The distance between the left edges of neighbouring columns and the tops of neighbouring rows: the pitch, <see cref="ItemCellSize"/>'s
+    /// by default. Width that holds no whole column is split between the sides.
+    /// </summary>
+    public double ColumnPitch
+    {
+        get => _cells.ItemWidth;
+        set => _cells.ItemWidth = _cells.ItemHeight = value;
+    }
 
     /// <summary>
     /// Where the columns sit in the width: centred by default, so the width no whole column fits is split between the sides. Left puts it all on

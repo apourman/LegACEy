@@ -2685,11 +2685,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // While dragged, the pointer places them.
             if (_gameMessageDragOffset != null) return;
             var screen = GameDevice.ViewportSize(_device);
+            // The place is the top band's top centre; the surface starts higher by the smoke above it, at any text size.
             var place = _gameMessagePlace ?? new Point(screen.Width / 2, (int)Math.Round(GameMessageDrop * surface.Panel.Scale));
-            surface.Location = new Point(Math.Max(0, Math.Min(screen.Width - width, place.X - width / 2)), Math.Max(0, Math.Min(screen.Height - height, place.Y)));
+            var y = place.Y - GameMessageSmoke(shownBands, surface);
+            surface.Location = new Point(Math.Max(0, Math.Min(screen.Width - width, place.X - width / 2)), Math.Max(0, Math.Min(screen.Height - height, y)));
         }
         catch (Exception exception) { GameMessagesFailed(exception); }
     }
+
+    /// <summary>The smoke above the top band, in pixels: the surface starts that much above the bands' place.</summary>
+    private static int GameMessageSmoke(DerethMessageBands bands, ScreenSurface surface) => (int)Math.Round(bands.Margin.Top * surface.Panel.Scale);
 
     private DerethMessageBands EnsureGameMessageBands()
     {
@@ -2765,7 +2770,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _gameMessageDragOffset = null;
         if (_gameMessageSurface is not { } surface) return;
-        var place = new Point(surface.Location.X + surface.Bounds.Width / 2, surface.Location.Y);
+        var place = new Point(surface.Location.X + surface.Bounds.Width / 2, surface.Location.Y + (_gameMessageBands is { } bands ? GameMessageSmoke(bands, surface) : 0));
         _gameMessagePlace = place;
         _settingsStore.Save("", "", GameMessagePlaceKey, (place, new Size(1, 1)));
         if (_settings != null) _settings.GameMessagePlace = GameMessagePlaceOption();
@@ -3269,7 +3274,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
-        _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
+        _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort(NativeUi.ReadMemory, Log));
         var toolbar = new RetailToolbar(_toolbarPort, ToggleSettings, MoveToMainPack, BeginToolbarDrag, _portal);
         // Drawn at LegACEy's window scale, as the other LegACEy windows are. The Dereth theme makes it larger than it measures
         // without one, so it is measured again under the theme and the panel takes that size, rounded up so no edge is cut.
@@ -3382,24 +3387,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Moves the items to the main pack's free slots in order, as retail's backpack takes them. An item already in the main pack is skipped,
-    /// and the rest stop when the pack is full. True when one moved.
+    /// Moves the items to the front of the main pack in order, as retail's backpack takes them. An item already in the main pack is
+    /// skipped, and the rest stop when the pack is full. True when one moved.
     /// </summary>
-    private bool MoveToMainPack(IReadOnlyList<uint> itemIds)
-    {
-        var snapshot = _inventory.Snapshot;
-        var main = snapshot.MainPack;
-        using var free = snapshot.FreeSlots(main).GetEnumerator();
-        var moved = false;
-        foreach (var itemId in itemIds)
-        {
-            if (snapshot.Items.Any(item => item.Id == itemId && item.Container == main.Id)) continue;
-            if (!free.MoveNext()) break;
-            _inventory.MoveToContainer(itemId, main.Id, free.Current);
-            moved = true;
-        }
-        return moved;
-    }
+    private bool MoveToMainPack(IReadOnlyList<uint> itemIds) => _inventory.MoveToFront(itemIds, _inventory.Snapshot.MainPack) > 0;
 
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
     private void ReleaseRetailToolbar()
@@ -3998,7 +3989,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IDisposable? OpenAttackBar(Point at)
     {
         if (!CanOpenWindows) return null;
-        var port = new NativeAttackBarPort(HudNatives().Lock);
+        var port = new NativeAttackBarPort(HudNatives().Lock, Reckless, Log);
         var window = new DerethAttackBarWindow(port, () => _windows?.BeginMove(DerethAttackBarWindow.WindowId, _pointer));
         var definition = DerethAttackBarWindow.DefinitionOf(() => port.UiLocked);
         try { OpenWindowCore(definition, window, at, AttackFailed); }
@@ -4012,6 +4003,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     private void AttackFailed(Exception exception) => _attack?.Fail(exception);
+
+    // ACE's Skill.Recklessness.
+    private const uint RecklessnessSkill = 50;
+
+    /// <summary>Whether the character has Recklessness trained or specialized, as the server described the character.</summary>
+    private bool Reckless() => _character?.Sheet.Skills.TryGetValue(RecklessnessSkill, out var skill) == true && skill.Training >= SkillTraining.Trained;
 
     private sealed class AttackWindowHandle : IDisposable
     {
