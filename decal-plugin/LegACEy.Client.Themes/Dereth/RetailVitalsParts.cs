@@ -97,7 +97,7 @@ public sealed class OutlinedText : Control
         _ink ??= new FormattedText(_text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Face, _size, Brushes.White).BuildGeometry(default);
         if (_ink == null) return;
         var ink = _ink.Bounds;
-        using (context.PushTransform(Matrix.CreateTranslation(Math.Round(Bounds.Width / 2 - ink.Center.X), Bounds.Height / 2 - ink.Center.Y)))
+        using (context.PushTransform(Matrix.CreateTranslation(Bounds.Width / 2 - ink.Center.X, Bounds.Height / 2 - ink.Center.Y)))
         {
             context.DrawGeometry(null, Outline, _ink);
             context.DrawGeometry(Brushes.White, null, _ink);
