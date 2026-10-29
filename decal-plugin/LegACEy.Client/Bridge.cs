@@ -171,7 +171,7 @@ public static unsafe class Bridge
     internal static int Fact(BridgeFact fact)
     {
         // Vitals come from the client as retail's vitals window reads them; Decal only when that read is off.
-        if (VitalType(fact) is { } type && NativeVitals.TryRead(type, raw: false, out var native)) return native;
+        if (VitalType(fact) is { } type && NativeVitals.TryRead(type, raw: false, ClientUiRuntime.Log, out var native)) return native;
         int value;
         Check(_calls.Fact((int)fact, &value), fact.ToString());
         return value;
@@ -286,8 +286,6 @@ public static unsafe class Bridge
     {
         int @base, buffed;
         Check(_calls.Stat(kind, (int)id, &@base, &buffed), nameof(Stat));
-        // Decal's vital ids are the maximums' ACE types plus one; the buffed maximum comes from the client as its vitals window shows it.
-        if (kind == 1 && NativeVitals.TryRead(id - 1, raw: false, out var maximum)) buffed = maximum;
         return (@base, buffed);
     }
 

@@ -29,8 +29,7 @@ internal sealed class NativeRetailSplitPort : IRetailSplitPort
             Source, "ThisCall (ACCWeenieObject* stack, uint containerId, int place, int amount), ret 0xC"),
         new NativeUiEntry("ACCWeenieObject::UIAttemptSplitToContainer records a split request (prevRequest = 2)", UIAttemptSplitToContainer + 0x3E,
             NativeUiCatalogue.Bytes("C7 05 D0 1E 87 00 02 00 00 00"), Source, "instruction reference (mov [0x871ED0], 2)"),
-        new NativeUiEntry("ACCObjectMaint::GetWeenieObject body: calls through ACCObjectMaint (0x00842ADC)", RetailHudCatalogue.GetWeenieObject + 6,
-            NativeUiCatalogue.Bytes("85 C9 74 0B 8B 44 24 04 50 E8 DC 04 FB FF C3"), Source, "Cdecl (uint id) -> ACCWeenieObject*, null when unknown")
+        RetailHudCatalogue.WeenieLookup
     };
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

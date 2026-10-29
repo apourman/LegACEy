@@ -4,8 +4,9 @@ using System.Collections.Generic;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// The player's vitals as retail's own vitals window reads them: CACQualities::InqAttribute2nd(type, out value, raw 0) on the player's
-/// qualities, so maximums carry enchantments and vitae. Checked against the running client once; Decal stands in when it does not match.
+/// The player's vitals as retail's own vitals window reads them: CACQualities::InqAttribute2nd(type, out value, raw) on the player's
+/// qualities. Not raw, maximums carry enchantments and vitae; raw, they are the base the character window compares against.
+/// Checked against the running client once; Decal stands in when it does not match.
 /// </summary>
 internal static unsafe class NativeVitals
 {
@@ -26,33 +27,32 @@ internal static unsafe class NativeVitals
             Source, "call reference"),
         new NativeUiEntry("ClientObjMaintSystem's quality update reads the weenie's CACQualities at +0x14C", 0x00558B05,
             NativeUiCatalogue.Bytes("8B 8E 4C 01 00 00"), Source, "instruction reference"),
-        new NativeUiEntry("ACCObjectMaint::GetWeenieObject body: calls through ACCObjectMaint (0x00842ADC)", RetailHudCatalogue.GetWeenieObject + 6,
-            NativeUiCatalogue.Bytes("85 C9 74 0B 8B 44 24 04 50 E8 DC 04 FB FF C3"), Source, "cdecl (uint id) -> ACCWeenieObject*"),
-        new NativeUiEntry("gmRadarUI::AddObject reads the player's id at SmartBox::smartbox (0x0083DA58) +0xF4", 0x004DA681,
-            NativeUiCatalogue.Bytes("A1 58 DA 83 00 85 C0 74 08 8B 80 F4 00 00 00"), Source, "instruction reference"),
+        RetailHudCatalogue.WeenieLookup,
+        RetailHudCatalogue.PlayerIdRead,
     };
 
-    private static bool _ok;
-    private static bool _checked;
+    // Null until checked.
+    private static bool? _ok;
 
     /// <summary>
-    /// One vital by ACE's numbering: 1 max health, 2 health, 3 max stamina, 4 stamina, 5 max mana, 6 mana. Raw leaves out enchantments.
-    /// False when the running client does not match or the player is not in the world yet, so the caller asks Decal.
+    /// One vital by ACE's numbering (PropertyAttribute2nd): 1 max health, 2 health, 3 max stamina, 4 stamina, 5 max mana, 6 mana. Raw leaves
+    /// out enchantments. False when the running client does not match or the player is not in the world yet, so the caller asks Decal.
     /// </summary>
-    public static bool TryRead(uint type, bool raw, out int value)
+    public static bool TryRead(uint type, bool raw, Action<string> log, out int value)
     {
         value = 0;
-        if (!_checked)
+        if (_ok == null)
         {
             if (!NativeUi.Ready) return false;
-            _checked = true;
-            try { _ok = NativeUiCatalogue.Validate(NativeUi.ReadMemory, ClientUiRuntime.Log, Entries, "Native vitals are off; vitals come from Decal."); }
-            catch (Exception exception) { ClientUiRuntime.Log($"Native vitals are off: their addresses could not be checked: {exception.Message}"); }
+            try { _ok = NativeUiCatalogue.Validate(NativeUi.ReadMemory, log, Entries, "Native vitals are off; vitals come from Decal."); }
+            catch (Exception exception)
+            {
+                log($"Native vitals are off: their addresses could not be checked: {exception.Message}");
+                _ok = false;
+            }
         }
-        if (!_ok) return false;
-        var smartBox = *(byte**)(nuint)RetailHudCatalogue.SmartBox;
-        if (smartBox == null) return false;
-        var weenie = ((delegate* unmanaged[Cdecl]<uint, byte*>)RetailHudCatalogue.GetWeenieObject)(*(uint*)(smartBox + RetailHudCatalogue.SmartBoxPlayerId));
+        if (_ok != true) return false;
+        var weenie = ((delegate* unmanaged[Cdecl]<uint, byte*>)RetailHudCatalogue.GetWeenieObject)(RetailHudCatalogue.PlayerId());
         var qualities = weenie == null ? null : *(byte**)(weenie + WeenieQualities);
         if (qualities == null) return false;
         uint read;
