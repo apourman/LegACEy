@@ -52,6 +52,13 @@ public sealed class CharacterWindow
     private static readonly IBrush SelectedBrush = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x22));
     private static readonly IBrush PlateBrush = DerethPalette.Brush(Color.FromArgb(0x8C, 0x08, 0x07, 0x05));
     private static readonly IBrush LineBrush = DerethPalette.Brush(DerethPalette.Line);
+    // Retail's experience strips, sampled from its panel: near-black rows, the next-level one filled leather brown.
+    private static readonly IBrush ExperienceStripBrush = DerethPalette.Brush(Color.FromRgb(0x18, 0x16, 0x18));
+    private static readonly IBrush ExperienceFillBrush = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        GradientStops = { new GradientStop(Color.FromRgb(0x4A, 0x36, 0x18), 0), new GradientStop(Color.FromRgb(0x46, 0x2E, 0x18), 0.75), new GradientStop(Color.FromRgb(0x35, 0x24, 0x13), 1) }
+    };
     private static readonly Dictionary<CharacterGroup, Color> GroupColours = new()
     {
         [CharacterGroup.Specialized] = Color.FromRgb(140, 96, 220),
@@ -271,15 +278,16 @@ public sealed class CharacterWindow
         if (key == _drawnPlaque) return;
         _drawnPlaque = key;
 
-        var who = new StackPanel { Spacing = 1, Margin = new Thickness(8, 5, 8, 6) };
-        who.Children.Add(Centred(Label(_game.Name, 15, DerethPalette.CreamBrush, title: true)));
-        if (line.Length > 0) who.Children.Add(Centred(Label(line, 11, DerethPalette.MutedBrush)));
+        var names = new StackPanel { Spacing = 1, Margin = new Thickness(8, 5, 8, 6) };
+        names.Children.Add(Centred(Label(_game.Name, 15, DerethPalette.CreamBrush, title: true)));
+        if (line.Length > 0) names.Children.Add(Centred(Label(line, 11, DerethPalette.MutedBrush)));
         var pk = CharacterRows.PlayerKillerText(_sheet.PlayerKillerStatus);
-        if (pk.Length > 0) who.Children.Add(Centred(Label(pk, 11, DerethPalette.MutedBrush)));
-        var figures = new StackPanel { Spacing = 2, Margin = new Thickness(0, 5, 0, 0) };
-        figures.Children.Add(Pair("Total Experience", Number(_sheet.TotalExperience)));
-        figures.Children.Add(Progress(Pair("XP for next level", Number(needed)), fraction));
-        who.Children.Add(figures);
+        if (pk.Length > 0) names.Children.Add(Centred(Label(pk, 11, DerethPalette.MutedBrush)));
+        // Retail's two experience strips run the plaque's width under the name; the second fills brown with the progress to the next level.
+        var who = new StackPanel();
+        who.Children.Add(names);
+        who.Children.Add(ExperienceStrip("Total Experience (XP):", Number(_sheet.TotalExperience), 0));
+        who.Children.Add(ExperienceStrip("XP for next level:", Number(needed), fraction));
 
         var level = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
         level.Children.Add(Centred(Label("LEVEL", 10.5, DerethPalette.MutedBrush)));
@@ -575,25 +583,20 @@ public sealed class CharacterWindow
         return grid;
     }
 
-    /// <summary>A row with the progress filled in behind it, as retail fills its XP for next level row.</summary>
-    private static Control Progress(Control row, double fraction)
+    /// <summary>One of retail's experience strips: a dark row under a black line, its label and figure in white, filled brown from the left by the fraction.</summary>
+    private static Control ExperienceStrip(string label, string value, double fraction)
     {
-        var fill = new Border
-        {
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Background = new LinearGradientBrush
-            {
-                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(DerethPalette.GoldDark.WithAlpha(0x60), 0), new GradientStop(DerethPalette.Gold.WithAlpha(0x60), 1) }
-            }
-        };
-        row.Margin = new Thickness(3, 1);
+        var fill = new Border { HorizontalAlignment = HorizontalAlignment.Left, Background = ExperienceFillBrush };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 6, Margin = new Thickness(4, 1) };
+        row.Children.Add(Label(label, 11, DerethPalette.TextBrush));
+        var figure = Label(value, 11, DerethPalette.TextBrush);
+        Grid.SetColumn(figure, 1);
+        row.Children.Add(figure);
         var well = new Grid();
         well.Children.Add(fill);
         well.Children.Add(row);
-        var groove = new Border { CornerRadius = new CornerRadius(2), Background = DerethPalette.GrooveBrush, BorderBrush = LineBrush, BorderThickness = new Thickness(1), Child = well };
         well.SizeChanged += (_, e) => fill.Width = e.NewSize.Width * fraction;
-        return groove;
+        return new Border { Background = ExperienceStripBrush, BorderBrush = Brushes.Black, BorderThickness = new Thickness(0, 1, 0, 0), Child = well };
     }
 
     private static TextBlock Centred(TextBlock text)
