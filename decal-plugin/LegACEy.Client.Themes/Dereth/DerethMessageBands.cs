@@ -127,6 +127,7 @@ public sealed class DerethMessageBands : StackPanel
         private readonly TextBlock _text;
         private readonly (double X, double Y, double RadiusX, double RadiusY, double Alpha, double Speed)[] _puffs = new (double, double, double, double, double, double)[PuffCount];
         private double _scale = 1, _driftSeconds;
+        private bool _older;
 
         public Band(string text, double scale, bool sample = false)
         {
@@ -146,10 +147,11 @@ public sealed class DerethMessageBands : StackPanel
         /// <summary>An older band dims its words more than its smoke, so it stays readable over bright sky.</summary>
         public bool Older
         {
-            get => _text.Opacity < 1;
+            get => _older;
             set
             {
-                if (value == Older) return;
+                if (value == _older) return;
+                _older = value;
                 _text.Opacity = value ? OlderText : 1;
                 InvalidateVisual();
             }
@@ -160,7 +162,6 @@ public sealed class DerethMessageBands : StackPanel
             _scale = scale;
             _text.FontSize = 17 * scale;
             Padding = new Thickness(96 * scale, 16 * scale, 96 * scale, 11 * scale);
-            InvalidateVisual();
         }
 
         public void Drift(TimeSpan elapsed)
@@ -172,7 +173,7 @@ public sealed class DerethMessageBands : StackPanel
         public override void Render(DrawingContext context)
         {
             var smoke = new Rect(Bounds.Size).Inflate(new Thickness(Spill.Width * _scale, Spill.Height * _scale));
-            using (context.PushOpacity(Older ? OlderSmoke : 1))
+            using (context.PushOpacity(_older ? OlderSmoke : 1))
             {
                 context.DrawEllipse(Core, null, smoke);
                 using var edge = context.PushOpacityMask(EdgeFade, smoke);

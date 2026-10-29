@@ -2650,8 +2650,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Retail's yellow game messages ("You can't move that!") as Dereth soft bands at the top centre, where retail's stood. They are their own
     // surface, as the update toast is, drawn under it, and not an input surface: the pointer goes through them to the game, as through
     // retail's text. Unlike the windows they show before world entry too, through the portal space at login. A logoff drops them.
-    // The bands' top, less the room their smoke spills above them.
-    private const int GameMessageDrop = 34;
+    private const int GameMessageDrop = 48;
     private const string GameMessagesSurfaceId = "game-messages";
     // Their options, kept for every character since they show before one is chosen: the text size in percent, hidden (1) or shown (0), and
     // their top centre in pixels once moved (a row with a size; none, or no size, is the first place).
@@ -2686,11 +2685,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // While dragged, the pointer places them.
             if (_gameMessageDragOffset != null) return;
             var screen = GameDevice.ViewportSize(_device);
+            // The place is the top band's top centre; the surface starts higher by the smoke above it, at any text size.
             var place = _gameMessagePlace ?? new Point(screen.Width / 2, (int)Math.Round(GameMessageDrop * surface.Panel.Scale));
-            surface.Location = new Point(Math.Max(0, Math.Min(screen.Width - width, place.X - width / 2)), Math.Max(0, Math.Min(screen.Height - height, place.Y)));
+            var y = place.Y - GameMessageSmoke(shownBands, surface);
+            surface.Location = new Point(Math.Max(0, Math.Min(screen.Width - width, place.X - width / 2)), Math.Max(0, Math.Min(screen.Height - height, y)));
         }
         catch (Exception exception) { GameMessagesFailed(exception); }
     }
+
+    /// <summary>The smoke above the top band, in pixels: the surface starts that much above the bands' place.</summary>
+    private static int GameMessageSmoke(DerethMessageBands bands, ScreenSurface surface) => (int)Math.Round(bands.Margin.Top * surface.Panel.Scale);
 
     private DerethMessageBands EnsureGameMessageBands()
     {
@@ -2766,7 +2770,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _gameMessageDragOffset = null;
         if (_gameMessageSurface is not { } surface) return;
-        var place = new Point(surface.Location.X + surface.Bounds.Width / 2, surface.Location.Y);
+        var place = new Point(surface.Location.X + surface.Bounds.Width / 2, surface.Location.Y + (_gameMessageBands is { } bands ? GameMessageSmoke(bands, surface) : 0));
         _gameMessagePlace = place;
         _settingsStore.Save("", "", GameMessagePlaceKey, (place, new Size(1, 1)));
         if (_settings != null) _settings.GameMessagePlace = GameMessagePlaceOption();
