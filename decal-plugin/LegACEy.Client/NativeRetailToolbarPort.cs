@@ -318,7 +318,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// </summary>
     private static uint PanelElementId(RetailPanel panel) => panel switch
     {
-        RetailPanel.WorldMap => 0x1000018C,
+        RetailPanel.WorldMap => NativeUi.MapPanel,
         RetailPanel.Options => 0x1000018D,
         RetailPanel.Skills => NativeUi.CharacterPanel,
         RetailPanel.Social => NativeUi.SocialPanel,
