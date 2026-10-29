@@ -13,4 +13,12 @@ public static class Windows1252
 
     /// <summary>The character a byte stands for in Windows-1252.</summary>
     public static char ToChar(byte value) => value is >= 0x80 and <= 0x9F ? High[value - 0x80] : (char)value;
+
+    /// <summary>The byte a character is in Windows-1252; a character the code page lacks is '?'.</summary>
+    public static byte ToByte(char value)
+    {
+        var high = High.IndexOf(value);
+        if (high >= 0) return (byte)(0x80 + high);
+        return value <= 0xFF ? (byte)value : (byte)'?';
+    }
 }

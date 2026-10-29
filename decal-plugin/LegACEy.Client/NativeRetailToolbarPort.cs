@@ -322,7 +322,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         RetailPanel.Options => 0x1000018D,
         RetailPanel.Skills => NativeUi.CharacterPanel,
         RetailPanel.Social => NativeUi.SocialPanel,
-        RetailPanel.Magic => 0x10000190,
+        RetailPanel.Magic => NativeUi.MagicPanel,
         RetailPanel.Quests => NativeUi.QuestsPanel,
         _ => NativeUi.InventoryPanel
     };

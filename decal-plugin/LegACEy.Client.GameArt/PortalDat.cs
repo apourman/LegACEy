@@ -29,6 +29,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     private CharacterNames? _characterNames;
     private CharacterTables? _characterTables;
     private IReadOnlyDictionary<uint, ContractInfo>? _contracts;
+    private SpellComponentTable? _components;
 
     public PortalDat(string path)
     {
@@ -120,6 +121,33 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     /// <summary>The contracts by id, read once. A table that is missing or cannot be read gives none, logged once; the quests window then names contracts by id.</summary>
     public IReadOnlyDictionary<uint, ContractInfo> ReadContracts(Action<string>? log = null) =>
         ReadTableOnce(ref _contracts, ContractTable.FileId, ContractTable.Parse, "contracts", log);
+
+    /// <summary>
+    /// The spell components with the weenie class each one's items are made from, read once. A table that is missing or cannot be read gives
+    /// none, logged once; the magic window then lists no components and a formula shows no icons.
+    /// </summary>
+    public SpellComponentTable ReadSpellComponents(Action<string>? log = null)
+    {
+        lock (_stream)
+        {
+            if (_components != null) return _components;
+            try
+            {
+                var file = ReadFile(SpellComponentTable.FileId);
+                var mapper = ReadFile(SpellComponentTable.WcidMapper);
+                _components = file == null
+                    ? SpellComponentTable.None
+                    : SpellComponentTable.Parse(file, mapper == null ? new Dictionary<uint, uint>() : CharacterTables.ParseDidMapper(mapper));
+                if (file == null) log?.Invoke("The spell component table is missing from the portal.");
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"The spell components could not be read from the portal: {exception.Message}");
+                _components = SpellComponentTable.None;
+            }
+            return _components;
+        }
+    }
 
     /// <summary>A table by id, read into <paramref name="cache"/> once; missing or unreadable gives an empty table, logged once.</summary>
     private IReadOnlyDictionary<uint, T> ReadTableOnce<T>(ref IReadOnlyDictionary<uint, T>? cache, uint id,
