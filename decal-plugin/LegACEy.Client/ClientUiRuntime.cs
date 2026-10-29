@@ -2121,6 +2121,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             // A LegACEy inventory window is the inventory, with or without the takeover.
             if (_owner._windows is { } windows && ItemDropRouting.InventoryAt(windows, _owner.ContentOf, _owner._pointer) is { } inventory) return inventory;
+            if (_owner.TopSurfaceAt(_owner._pointer) == ToolbarSurfaceId) return ItemDropTarget.Toolbar;
             // Any other LegACEy window (the Vault, which refused the item) covers the world: a release there drops nothing.
             if (_owner.TopSurfaceAt(_owner._pointer) is { } surface)
             {
@@ -3287,6 +3288,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
+        // The inventory shows each item's shortcut key, so a change of the shortcuts redraws it.
+        var shortcuts = _toolbarPort;
+        _inventory.Shortcuts = () => shortcuts.Shortcuts;
+        shortcuts.Changed += _inventory.MarkStale;
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
         _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort(NativeUi.ReadMemory, Log));
         var toolbar = new RetailToolbar(_toolbarPort, ToggleSettings, MoveToMainPack, BeginToolbarDrag, _portal);
@@ -3402,9 +3407,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Moves the items to the front of the main pack in order, as retail's backpack takes them. An item already in the main pack is
-    /// skipped, and the rest stop when the pack is full. True when one moved.
+    /// skipped, and the rest stop when the pack is full. A pack is never moved: the backpack only binds packs through the shortcut rows.
+    /// True when one moved.
     /// </summary>
-    private bool MoveToMainPack(IReadOnlyList<uint> itemIds) => _inventory.MoveToFront(itemIds, _inventory.Snapshot.MainPack) > 0;
+    private bool MoveToMainPack(IReadOnlyList<uint> itemIds)
+    {
+        var snapshot = _inventory.Snapshot;
+        var items = itemIds.Where(id => id != snapshot.MainPack.Id && snapshot.SidePacks.All(pack => pack.Id != id)).ToList();
+        return _inventory.MoveToFront(items, snapshot.MainPack) > 0;
+    }
 
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
     private void ReleaseRetailToolbar()

@@ -51,7 +51,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private readonly IInventoryPort _port;
     private readonly IGameArtSource _art;
     private PaperdollView? _doll;
-    private readonly Dictionary<ItemVisual, WriteableBitmap?> _images = new();
+    private readonly Dictionary<(ItemVisual, uint Tab), WriteableBitmap?> _images = new();
     private readonly DerethWindow _frame;
     private readonly InventoryPaperdoll _paperdoll = new();
     // Its columns start under the contents line's name.
@@ -320,13 +320,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>
     /// A release outside every slot: an item goes to the LegACEy window under the pointer, if that window takes it (a Vault deposit).
-    /// Packs are never given to a LegACEy window, and the main pack is the character, so neither ever goes to the ground.
+    /// Packs go only to the toolbar, where they bind to a shortcut slot. The main pack is the character, so it never goes to the ground.
     /// </summary>
     private void HandOffOutside(uint dragged)
     {
         var snapshot = _port.Snapshot;
-        if (_dragHost == null || !snapshot.Contains(dragged) || snapshot.MainPack.Id == dragged) return;
-        if (PackOf(snapshot, dragged) == null && _dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name)) return;
+        if (_dragHost == null) return;
+        var pack = PackOf(snapshot, dragged);
+        if (pack != null && _dragHost.DropTargetAtPointer() == ItemDropTarget.Toolbar)
+        {
+            _dragHost.DeliverAtPointer(dragged, pack.Name);
+            return;
+        }
+        if (!snapshot.Contains(dragged) || snapshot.MainPack.Id == dragged) return;
+        if (pack == null && _dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name)) return;
         // Retail did not take the drag when it left the window (the retail panel shows no element for the item): only a release over
         // the world sends anything.
         if (_dragHost.DropTargetAtPointer() != ItemDropTarget.World) return;
@@ -838,7 +845,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         if (!worn.TryGetValue(slot, out var item))
             return new DerethSlot(InventoryGlyphs.For(slot), flush: true) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
-        return Slot(new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot), Layers(item.Visual, item.StackCount), item.Id == snapshot.Selected);
+        return Slot(new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot), Layers(item.Visual, item.StackCount, Tab(snapshot, item.Id)), item.Id == snapshot.Selected);
     }
 
     private void RenderPacks(InventorySnapshot snapshot, InventoryPack open)
@@ -856,7 +863,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var count = pack.Id == 0 ? 0 : ItemsIn(snapshot, pack.Id);
         var tile = pack.Id == 0
             ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null), flush: false)
-            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open), flush: false);
+            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual, Tab(snapshot, pack.Id)), PackOutlined(snapshot, pack.Id, open), flush: false);
         // Only a container holding something shows its fill. The bar takes no presses, so the tile under it still does.
         if (pack.Capacity <= 0 || count <= 0) return tile;
         var bar = FillBar(count, pack.Capacity);
@@ -886,7 +893,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private DerethSlot Cell(InventorySnapshot snapshot, uint container, int index, InventoryItem? item) =>
         item == null
             ? Empty(new InventorySlotId(SlotPlace.Cell, 0, container, index, null))
-            : Slot(new InventorySlotId(SlotPlace.Cell, item.Id, container, index, null), Layers(item.Visual, item.StackCount, item.PartFull), item.Id == snapshot.Selected);
+            : Slot(new InventorySlotId(SlotPlace.Cell, item.Id, container, index, null), Layers(item.Visual, item.StackCount, Tab(snapshot, item.Id), item.PartFull), item.Id == snapshot.Selected);
 
     // The paperdoll's and the grid's slots touch, as retail's do; the pack column's keep the Dereth well round them.
     private static DerethSlot Slot(InventorySlotId id, Control content, bool selected, bool flush = true) => new(content, flush) { Tag = id, Selected = selected };
@@ -949,21 +956,24 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>An item's icon and, for a stack, its count, and for a part-used item, retail's fullness bar, in a slot-sized layer stack.</summary>
-    private Grid Layers(ItemVisual visual, int stack, double? partFull = null)
+    private Grid Layers(ItemVisual visual, int stack, uint tab, double? partFull = null)
     {
-        var layers = Icon(visual);
+        var layers = Icon(visual, tab);
         if (stack > 1) layers.Children.Add(StackCount(stack));
         if (partFull is { } full) layers.Children.Add(DerethItemCells.FullnessBar(full));
         return layers;
     }
 
-    private Grid Icon(ItemVisual visual) => DerethItemCells.Icon(Bitmap(visual));
+    private Grid Icon(ItemVisual visual, uint tab) => DerethItemCells.Icon(Bitmap(visual, tab));
 
-    /// <summary>The drawn icon, cached per look. The grid redraws on every change, so the bitmaps are kept.</summary>
-    private WriteableBitmap? Bitmap(ItemVisual visual)
+    /// <summary>The key tab of the object's shortcut, drawn over its icon as retail's inventory does; zero when it has none.</summary>
+    private static uint Tab(InventorySnapshot snapshot, uint id) => ShortcutEdits.IndexOf(snapshot.Shortcuts, id) is var index and >= 0 ? ShortcutBar.TabOf(index) : 0;
+
+    /// <summary>The drawn icon, cached per look and key tab. The grid redraws on every change, so the bitmaps are kept.</summary>
+    private WriteableBitmap? Bitmap(ItemVisual visual, uint tab)
     {
-        if (!_images.TryGetValue(visual, out var bitmap))
-            _images.Add(visual, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects, visual.Plate)));
+        if (!_images.TryGetValue((visual, tab), out var bitmap))
+            _images.Add((visual, tab), bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, tab, visual.UiEffects, visual.Plate)));
         return bitmap;
     }
 
