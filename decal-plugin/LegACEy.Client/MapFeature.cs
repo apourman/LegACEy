@@ -14,7 +14,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// date, time, coordinates and markers into retail's map page, and gmHouseUI keeps its house page's lines current from the server's house
 /// messages; this reads them back. Call everything on the game thread.
 /// </summary>
-internal sealed unsafe class MapFeature : IRetailMap, IDisposable
+internal sealed unsafe class MapFeature : IRetailMap
 {
     private const long RefreshMs = 1000;
     private const string Source = "our disassembly of the installed end-of-retail acclient.exe; names from acclient.pdb (near build, +0x330 here)";
@@ -24,14 +24,14 @@ internal sealed unsafe class MapFeature : IRetailMap, IDisposable
     private const uint MapVtable = 0x007ABFC0, HouseVtable = 0x007AC5A8;
     /// <summary>gmMapUI::Update (thiscall, returns bool): the date and time, the coordinates and both markers, as retail's timer runs it.</summary>
     private const uint MapUpdate = 0x004A21E0;
-    // gmMapUI's elements, as its PostInit finds them: the date and time text, the coordinates text, the player and house markers, the map.
+    // gmMapUI's elements, as its PostInit finds them: the date and time text, the coordinates text, the player and house markers.
     private const int DateText = 0x5FC, CoordinatesText = 0x600, PlayerMarker = 0x604, HouseMarker = 0x608;
     /// <summary>gmHouseUI's list of lines (UIElement_ListBox), its items' array and count.</summary>
     private const int HouseList = 0x600, ListItems = 0x608, ListCount = 0x610;
     /// <summary>UIElement::DynamicCast's vtable slot, and UIElement_Text's type, as AddHousePanelText casts each new line.</summary>
     private const int DynamicCastSlot = 0x94;
     private const uint TextType = 0x0C;
-    /// <summary>UIElement_Text::GetText (thiscall, PStringBase&lt;ushort&gt;* out), and the string's destructor.</summary>
+    /// <summary>UIElement_Text::GetText (thiscall, PStringBase&lt;wchar_t&gt;* out), and the string's destructor.</summary>
     private const uint GetText = 0x00466830, ReleaseString = 0x004011B0;
     /// <summary>UIElement's own visible flag: bit 1 of +0xA4. IsVisible also asks every ancestor, and retail's map page may be hidden.</summary>
     private const int ElementFlags = 0xA4;
@@ -50,7 +50,6 @@ internal sealed unsafe class MapFeature : IRetailMap, IDisposable
         Entry("gmMapUI::PostInit: coordinates text at +0x600, then the player marker", 0x004A1FF2, "68 ED 01 00 10 8B CE 89 86 00 06 00 00"),
         Entry("gmMapUI::PostInit: player marker at +0x604, then the house marker", 0x004A2004, "68 EE 01 00 10 8B CE 89 86 04 06 00 00"),
         Entry("gmMapUI::PostInit: house marker at +0x608, then the map", 0x004A2016, "68 EC 01 00 10 8B CE 89 86 08 06 00 00"),
-        Entry("gmMapUI::PostInit: the map at +0x60C", 0x004A202A, "89 86 0C 06 00 00"),
         Entry("gmMapUI::PostInit: 53 place records of 20 bytes at 0x7AB490", 0x004A20FD, "BF 90 B4 7A 00 BD 35 00 00 00"),
         Entry("gmMapUI::Update body: the next update time at +0x620, the date text at +0x5FC", 0x004A21EC,
             "DD 05 A8 79 83 00 53 DC 05 B0 A1 79 00 55 56 8B F1 8B 86 FC 05 00 00"),
@@ -101,8 +100,6 @@ internal sealed unsafe class MapFeature : IRetailMap, IDisposable
         _hide = null;
         _shown = false;
     }
-
-    public void Dispose() => _panel?.Dispose();
 
     private void OpenChanged(bool open)
     {
@@ -204,7 +201,9 @@ internal sealed unsafe class MapFeature : IRetailMap, IDisposable
                     if (!string.IsNullOrEmpty(name)) places.Add(new MapPlace(name, new Avalonia.Rect(record[0], record[1], record[2], record[3])));
                 }
             }
-            return _places = places;
+            // Kept once the natives have been checked; before the UI is ready the list is read again next time.
+            if (_valid != null) _places = places;
+            return places;
         }
     }
 

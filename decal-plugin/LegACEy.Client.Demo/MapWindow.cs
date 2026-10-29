@@ -123,8 +123,6 @@ public sealed class MapWindow
     /// <summary>Runs when the player closes the window with its close box.</summary>
     public Action? Close { get; set; }
 
-    public int Tab => _tab;
-
     public void ShowTab(int tab)
     {
         _tab = tab;
