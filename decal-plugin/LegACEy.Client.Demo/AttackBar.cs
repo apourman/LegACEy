@@ -26,6 +26,8 @@ public interface IAttackBarPort
     bool AutoTarget { get; set; }
     /// <summary>The character option ViewCombatTarget: Keep in View.</summary>
     bool ViewCombatTarget { get; set; }
+    /// <summary>Whether the character has Recklessness trained or specialized, so the bar marks its range.</summary>
+    bool Reckless { get; }
     /// <summary>Whether retail's UI is locked, in which case no window moves.</summary>
     bool UiLocked { get; }
     event EventHandler? Changed;
