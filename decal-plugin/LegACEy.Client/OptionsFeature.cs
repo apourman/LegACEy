@@ -12,7 +12,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>
 /// The Dereth options window in place of retail's options panel, held as the social panel is: retail's key and toolbar button open and close
 /// our window, and its close box closes retail's panel. The Character switches are retail's PlayerModule options, read and set through
-/// retail's own GetOption and SetOption, and Apply ends with retail's SaveToServer, as retail's Apply does. The Gameplay buttons make the calls
+/// retail's own GetOption and SetOption; Apply then calls retail's SaveToServer, so the server has them at once. The Gameplay buttons make the calls
 /// retail's buttons make (gmGameplayOptionsUI::ListenToElementMessage). Call everything on the game thread.
 /// </summary>
 internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
@@ -29,10 +29,13 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
     // gmGameplayOptionsUI's Exit Game sends global message 1 with 0x10000027, Use Mouse Turning Settings message 0xC with 0 (gmConfigUI
     // answers it with SetMouseTurningDefaults); both through UIElementManager::BroadcastGlobalMessage.
     private const uint ExitGameMessage = 1, ExitGameParameter = 0x10000027, MouseTurningMessage = 0xC;
+    // Inside gmGameplayOptionsUI::ListenToElementMessage: the two broadcasts, by button id.
+    private const uint GameplayBroadcasts = 0x0049E50C;
     // Urgent Assistance and Report Abuse open this page with ShellExecute "open".
     private const string SupportPage = "http://support.turbine.com/ics/support/ticketnewwizard.asp?style=classic";
 
-    internal static readonly IReadOnlyList<NativeUiEntry> Natives = new[]
+    // Each list is checked on its own: a mismatch turns off the switches or the broadcast buttons, not both.
+    private static readonly IReadOnlyList<NativeUiEntry> OptionNatives = new[]
     {
         Entry("PlayerModule::GetOption (PlayerOption 0: CharacterOptions1 at +0x8C bit 0x2)", GetOption,
             "8B 44 24 04 85 C0 75 0E 8B 81 8C 00 00 00 D1 E8 83 E0 01 C2 04 00"),
@@ -41,10 +44,14 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
         Entry("PlayerModule::GetDefaultOptionValue (table of options 0-0x2A)", GetDefaultOption, "8B 44 24 04 83 F8 2A 77 13 0F B6 80 5C 3A 5D 00"),
         Entry("CPlayerModule::SaveToServer (sends when +0x1A8 is set or forced)", SaveToServer,
             "56 8B F1 8A 86 A8 01 00 00 84 C0 75 08 8A 44 24 08 84 C0 74 0C 8D 46 04 50 E8"),
-        Entry("gmGameplayOptionsUI: Use Mouse Turning Settings broadcasts (0xC, 0), Exit Game (1, 0x10000027)", 0x0049E50C,
-            "2D CC 05 00 10 74 0E 83 E8 4B 75 18 68 27 00 00 10 6A 01 EB 04 6A 00 6A 0C 8B 0D 3C E0 83 00 E8 90 CF FB FF"),
-        Entry("UIElementManager::BroadcastGlobalMessage body", RetailHudCatalogue.BroadcastGlobalMessage + 1, "8B 5C 24 08 33 D2 8B C3 F7 B1 8C 01 00 00"),
         Entry("CPlayerSystem getter (0x0087119C)", RetailHudCatalogue.GetPlayerSystem, "A1 9C 11 87 00 C3")
+    };
+
+    private static readonly IReadOnlyList<NativeUiEntry> BroadcastNatives = new[]
+    {
+        Entry("gmGameplayOptionsUI: Use Mouse Turning Settings broadcasts (0xC, 0), Exit Game (1, 0x10000027)", GameplayBroadcasts,
+            "2D CC 05 00 10 74 0E 83 E8 4B 75 18 68 27 00 00 10 6A 01 EB 04 6A 00 6A 0C 8B 0D 3C E0 83 00 E8 90 CF FB FF"),
+        Entry("UIElementManager::BroadcastGlobalMessage body", RetailHudCatalogue.BroadcastGlobalMessage + 1, "8B 5C 24 08 33 D2 8B C3 F7 B1 8C 01 00 00")
     };
 
     private readonly ILegACEyPluginHost _host;
@@ -55,7 +62,7 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
     private Action? _hide;
     private bool _shown;
     private long _refreshedAt;
-    private bool? _nativesValid;
+    private bool? _optionsValid, _broadcastsValid;
 
     public OptionsFeature(ILegACEyPluginHost host, IRetailPanelPort? port, Func<IReadOnlyDictionary<uint, string>> strings, Action<string> log)
     {
@@ -153,24 +160,30 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
     // The game, as the window reads it.
 
     bool? IOptionsGame.Option(int option) =>
-        PlayerSystem() is { } system ? ((delegate* unmanaged[Thiscall]<IntPtr, int, byte>)GetOption)(system + RetailToolbarCatalogue.PlayerModuleOffset, option) != 0 : null;
+        PlayerModule() is { } module ? ((delegate* unmanaged[Thiscall]<IntPtr, int, byte>)GetOption)(module, option) != 0 : null;
 
     bool IOptionsGame.DefaultOption(int option) =>
-        PlayerSystem() is { } system && ((delegate* unmanaged[Thiscall]<IntPtr, int, byte>)GetDefaultOption)(system + RetailToolbarCatalogue.PlayerModuleOffset, option) != 0;
+        PlayerModule() is { } module && ((delegate* unmanaged[Thiscall]<IntPtr, int, byte>)GetDefaultOption)(module, option) != 0;
 
     void IOptionsGame.Apply(IReadOnlyDictionary<int, bool> options)
     {
-        if (PlayerSystem() is not { } system) return;
+        if (PlayerModule() is not { } module) return;
         foreach (var option in options)
-            ((delegate* unmanaged[Thiscall]<IntPtr, int, byte, void>)SetOption)(system + RetailToolbarCatalogue.PlayerModuleOffset, option.Key, option.Value ? (byte)1 : (byte)0);
-        ((delegate* unmanaged[Thiscall]<IntPtr, byte, void>)SaveToServer)(system + CPlayerModuleOffset, 0);
+            ((delegate* unmanaged[Thiscall]<IntPtr, int, byte, void>)SetOption)(module, option.Key, option.Value ? (byte)1 : (byte)0);
+        // The PlayerModule base sits 4 bytes into CPlayerModule.
+        ((delegate* unmanaged[Thiscall]<IntPtr, byte, void>)SaveToServer)(module - (RetailToolbarCatalogue.PlayerModuleOffset - CPlayerModuleOffset), 0);
     }
 
     string? IOptionsGame.Text(string name) => _strings().TryGetValue(CharacterNames.Hash(name), out var text) ? text : null;
 
     // Configure Keyboard and In-Game Help Files open through the button's own property, not yet followed; they stay dimmed.
-    bool IOptionsGame.CanPress(GameplayButton button) =>
-        button is not (GameplayButton.ConfigureKeyboard or GameplayButton.HelpFiles) && (NativesValid() || button is GameplayButton.UrgentAssistance or GameplayButton.ReportAbuse);
+    bool IOptionsGame.CanPress(GameplayButton button) => button switch
+    {
+        GameplayButton.ConfigureKeyboard or GameplayButton.HelpFiles => false,
+        GameplayButton.ExitToCharacterSelection => NativeUi.Ready,
+        GameplayButton.ExitGame or GameplayButton.MouseTurning => BroadcastsValid(),
+        _ => true
+    };
 
     void IOptionsGame.Press(GameplayButton button)
     {
@@ -195,21 +208,23 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
 
     private void Broadcast(uint message, uint parameter)
     {
-        if (!NativesValid()) return;
+        if (!BroadcastsValid()) return;
         var manager = Marshal.ReadIntPtr(new IntPtr(NativeUi.Manager));
         if (manager != IntPtr.Zero)
             ((delegate* unmanaged[Thiscall]<IntPtr, uint, uint, void>)RetailHudCatalogue.BroadcastGlobalMessage)(manager, message, parameter);
     }
 
-    private bool NativesValid() => _nativesValid ??= NativeUi.Ready && NativeUiCatalogue.Validate(NativeUi.ReadMemory, _log, Natives,
-        "The options window's switches and buttons are off: the running client does not match retail's option calls.");
+    private bool BroadcastsValid() => _broadcastsValid ??= NativeUi.Ready && NativeUiCatalogue.Validate(NativeUi.ReadMemory, _log, BroadcastNatives,
+        "The options window's Exit Game and Use Mouse Turning Settings are off: the running client does not match retail's buttons.");
 
-    /// <summary>CPlayerSystem once the natives have matched; null outside the game or when they did not.</summary>
-    private IntPtr? PlayerSystem()
+    /// <summary>PlayerModule, at CPlayerSystem + 0x34, once the option natives have matched; null outside the game or when they did not.</summary>
+    private IntPtr? PlayerModule()
     {
-        if (!NativesValid()) return null;
+        _optionsValid ??= NativeUi.Ready && NativeUiCatalogue.Validate(NativeUi.ReadMemory, _log, OptionNatives,
+            "The options window's switches are off: the running client does not match retail's option calls.");
+        if (_optionsValid != true) return null;
         var system = Marshal.ReadIntPtr(new IntPtr(RetailToolbarCatalogue.PlayerSystem));
-        return system == IntPtr.Zero ? null : system;
+        return system == IntPtr.Zero ? null : system + RetailToolbarCatalogue.PlayerModuleOffset;
     }
 
     private static NativeUiEntry Entry(string name, uint address, string bytes) =>

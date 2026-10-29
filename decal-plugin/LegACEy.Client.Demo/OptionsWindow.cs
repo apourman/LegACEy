@@ -162,11 +162,11 @@ public sealed class OptionsWindow
         var gameplay = new Canvas { Width = 298, Height = 337, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         foreach (var (button, label, y) in GameplayButtons)
         {
-            var art3 = new ArtButton(this, label, BlueButton, BluePressed, BlueDisabled, () => _game.Press(button)) { Width = 240, Height = 32 };
-            _gameplay[button] = art3;
-            Canvas.SetLeft(art3, 26);
-            Canvas.SetTop(art3, y);
-            gameplay.Children.Add(art3);
+            var press = new ArtButton(this, label, BlueButton, BluePressed, BlueDisabled, () => _game.Press(button)) { Width = 240, Height = 32 };
+            _gameplay[button] = press;
+            Canvas.SetLeft(press, 26);
+            Canvas.SetTop(press, y);
+            gameplay.Children.Add(press);
         }
 
         var rows = new StackPanel { Margin = new Thickness(0, 0, 4, 0) };
@@ -191,10 +191,13 @@ public sealed class OptionsWindow
         _apply = new ArtButton(this, "Apply", RedButton, RedPressed, RedDisabled, Apply) { Width = 80, Height = 32 };
         _reset = new ArtButton(this, "Reset", RedButton, RedPressed, RedDisabled, Reset) { Width = 80, Height = 32 };
         _defaults = new ArtButton(this, "Defaults", RedButton, RedPressed, RedDisabled, Defaults) { Width = 80, Height = 32 };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4) };
-        buttons.Children.Add(_apply);
-        buttons.Children.Add(_reset);
-        buttons.Children.Add(_defaults);
+        // Retail's places: x 16, 106 and 196 in the page.
+        var buttons = new Canvas { Width = 298, Height = 32, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4) };
+        foreach (var (button, x) in new[] { (_apply, 16.0), (_reset, 106.0), (_defaults, 196.0) })
+        {
+            Canvas.SetLeft(button, x);
+            buttons.Children.Add(button);
+        }
         var character = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         character.Children.Add(list);
         Grid.SetRow(buttons, 1);
@@ -234,6 +237,8 @@ public sealed class OptionsWindow
     /// <summary>Reads retail's options again and redraws. Call it on a change and about once a second while open.</summary>
     public void Refresh()
     {
+        // A held click retail has since come to (a key, the server, another window) is no longer a change.
+        foreach (var option in _held.Where(held => _game.Option(held.Key) == held.Value).Select(held => held.Key).ToList()) _held.Remove(option);
         foreach (var pair in _gameplay) pair.Value.IsEnabled = _game.CanPress(pair.Key);
         foreach (var light in _lights.Values) light.Refresh();
         _apply.IsEnabled = _reset.IsEnabled = _held.Count > 0;

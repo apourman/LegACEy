@@ -41,6 +41,12 @@ public sealed class OptionsWindowTests
         view.Reset();
         Assert.Empty(view.Held);
         Assert.Single(game.Applied);
+
+        // Retail comes to the held value by itself (a key, the server): nothing is left to apply.
+        view.Toggle(ToggleRun);
+        game.Options[ToggleRun] = true;
+        view.Refresh();
+        Assert.False(view.CanApply);
     });
 
     [Fact]
