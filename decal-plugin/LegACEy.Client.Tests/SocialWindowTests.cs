@@ -192,6 +192,10 @@ public sealed class SocialWindowTests
         view.Refresh();
         Press(view, "Dismiss");
         Assert.Equal(SocialAction.Dismiss(Pest).Payload, game.Sent.Last().Payload);
+
+        // Leaving the tab stops the fellows' vitals.
+        view.ShowTab(2);
+        Assert.Equal((0x00A6u, 0u), (game.Sent.Last().Opcode, BitConverter.ToUInt32(game.Sent.Last().Payload, 0)));
     });
 
     [Fact]

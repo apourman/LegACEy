@@ -171,7 +171,7 @@ public sealed class SocialWindow
         counts.Children.Add(_followers);
         Grid.SetColumn(_rank, 1);
         counts.Children.Add(_rank);
-        _ignoreAllegiance = new Orb("Ignore Allegiance Requests", on => _game.SetOption(SocialOption.IgnoreAllegianceRequests, on));
+        _ignoreAllegiance = new Orb(game, SocialOption.IgnoreAllegianceRequests, "Ignore Allegiance Requests") { Margin = new Thickness(14, 8, 0, 4) };
         _swear = Button("Swear", () => Confirm(_swear!, Swear));
         _break = Button("Break", () => Confirm(_break!, Break));
         _kick = Button("Kick", () => Confirm(_kick!, Kick));
@@ -179,16 +179,16 @@ public sealed class SocialWindow
         _pages[0] = Stack(
             (counts, false), (new DerethRule(), false), (new Border { Height = 112, Child = _chain }, false),
             (Columns("VASSALS", "XP Produced"), false), (Well(_vassalList, () => { _vassal = 0; Refresh(); }), true),
-            (Indented(_ignoreAllegiance), false), (Buttons(_swear, _break, _kick), false));
+            (_ignoreAllegiance, false), (Buttons(_swear, _break, _kick), false));
 
         // Fellowship, out of one: retail's words, the name box, its four switches and Create Fellowship.
         _fellowshipName = Entry(30, () => Refresh());
         _fellowshipOrbs = new[]
         {
-            new Orb("Ignore Fellowship Requests", on => _game.SetOption(SocialOption.IgnoreFellowshipRequests, on)),
-            new Orb("Automatically Accept Fellowship Requests", on => _game.SetOption(SocialOption.AutoAcceptFellowshipRequests, on)),
-            new Orb("Share Fellowship Experience and Luminance", on => _game.SetOption(SocialOption.ShareFellowshipExperience, on)),
-            new Orb("Share Fellowship Loot", on => _game.SetOption(SocialOption.ShareFellowshipLoot, on))
+            new Orb(game, SocialOption.IgnoreFellowshipRequests, "Ignore Fellowship Requests"),
+            new Orb(game, SocialOption.AutoAcceptFellowshipRequests, "Automatically Accept Fellowship Requests"),
+            new Orb(game, SocialOption.ShareFellowshipExperience, "Share Fellowship Experience and Luminance"),
+            new Orb(game, SocialOption.ShareFellowshipLoot, "Share Fellowship Loot")
         };
         _create = Button("Create Fellowship", CreateFellowship, width: 230);
         var orbs = new StackPanel { Spacing = 2, Margin = new Thickness(26, 6, 0, 10) };
@@ -225,7 +225,7 @@ public sealed class SocialWindow
         _pages[1] = _fellowshipPage;
 
         // Friends: the list, Appear Offline, Send Tell and Remove, then the name box and Add.
-        _appearOffline = new Orb("Appear Offline", on => _game.SetOption(SocialOption.AppearOffline, on)) { HorizontalAlignment = HorizontalAlignment.Center };
+        _appearOffline = new Orb(game, SocialOption.AppearOffline, "Appear Offline") { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
         _tell = Button("Send Tell", TellFriend);
         _removeFriend = Button("Remove", () => Act(SocialAction.RemoveFriend(_friend)));
         _friendName = Entry(32, () => Refresh());
@@ -233,7 +233,7 @@ public sealed class SocialWindow
         _friendName.KeyDown += (_, e) => { if (e.Key == Key.Enter) AddFriend(); };
         _pages[2] = Stack(
             (Columns("Friend", "Status"), false), (Well(_friendList, () => { _friend = 0; Refresh(); }), true), (new DerethRule(), false),
-            (Spaced(_appearOffline, 4), false), (Buttons(_tell, _removeFriend), false), (new DerethRule { Margin = new Thickness(0, 6, 0, 0) }, false),
+            (_appearOffline, false), (Buttons(_tell, _removeFriend), false), (new DerethRule { Margin = new Thickness(0, 6, 0, 0) }, false),
             (Field("Friend Name:", _friendName, new Thickness(8, 6, 8, 4)), false), (Centred(_add), false));
 
         // Squelch: the list and Remove, then the name box and the two squelches.
@@ -243,7 +243,7 @@ public sealed class SocialWindow
         _squelchAccount = Button("Squelch Account", () => SquelchTyped(account: true), width: 128);
         _pages[3] = Stack(
             (Columns("Squelch", "Type"), false), (Well(_squelchList, () => { _squelch = null; Refresh(); }), true),
-            (Spaced(Centred(_removeSquelch), 6), false), (new DerethRule { Margin = new Thickness(0, 6, 0, 0) }, false),
+            (new Border { Margin = new Thickness(0, 6, 0, 0), Child = Centred(_removeSquelch) }, false), (new DerethRule { Margin = new Thickness(0, 6, 0, 0) }, false),
             (Field("Character", _squelchName, new Thickness(8, 6, 8, 4)), false), (Buttons(_squelchCharacter, _squelchAccount), false));
 
         _page = new ContentControl { Margin = new Thickness(0, 5, 0, 0) };
@@ -260,9 +260,13 @@ public sealed class SocialWindow
 
     public int Tab => _tab;
 
-    /// <summary>Shows a tab, as a click on it does. The allegiance and fellowship tabs ask the server for the latest, as retail's do.</summary>
+    /// <summary>
+    /// Shows a tab, as a click on it does. The allegiance and fellowship tabs ask the server for the latest, as retail's do; leaving the
+    /// fellowship tab stops the fellows' vitals.
+    /// </summary>
     public void ShowTab(int tab)
     {
+        if (_tab == 1 && tab != 1) _game.Send(SocialAction.FellowshipPanel(open: false));
         _tab = tab;
         _tabs.Selected = tab;
         _arming = null;
@@ -317,7 +321,7 @@ public sealed class SocialWindow
                 _vassalList.Children.Add(Row(vassal.Name, vassal.Produced.ToString("N0", CultureInfo.InvariantCulture), vassal.Id == _vassal,
                     () => SelectVassal(vassal.Id == _vassal ? 0 : vassal.Id), vassal.Online ? DerethPalette.TextBrush : DerethPalette.MutedBrush));
         });
-        _ignoreAllegiance.Show(_game.Option(SocialOption.IgnoreAllegianceRequests));
+        _ignoreAllegiance.Refresh();
         var selection = _game.Selection;
         _swear.IsEnabled = selection != 0 && selection != _state.Player;
         _break.IsEnabled = _state.Patron != null;
@@ -344,8 +348,7 @@ public sealed class SocialWindow
         if (_fellowshipPage.Content != page) _fellowshipPage.Content = page;
         if (!inOne)
         {
-            var options = new[] { SocialOption.IgnoreFellowshipRequests, SocialOption.AutoAcceptFellowshipRequests, SocialOption.ShareFellowshipExperience, SocialOption.ShareFellowshipLoot };
-            for (var i = 0; i < options.Length; i++) _fellowshipOrbs[i].Show(_game.Option(options[i]));
+            foreach (var orb in _fellowshipOrbs) orb.Refresh();
             _create.IsEnabled = !string.IsNullOrWhiteSpace(_fellowshipName.Text);
             return;
         }
@@ -423,7 +426,7 @@ public sealed class SocialWindow
                 _friendList.Children.Add(Row(friend.Name, friend.Online ? "Online" : "Offline", friend.Id == _friend,
                     () => SelectFriend(friend.Id == _friend ? 0 : friend.Id), DerethPalette.TextBrush, friend.Online ? OnlineBrush : DerethPalette.MutedBrush));
         });
-        _appearOffline.Show(_game.Option(SocialOption.AppearOffline));
+        _appearOffline.Refresh();
         _tell.IsEnabled = _removeFriend.IsEnabled = _friend != 0;
         _add.IsEnabled = !string.IsNullOrWhiteSpace(_friendName.Text);
     }
@@ -459,19 +462,10 @@ public sealed class SocialWindow
         if (_vassal != 0) Act(SocialAction.Break(_vassal));
     }
 
-    public void CreateFellowship()
-    {
-        var name = (_fellowshipName.Text ?? string.Empty).Trim();
-        if (name.Length == 0) return;
-        if (Act(SocialAction.CreateFellowship(name, _game.Option(SocialOption.ShareFellowshipExperience) ?? true))) _fellowshipName.Text = string.Empty;
-    }
+    public void CreateFellowship() =>
+        Submit(_fellowshipName, name => SocialAction.CreateFellowship(name, _game.Option(SocialOption.ShareFellowshipExperience) ?? true));
 
-    public void AddFriend()
-    {
-        var name = (_friendName.Text ?? string.Empty).Trim();
-        if (name.Length == 0) return;
-        if (Act(SocialAction.AddFriend(name))) _friendName.Text = string.Empty;
-    }
+    public void AddFriend() => Submit(_friendName, SocialAction.AddFriend);
 
     public void TellFriend()
     {
@@ -484,11 +478,14 @@ public sealed class SocialWindow
         Act(squelch.Account ? SocialAction.SquelchAccount(false, squelch.Name) : SocialAction.SquelchCharacter(false, squelch.Id, squelch.Name));
     }
 
-    public void SquelchTyped(bool account)
+    public void SquelchTyped(bool account) =>
+        Submit(_squelchName, name => account ? SocialAction.SquelchAccount(true, name) : SocialAction.SquelchCharacter(true, 0, name));
+
+    /// <summary>Sends the action for the name typed in a box, if there is one, and empties the box once it is sent.</summary>
+    private void Submit(TextBox box, Func<string, SocialAction> action)
     {
-        var name = (_squelchName.Text ?? string.Empty).Trim();
-        if (name.Length == 0) return;
-        if (Act(account ? SocialAction.SquelchAccount(true, name) : SocialAction.SquelchCharacter(true, 0, name))) _squelchName.Text = string.Empty;
+        var name = (box.Text ?? string.Empty).Trim();
+        if (name.Length > 0 && Act(action(name))) box.Text = string.Empty;
     }
 
     /// <summary>The text boxes, for tests.</summary>
@@ -650,18 +647,6 @@ public sealed class SocialWindow
         grid.Children.Add(child);
     }
 
-    private static Control Indented(Control child)
-    {
-        child.Margin = new Thickness(14, 8, 0, 4);
-        return child;
-    }
-
-    private static Control Spaced(Control child, double top)
-    {
-        child.Margin = new Thickness(0, top, 0, 0);
-        return child;
-    }
-
     private static T Centred<T>(T control) where T : Control
     {
         control.HorizontalAlignment = HorizontalAlignment.Center;
@@ -681,8 +666,8 @@ public sealed class SocialWindow
     }
 
     /// <summary>
-    /// Retail's option switch: a small orb, lit green when on, and its words. A click flips it; an option that cannot be read is dimmed and
-    /// takes no clicks.
+    /// Retail's option switch: a small orb, lit green when on, and its words. A click flips the option in the game; an option that cannot be
+    /// read is dimmed and takes no clicks.
     /// </summary>
     private sealed class Orb : StackPanel
     {
@@ -695,10 +680,14 @@ public sealed class SocialWindow
             GradientStops = { new GradientStop(Color.Parse("#6A6458"), 0), new GradientStop(Color.Parse("#2E2A24"), 1) }
         };
         private readonly Ellipse _orb = new() { Width = 10, Height = 10, Stroke = Brushes.Black, StrokeThickness = 0.8, VerticalAlignment = VerticalAlignment.Center };
+        private readonly ISocialGame _game;
+        private readonly SocialOption _option;
         private bool _on;
 
-        public Orb(string text, Action<bool> changed)
+        public Orb(ISocialGame game, SocialOption option, string text)
         {
+            _game = game;
+            _option = option;
             Orientation = Orientation.Horizontal;
             Spacing = 6;
             Background = Brushes.Transparent;
@@ -710,12 +699,15 @@ public sealed class SocialWindow
                 if (!IsEnabled || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
                 e.Handled = true;
                 Show(!_on);
-                changed(_on);
+                _game.SetOption(_option, _on);
             };
             Show(false);
         }
 
-        public void Show(bool? on)
+        /// <summary>Reads the option from the game again.</summary>
+        public void Refresh() => Show(_game.Option(_option));
+
+        private void Show(bool? on)
         {
             IsEnabled = on != null;
             Opacity = on == null ? 0.45 : 1;

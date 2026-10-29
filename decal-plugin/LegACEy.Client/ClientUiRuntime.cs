@@ -4021,7 +4021,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // ACE's Skill.Recklessness.
     private const uint RecklessnessSkill = 50;
 
-    /// <summary>Whether the character has Recklessness trained or specialized, as the server described the character.</summary>
     /// <summary>The social window's Send Tell: the Dereth chat's next line goes to that player. Retail's chat has no way in, so it is only logged.</summary>
     private void StartTell(string name, uint id)
     {
@@ -4029,6 +4028,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         else Log($"Send Tell to {name} needs the Dereth chat window.");
     }
 
+    /// <summary>Whether the character has Recklessness trained or specialized, as the server described the character.</summary>
     private bool Reckless() => _character?.Sheet.Skills.TryGetValue(RecklessnessSkill, out var skill) == true && skill.Training >= SkillTraining.Trained;
 
     private sealed class AttackWindowHandle : IDisposable
