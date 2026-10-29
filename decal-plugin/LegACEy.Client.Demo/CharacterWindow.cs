@@ -107,7 +107,8 @@ public sealed class CharacterWindow
         _folded = new HashSet<CharacterGroup>(folded);
         _foldsChanged = foldsChanged;
 
-        _tabs = new DerethSegmented(TabNames) { Margin = new Thickness(1, 6, 1, 4) };
+        // The tabs sit in the header beside the close box, as retail's do: the window has no title to fill it.
+        _tabs = new DerethSegmented(TabNames) { VerticalAlignment = VerticalAlignment.Center };
         _tabs.Chosen += index =>
         {
             _tab = index;
@@ -163,12 +164,8 @@ public sealed class CharacterWindow
         Grid.SetRow(_setTitle, 2);
         _titlesPage.Children.Add(_setTitle);
 
-        _page = new ContentControl();
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
-        body.Children.Add(_tabs);
-        Grid.SetRow(_page, 1);
-        body.Children.Add(_page);
-        Window = new DerethWindow(string.Empty, null, body);
+        _page = new ContentControl { Margin = new Thickness(0, 5, 0, 0) };
+        Window = new DerethWindow(string.Empty, null, _page, _tabs, stretchActions: true);
         Window.CloseRequested += (_, _) => Close?.Invoke();
         Show();
     }
@@ -281,8 +278,7 @@ public sealed class CharacterWindow
         if (pk.Length > 0) who.Children.Add(Centred(Label(pk, 11, DerethPalette.MutedBrush)));
         var figures = new StackPanel { Spacing = 2, Margin = new Thickness(0, 5, 0, 0) };
         figures.Children.Add(Pair("Total Experience", Number(_sheet.TotalExperience)));
-        figures.Children.Add(Pair("XP for next level", Number(needed)));
-        figures.Children.Add(Bar(fraction));
+        figures.Children.Add(Progress(Pair("XP for next level", Number(needed)), fraction));
         who.Children.Add(figures);
 
         var level = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
@@ -579,23 +575,24 @@ public sealed class CharacterWindow
         return grid;
     }
 
-    private static Control Bar(double fraction)
+    /// <summary>A row with the progress filled in behind it, as retail fills its XP for next level row.</summary>
+    private static Control Progress(Control row, double fraction)
     {
         var fill = new Border
         {
-            HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(2),
+            HorizontalAlignment = HorizontalAlignment.Left,
             Background = new LinearGradientBrush
             {
                 StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(DerethPalette.GoldDark, 0), new GradientStop(DerethPalette.Gold, 1) }
+                GradientStops = { new GradientStop(DerethPalette.GoldDark.WithAlpha(0x60), 0), new GradientStop(DerethPalette.Gold.WithAlpha(0x60), 1) }
             }
         };
-        var groove = new Border
-        {
-            Height = 8, CornerRadius = new CornerRadius(2), Background = DerethPalette.GrooveBrush, BorderBrush = LineBrush,
-            BorderThickness = new Thickness(1), Margin = new Thickness(0, 2, 0, 0), Child = fill
-        };
-        groove.SizeChanged += (_, e) => fill.Width = Math.Max(0, (e.NewSize.Width - 2) * fraction);
+        row.Margin = new Thickness(3, 1);
+        var well = new Grid();
+        well.Children.Add(fill);
+        well.Children.Add(row);
+        var groove = new Border { CornerRadius = new CornerRadius(2), Background = DerethPalette.GrooveBrush, BorderBrush = LineBrush, BorderThickness = new Thickness(1), Child = well };
+        well.SizeChanged += (_, e) => fill.Width = e.NewSize.Width * fraction;
         return groove;
     }
 
