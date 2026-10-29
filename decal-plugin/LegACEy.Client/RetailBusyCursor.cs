@@ -6,7 +6,7 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// Retail's busy cursor while LegACEy waits for an appraisal. Retail's examination UI raises <c>ClientUISystem</c>'s busy count (+0x14) when
-/// it sends an appraisal (0x004ABB4A) and lowers it when the answer comes (0x004B754C); our requests go through Decal, which does neither.
+/// it sends an appraisal (0x004ABB4A) and lowers it when the answer comes (0x004B754C); our requests skip that UI, so nothing does either.
 /// <see cref="Show"/> holds one count of our own, so the two always balance. Call on the game thread.
 /// </summary>
 internal sealed class RetailBusyCursor
