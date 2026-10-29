@@ -510,6 +510,12 @@ public sealed class DerethWindow : UserControl
         if (headerActions != null)
         {
             Grid.SetColumn(headerActions, 2);
+            // A window with no icon or title gives its stretched actions the header from the edge, with no gaps for the empty columns.
+            if (stretchActions && icon == null && title.Length == 0)
+            {
+                Grid.SetColumn(headerActions, 0);
+                Grid.SetColumnSpan(headerActions, 3);
+            }
             header.Children.Add(headerActions);
         }
         Grid.SetColumn(close, headerActions == null ? 2 : 3);
