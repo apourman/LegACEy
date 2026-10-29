@@ -168,6 +168,12 @@ internal sealed unsafe class SocialFeature : ISocialGame, IDisposable
         }
     }
 
+    void ISocialGame.Select(uint id)
+    {
+        try { Bridge.SelectItem(id); }
+        catch (COMException exception) { _log($"Could not select 0x{id:X8}: {exception.Message}"); }
+    }
+
     bool? ISocialGame.Option(SocialOption option) =>
         PlayerModule() is { } module && OptionBits.TryGetValue(option, out var bits)
             ? ((uint)Marshal.ReadInt32(module, bits.Word) & bits.Bit) != 0

@@ -27,6 +27,8 @@ public interface ISocialGame
 {
     /// <summary>Retail's selected object, 0 for none.</summary>
     uint Selection { get; }
+    /// <summary>Selects an object in the game, as a click on it in the world does.</summary>
+    void Select(uint id);
     /// <summary>The option as retail holds it, or null when it cannot be read.</summary>
     bool? Option(SocialOption option);
     /// <summary>Sets the option as retail's own switch does, which also tells the server.</summary>
@@ -148,6 +150,8 @@ public sealed class SocialWindow
 
     private int _tab;
     private uint _vassal, _fellow, _friend;
+    // The game's selection when the fellowship list last looked: a new one that is a fellow selects their row, as in retail.
+    private uint _seenSelection;
     private Squelch? _squelch;
     private (DerethButton Button, long At)? _arming;
     private readonly Dictionary<Control, string> _drawn = new();
@@ -269,7 +273,13 @@ public sealed class SocialWindow
     }
 
     public void SelectVassal(uint id) { _vassal = id; Refresh(); }
-    public void SelectFellow(uint id) { _fellow = id; Refresh(); }
+    /// <summary>Selects a fellow's row and, as retail's list does, the fellow in the game; 0 clears the row only.</summary>
+    public void SelectFellow(uint id)
+    {
+        _fellow = id;
+        if (id != 0) _game.Select(id);
+        Refresh();
+    }
     public void SelectFriend(uint id) { _friend = id; Refresh(); }
     public void SelectSquelch(Squelch squelch) { _squelch = squelch; Refresh(); }
 
@@ -340,13 +350,15 @@ public sealed class SocialWindow
             return;
         }
         _fellowshipTitle.Text = _state.Fellowship;
+        var selection = _game.Selection;
+        if (selection != _seenSelection && _state.Fellows.Any(f => f.Id == selection)) _fellow = selection;
+        _seenSelection = selection;
         var shares = Shares();
         Redraw(_fellowList, $"{_fellow}|{_state.Leader}|{string.Join(",", _state.Fellows)}|{string.Join(",", shares)}", () =>
         {
             for (var i = 0; i < _state.Fellows.Count; i++) _fellowList.Children.Add(FellowRow(_state.Fellows[i], shares[i]));
         });
         var leading = _state.Leader == _state.Player;
-        var selection = _game.Selection;
         var someoneElse = _fellow != 0 && _fellow != _state.Player;
         _leader.IsEnabled = _dismiss.IsEnabled = leading && someoneElse;
         _open.IsEnabled = _disband.IsEnabled = leading;

@@ -178,10 +178,20 @@ public sealed class SocialWindowTests
         Press(view, "Recruit");
         Assert.Equal(SocialAction.Recruit(Pal).Payload, game.Sent.Last().Payload);
         view.SelectFellow(Pest);
+        Assert.Equal(Pest, game.Selection);
         Press(view, "Leader");
         Assert.Equal(SocialAction.Leader(Pest).Payload, game.Sent.Last().Payload);
         Press(view, "Open");
         Assert.Equal(SocialAction.Openness(true).Payload, game.Sent.Last().Payload);
+
+        // Selecting a fellow in the world selects their row, as in retail.
+        view.SelectFellow(0);
+        game.Selection = Pal;
+        view.Refresh();
+        game.Selection = Pest;
+        view.Refresh();
+        Press(view, "Dismiss");
+        Assert.Equal(SocialAction.Dismiss(Pest).Payload, game.Sent.Last().Payload);
     });
 
     [Fact]
@@ -264,6 +274,7 @@ public sealed class SocialWindowTests
         public readonly Dictionary<SocialOption, bool> Options = new() { [SocialOption.ShareFellowshipExperience] = true };
         public (string, uint)? Told;
         public uint Selection { get; set; }
+        public void Select(uint id) => Selection = id;
         public bool? Option(SocialOption option) => Options.TryGetValue(option, out var on) && on;
         public void SetOption(SocialOption option, bool on) => Options[option] = on;
         public bool Send(SocialAction action) { Sent.Add(action); return true; }
