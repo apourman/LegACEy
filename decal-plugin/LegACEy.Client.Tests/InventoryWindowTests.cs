@@ -4,6 +4,7 @@ using System.Linq;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
+using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
 using LegACEy.Plugin.Inventory;
@@ -243,6 +244,29 @@ public sealed class InventoryWindowTests
         Assert.Equal(new[] { InventorySample.Sack, InventorySample.Character }, host.Drag.Delivered.Select(drop => drop.Item1));
         Assert.Empty(InventoryDriver.Sent(port));
     });
+
+    [Fact]
+    public void Items_and_packs_on_shortcuts_show_their_key_tab() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot().WithShortcuts(new[] { new RetailShortcut(2, InventorySample.Apple), new RetailShortcut(10, InventorySample.Sack) }));
+        var art = new ReadArt();
+        using var host = new InventoryHost(port, showSlots: true, art: art);
+
+        // Retail's tab with key 3 over the apple, and row 2's blank tab over the sack.
+        Assert.Contains(0x0600109Eu + 2, art.Read);
+        Assert.Contains(0x060074D3u, art.Read);
+    });
+
+    private sealed class ReadArt : IGameArtSource
+    {
+        public HashSet<uint> Read { get; } = new();
+        public GameImage? ReadImage(uint id)
+        {
+            Read.Add(id);
+            return new(32, 32, new byte[32 * 32 * 4]);
+        }
+    }
 
     [Fact]
     public void A_side_pack_dropped_on_the_ground_goes_back_into_an_empty_side_slot() => RenderThread.Run(() =>
@@ -784,10 +808,10 @@ public sealed class InventoryWindowTests
 
         /// <param name="width">The panel's width; by default the window's fixed width, retail's toolbar window width.</param>
         /// <param name="height">The panel's height; by default the window's default height.</param>
-        public InventoryHost(FakeInventoryPort port, bool showSlots, int? width = null, int? height = null)
+        public InventoryHost(FakeInventoryPort port, bool showSlots, int? width = null, int? height = null, IGameArtSource? art = null)
         {
             InventoryWindow? window = null;
-            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(showSlots), Drag),
+            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, art ?? new InventorySample.NoArt(), new InventorySettings(showSlots), Drag),
                 width ?? (int)RetailToolbar.RetailWidth, height ?? 633);
             Host.ApplyTheme(new DerethClientTheme());
             _window = window!;

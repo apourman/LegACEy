@@ -3274,6 +3274,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
+        // The inventory shows each item's shortcut key, so a change of the shortcuts redraws it.
+        var shortcuts = _toolbarPort;
+        _inventory.Shortcuts = () => shortcuts.Shortcuts;
+        shortcuts.Changed += _inventory.MarkStale;
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
         _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort(NativeUi.ReadMemory, Log));
         var toolbar = new RetailToolbar(_toolbarPort, ToggleSettings, MoveToMainPack, BeginToolbarDrag, _portal);

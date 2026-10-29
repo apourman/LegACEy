@@ -198,8 +198,10 @@ public sealed class WieldedItem : IEquatable<WieldedItem>
 public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
 {
     public InventorySnapshot(InventoryPack mainPack, IReadOnlyList<InventoryPack> sidePacks, IReadOnlyList<InventoryItem> items,
-        IReadOnlyList<WieldedItem> wielded, int burden, int burdenLimit, uint openContainer, uint selected, string characterName = "")
+        IReadOnlyList<WieldedItem> wielded, int burden, int burdenLimit, uint openContainer, uint selected, string characterName = "",
+        IReadOnlyList<RetailShortcut>? shortcuts = null)
     {
+        Shortcuts = shortcuts ?? Array.Empty<RetailShortcut>();
         MainPack = mainPack ?? throw new ArgumentNullException(nameof(mainPack));
         SidePacks = sidePacks ?? throw new ArgumentNullException(nameof(sidePacks));
         Items = items ?? throw new ArgumentNullException(nameof(items));
@@ -230,6 +232,15 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
     public uint Selected { get; }
     /// <summary>The character's name, which titles the window as retail's does; empty when it is not known.</summary>
     public string CharacterName { get; }
+    /// <summary>Retail's shortcuts, so an item on one shows its key tab as retail's inventory does. Empty when the toolbar is not read.</summary>
+    public IReadOnlyList<RetailShortcut> Shortcuts { get; }
+
+    /// <summary>This snapshot with the shortcuts given.</summary>
+    public InventorySnapshot WithShortcuts(IReadOnlyList<RetailShortcut> shortcuts) =>
+        new(MainPack, SidePacks, Items, Wielded, Burden, BurdenLimit, OpenContainer, Selected, CharacterName, shortcuts);
+
+    /// <summary>The shortcut slot holding the object, or -1 when none does.</summary>
+    public int ShortcutOf(uint id) => ShortcutEdits.IndexOf(Shortcuts, id);
 
     /// <summary>Whether the id is the main pack, a side pack, or an item or wielded item in this snapshot.</summary>
     public bool Contains(uint id) => id != 0 && (MainPack.Id == id || SidePacks.Any(pack => pack.Id == id)
@@ -259,6 +270,7 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
 
     public bool Equals(InventorySnapshot? other) => other != null && MainPack.Equals(other.MainPack)
         && SidePacks.SequenceEqual(other.SidePacks) && Items.SequenceEqual(other.Items) && Wielded.SequenceEqual(other.Wielded)
+        && Shortcuts.SequenceEqual(other.Shortcuts)
         && (Burden, BurdenLimit, OpenContainer, Selected, CharacterName).Equals((other.Burden, other.BurdenLimit, other.OpenContainer, other.Selected, other.CharacterName));
     public override bool Equals(object? obj) => Equals(obj as InventorySnapshot);
     public override int GetHashCode() => OpenContainer.GetHashCode();
