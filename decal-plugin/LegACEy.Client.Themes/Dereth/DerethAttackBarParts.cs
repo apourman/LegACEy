@@ -70,8 +70,8 @@ public sealed class DerethAttackLayout
 /// <summary>
 /// The attack bar's art, laid out by <see cref="DerethAttackLayout"/> for its size: the Speed ↔ Power (or Accuracy) bar in the vitals' glass
 /// groove between gold end caps, its set point as a green gem on a gold pin, the charge filling from the left, three height plaques behind a
-/// gold divider with the lit one's arrows, and three option gems. With Recklessness trained, its range is tinted ember in the groove. It draws only when its face or its size changes, so a still bar draws no
-/// new frame.
+/// gold divider with the lit one's arrows, and three option gems. With Recklessness trained, its range is tinted ember in the groove. It
+/// draws only when its face or its size changes, so a still bar draws no new frame.
 /// </summary>
 public sealed class DerethAttackBarArt : Control
 {
@@ -82,7 +82,7 @@ public sealed class DerethAttackBarArt : Control
 
     private const double GemRadius = 3.4;
     /// <summary>The part of the bar where Recklessness applies, as ACE checks it: from 10% to 90%.</summary>
-    public const double RecklessFrom = 0.1, RecklessTo = 0.9;
+    private const double RecklessFrom = 0.1, RecklessTo = 0.9;
     private static readonly string[] PlaqueNames = { "High", "Medium", "Low" };
     private static readonly string[] ToggleNames = { "Repeat Attacks", "Auto Target", "Keep in View" };
     // Attack-only colours from the mockup. The rest of the bar is the vitals' gilt and the palette's.

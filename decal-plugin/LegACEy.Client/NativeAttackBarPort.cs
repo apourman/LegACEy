@@ -52,11 +52,11 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
     private readonly Func<bool> _reckless;
     private readonly Action<string> _log;
     private Values? _last;
-    // Diagnostic for backlog 116 (the bar not filling): retail's build flag and power bar mode last logged, the peak charge read since, and
-    // how many lines are left this session.
+    // ponytail: diagnostic for backlog 116 (the bar not filling); remove it with LogBuild once the log has shown the cause. Retail's build
+    // flag and power bar mode last logged, the peak charge read since, and how many lines are left this session (shared by every port).
     private (byte Building, int Mode)? _lastBuild;
     private double _peak;
-    private int _buildLines = 60;
+    private static int _buildLines = 60;
 
     /// <param name="lockAvailable">Whether retail's Lock UI natives matched; the window does not move while the UI is locked.</param>
     /// <param name="reckless">Whether the character has Recklessness trained or specialized, from the server's description of the character.</param>
