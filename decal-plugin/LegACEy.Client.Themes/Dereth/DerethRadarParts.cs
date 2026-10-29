@@ -125,6 +125,10 @@ public sealed class DerethRadarScope : Control
     /// The pings: each one's point in DIPs from the scope's top-left, its colour, how far through its life it is (0 to 1), and for one past the
     /// rim the screen angle it lies at, clockwise from up.
     /// </summary>
+    /// <summary>Where portals' halos are in their breath, 0 to 1: the halo swells and fades from 0 to 0.5 and back.</summary>
+    public double PortalPulse { get => _portalPulse; set { if (_portalPulse == value) return; _portalPulse = value; InvalidateVisual(); } }
+    private double _portalPulse;
+
     public IReadOnlyList<(Point At, Color Colour, double Age, double? Edge)> Pings
     {
         get => _pings;
@@ -222,8 +226,9 @@ public sealed class DerethRadarScope : Control
         if (!_dotBrushes.TryGetValue(key, out var colour)) _dotBrushes[key] = colour = DerethPalette.Brush(dot.Colour.WithAlpha(alpha));
         if (dot.ArrowDir == 0 && dot.Portal)
         {
-            // A portal stands out from the crowd of dots: bigger, in a purple halo, with a light rim (backlog 123).
-            using (context.PushOpacity(dot.Opacity)) context.DrawEllipse(PortalHalo, null, dot.At, 7, 7);
+            // A portal stands out from the crowd of dots: bigger, in a breathing purple halo, with a light rim (backlog 123).
+            var breath = (1 - Math.Cos(_portalPulse * 2 * Math.PI)) / 2;
+            using (context.PushOpacity(dot.Opacity * (1 - 0.45 * breath))) context.DrawEllipse(PortalHalo, null, dot.At, 6 + 3 * breath, 6 + 3 * breath);
             context.DrawEllipse(colour, PortalRim, dot.At, 3, 3);
         }
         else if (dot.ArrowDir == 0)

@@ -57,6 +57,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly Action _startMove;
     private readonly Func<uint, string?>? _serverName;
     private readonly Func<DateTime> _clock;
+    private const double PortalPulseSeconds = 1.6;
     // The pings showing, the latest from each sender; dropped once they have lasted.
     private readonly Dictionary<string, RadarPing> _pings = new();
     // Each landblock's tile as a bitmap, converted once per tile and dropped once it leaves the nine around the player.
@@ -398,6 +399,8 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
                 dot.Colour == RadarColor.Purple);
         }
         if (!dots.SequenceEqual(_scope.Dots)) _scope.Dots = dots;
+        // Portals' halos breathe; the scope is redrawn each frame only while a portal is on it.
+        if (dots.Any(dot => dot.Portal)) _scope.PortalPulse = now.TimeOfDay.TotalSeconds / PortalPulseSeconds % 1;
         if (frame.Pings.Count > 0 || _scope.Pings.Count > 0)
             _scope.Pings = frame.Pings.Select(ping => (ping.At, PingColour(ping.Sender), ping.Age, ping.Edge)).ToArray();
         // The ladder shows where the plan is drawn; a peek lasts only while it does.
