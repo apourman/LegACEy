@@ -25,7 +25,7 @@ internal sealed unsafe class MapFeature : IRetailMap, IDisposable
     /// <summary>gmMapUI::Update (thiscall, returns bool): the date and time, the coordinates and both markers, as retail's timer runs it.</summary>
     private const uint MapUpdate = 0x004A21E0;
     // gmMapUI's elements, as its PostInit finds them: the date and time text, the coordinates text, the player and house markers, the map.
-    private const int DateText = 0x5FC, CoordinatesText = 0x600, PlayerMarker = 0x604, HouseMarker = 0x608, MapImage = 0x60C;
+    private const int DateText = 0x5FC, CoordinatesText = 0x600, PlayerMarker = 0x604, HouseMarker = 0x608;
     /// <summary>gmHouseUI's list of lines (UIElement_ListBox), its items' array and count.</summary>
     private const int HouseList = 0x600, ListItems = 0x608, ListCount = 0x610;
     /// <summary>UIElement::DynamicCast's vtable slot, and UIElement_Text's type, as AddHousePanelText casts each new line.</summary>
@@ -166,11 +166,8 @@ internal sealed unsafe class MapFeature : IRetailMap, IDisposable
         if (Page(MapPage, MapVtable) is not { } map) return null;
         // Retail runs the update on a timer only while its map page shows; ours may show while retail's House tab is up.
         ((delegate* unmanaged[Thiscall]<IntPtr, byte>)MapUpdate)(map);
-        var image = Field(map, MapImage);
-        if (image == IntPtr.Zero) return null;
-        var origin = NativeUi.GetBounds(image).Location;
         return new RetailMapView(Text(Field(map, DateText)), Text(Field(map, CoordinatesText)),
-            Centre(Field(map, PlayerMarker), origin), Centre(Field(map, HouseMarker), origin));
+            Centre(Field(map, PlayerMarker)), Centre(Field(map, HouseMarker)));
     }
 
     IReadOnlyList<string> IRetailMap.HouseLines()
@@ -236,12 +233,15 @@ internal sealed unsafe class MapFeature : IRetailMap, IDisposable
 
     private static IntPtr Field(IntPtr element, int offset) => *(IntPtr*)(element + offset);
 
-    /// <summary>A marker's centre on the map, or null while retail hides it.</summary>
-    private static Avalonia.Point? Centre(IntPtr marker, Point origin)
+    /// <summary>
+    /// A marker's centre on the map, or null while retail hides it. PlaceMarkerOnMap moves the marker in its parent's pixels, and its
+    /// parent is the map image, so the box is already in map pixels.
+    /// </summary>
+    private static Avalonia.Point? Centre(IntPtr marker)
     {
         if (marker == IntPtr.Zero || (*(uint*)(marker + ElementFlags) & 2) == 0) return null;
         var box = NativeUi.GetBounds(marker);
-        return new Avalonia.Point(box.X - origin.X + box.Width / 2.0, box.Y - origin.Y + box.Height / 2.0);
+        return new Avalonia.Point(box.X + box.Width / 2.0, box.Y + box.Height / 2.0);
     }
 
     /// <summary>A text element's text, through retail's own GetText.</summary>

@@ -20,7 +20,8 @@ public sealed class MapWindowTests
     public void The_window_shows_what_retails_map_and_house_pages_hold() => RenderThread.Run(() =>
     {
         var map = new FakeMap { View = new RetailMapView(Yaraq, "21.5S, 1.7W", new Point(125, 159), null) };
-        var view = new MapWindow(map, null);
+        MapWindow view = null!;
+        using var panel = AvaloniaPanel.Create(() => (view = new MapWindow(map, null)).Window, MapWindow.Width, MapWindow.Height);
         var texts = Texts(view);
         Assert.Contains("Date: Morningthaw 20, 122 P.Y.", texts);
         Assert.Contains("Time: Foredawn", texts);

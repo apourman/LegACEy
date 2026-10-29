@@ -81,9 +81,10 @@ public sealed class MapWindow
             Padding = new Thickness(4, 1), Child = _placeName, IsVisible = false, IsHitTestVisible = false
         };
         foreach (var place in map.Places) canvas.Children.Add(Hover(place));
-        _house = Marker(new Path
+        _house = Marker(new Polygon
         {
-            Data = Geometry.Parse("M 7,1 L 13,7 L 7,13 L 1,7 Z"), Fill = DerethPalette.GoldWashBrush, Stroke = DerethPalette.GoldBrush, StrokeThickness = 2
+            Points = new Points { new(7, 1), new(13, 7), new(7, 13), new(1, 7) },
+            Fill = DerethPalette.GoldWashBrush, Stroke = DerethPalette.GoldBrush, StrokeThickness = 2
         });
         _player = Marker(new Ellipse { Stroke = PlayerBrush, StrokeThickness = 2.5 });
         canvas.Children.Add(_house);

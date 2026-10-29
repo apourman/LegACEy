@@ -147,7 +147,7 @@ internal static class NativeUi
 
     public static void SetVisible(IntPtr element, bool visible) { EnsureReady(); SetVisibleNative(element, visible ? (byte)1 : (byte)0); }
 
-    /// <summary>The element's rectangle in screen pixels.</summary>
+    /// <summary>The element's rectangle in its parent's pixels: screen pixels for a root element.</summary>
     public static Rectangle GetBounds(IntPtr element)
     {
         EnsureReady();
