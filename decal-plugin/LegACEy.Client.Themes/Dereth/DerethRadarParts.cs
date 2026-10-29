@@ -228,7 +228,7 @@ public sealed class DerethRadarScope : Control
         {
             // A portal stands out from the crowd of dots: bigger, in a breathing purple halo, with a light rim (backlog 123).
             var breath = (1 - Math.Cos(_portalPulse * 2 * Math.PI)) / 2;
-            using (context.PushOpacity(dot.Opacity * (1 - 0.45 * breath))) context.DrawEllipse(PortalHalo, null, dot.At, 6 + 3 * breath, 6 + 3 * breath);
+            using (context.PushOpacity(dot.Opacity * (1 - 0.6 * breath))) context.DrawEllipse(PortalHalo, null, dot.At, 5 + 6 * breath, 5 + 6 * breath);
             context.DrawEllipse(colour, PortalRim, dot.At, 3, 3);
         }
         else if (dot.ArrowDir == 0)

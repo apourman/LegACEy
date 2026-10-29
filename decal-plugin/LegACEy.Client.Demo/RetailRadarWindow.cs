@@ -57,7 +57,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly Action _startMove;
     private readonly Func<uint, string?>? _serverName;
     private readonly Func<DateTime> _clock;
-    private const double PortalPulseSeconds = 1.6;
+    private const double PortalPulseSeconds = 1.3;
     // The pings showing, the latest from each sender; dropped once they have lasted.
     private readonly Dictionary<string, RadarPing> _pings = new();
     // Each landblock's tile as a bitmap, converted once per tile and dropped once it leaves the nine around the player.
