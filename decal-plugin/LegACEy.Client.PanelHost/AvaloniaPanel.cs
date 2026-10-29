@@ -263,6 +263,9 @@ public sealed class AvaloniaPanel : IDisposable
             CanResize = false,
             Content = content
         };
+        // Grayscale text: on Windows, Skia's default subpixel (LCD) text breaks up into specks wherever a control fades through Opacity
+        // (older message bands, the idle chat input row), since LCD text needs an opaque background and the panel has none.
+        RenderOptions.SetTextRenderingMode(window, TextRenderingMode.Antialias);
         // The content lays out at design size, the panel's size divided by the scale, and renders at the scale as a display's
         // DPI does: layout rounding snaps every edge and border to whole panel pixels, where a scale transform smears 1 px borders.
         // The headless window fixes its scaling at 1, so this sets it.
