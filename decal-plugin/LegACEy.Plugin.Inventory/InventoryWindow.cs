@@ -387,7 +387,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>
     /// A retail drag released over this window. An item from outside our inventory goes onto the slot it is released on, or, released
-    /// elsewhere in the window, to the first free slot of the open pack. An item of ours is only moved by its slots, so it is declined
+    /// elsewhere in the window, to the front of the open pack. An item of ours is only moved by its slots, so it is declined
     /// elsewhere. Returns true when the item was used; declined items go back to where they came from.
     /// </summary>
     public bool RetailDrop(uint itemId, string itemName, Point position)
