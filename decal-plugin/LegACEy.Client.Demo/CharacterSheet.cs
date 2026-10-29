@@ -117,12 +117,12 @@ public sealed class CharacterSheet
         if (raw.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(raw) == (uint)messageType) raw = raw.Slice(4);
         try
         {
-            if (Read(messageType, new Reader(raw))) Changed?.Invoke();
+            if (Read(messageType, new MessageReader(raw))) Changed?.Invoke();
         }
         catch (ArgumentOutOfRangeException) { }
     }
 
-    private bool Read(int messageType, Reader reader)
+    private bool Read(int messageType, MessageReader reader)
     {
         switch (messageType)
         {
@@ -191,7 +191,7 @@ public sealed class CharacterSheet
         InstanceIdTable = 0x40, Int64Table = 0x80;
     private const uint AttributeVector = 0x01, SkillVector = 0x02;
 
-    private void ReadDescription(Reader reader)
+    private void ReadDescription(MessageReader reader)
     {
         _attributes.Clear();
         _vitals.Clear();
@@ -200,22 +200,22 @@ public sealed class CharacterSheet
         var tables = reader.UInt32();
         reader.Skip(4); // the weenie type
         if ((tables & IntTable) != 0)
-            for (var count = Header(ref reader); count > 0; count--) SetInt(reader.UInt32(), reader.Int32());
+            for (var count = reader.Header(); count > 0; count--) SetInt(reader.UInt32(), reader.Int32());
         if ((tables & Int64Table) != 0)
-            for (var count = Header(ref reader); count > 0; count--) SetInt64(reader.UInt32(), reader.Int64());
-        if ((tables & BoolTable) != 0) reader.Skip(Header(ref reader) * 8);
-        if ((tables & DoubleTable) != 0) reader.Skip(Header(ref reader) * 12);
+            for (var count = reader.Header(); count > 0; count--) SetInt64(reader.UInt32(), reader.Int64());
+        if ((tables & BoolTable) != 0) reader.Skip(reader.Header() * 8);
+        if ((tables & DoubleTable) != 0) reader.Skip(reader.Header() * 12);
         if ((tables & StringTable) != 0)
-            for (var count = Header(ref reader); count > 0; count--)
+            for (var count = reader.Header(); count > 0; count--)
             {
                 reader.Skip(4);
                 // A 16-bit length, the bytes, then padding to a multiple of four with the length.
                 var length = reader.UInt16();
                 reader.Skip(length + (4 - (2 + length) % 4) % 4);
             }
-        if ((tables & DataIdTable) != 0) reader.Skip(Header(ref reader) * 8);
-        if ((tables & InstanceIdTable) != 0) reader.Skip(Header(ref reader) * 8);
-        if ((tables & PositionTable) != 0) reader.Skip(Header(ref reader) * (4 + 32));
+        if ((tables & DataIdTable) != 0) reader.Skip(reader.Header() * 8);
+        if ((tables & InstanceIdTable) != 0) reader.Skip(reader.Header() * 8);
+        if ((tables & PositionTable) != 0) reader.Skip(reader.Header() * (4 + 32));
         var vectors = reader.UInt32();
         reader.Skip(4); // whether it has health
         if ((vectors & AttributeVector) != 0)
@@ -234,11 +234,11 @@ public sealed class CharacterSheet
                 }
         }
         if ((vectors & SkillVector) != 0)
-            for (var count = Header(ref reader); count > 0; count--) ReadSkill(ref reader);
+            for (var count = reader.Header(); count > 0; count--) ReadSkill(ref reader);
     }
 
     /// <summary>A skill as the description and PrivateUpdateSkill write it, from its id.</summary>
-    private void ReadSkill(ref Reader reader)
+    private void ReadSkill(ref MessageReader reader)
     {
         var id = reader.UInt32();
         var ranks = reader.UInt16();
@@ -251,7 +251,7 @@ public sealed class CharacterSheet
         _unconfirmed.Remove((StatKind.Skill, id));
     }
 
-    private void ReadTitles(Reader reader)
+    private void ReadTitles(MessageReader reader)
     {
         reader.Skip(4);
         DisplayTitle = reader.UInt32();
@@ -259,50 +259,10 @@ public sealed class CharacterSheet
         for (var count = reader.UInt32(); count > 0; count--) _titles.Add(reader.UInt32());
     }
 
-    private void ReadTitleUpdate(Reader reader)
+    private void ReadTitleUpdate(MessageReader reader)
     {
         var title = reader.UInt32();
         if (!_titles.Contains(title)) _titles.Add(title);
         if (reader.UInt32() != 0) DisplayTitle = title;
-    }
-
-    /// <summary>A packed hash table's header: its count, then a bucket size the reader does not need.</summary>
-    private static int Header(ref Reader reader)
-    {
-        var count = reader.UInt16();
-        reader.Skip(2);
-        return count;
-    }
-
-    /// <summary>A little-endian reader over a span that throws ArgumentOutOfRangeException past its end.</summary>
-    private ref struct Reader
-    {
-        private readonly ReadOnlySpan<byte> _bytes;
-        private int _at;
-
-        public Reader(ReadOnlySpan<byte> bytes)
-        {
-            _bytes = bytes;
-            _at = 0;
-        }
-
-        public void Skip(int count)
-        {
-            if (count < 0 || _at + count > _bytes.Length) throw new ArgumentOutOfRangeException(nameof(count));
-            _at += count;
-        }
-
-        public ushort UInt16() => BinaryPrimitives.ReadUInt16LittleEndian(Take(2));
-        public uint UInt32() => BinaryPrimitives.ReadUInt32LittleEndian(Take(4));
-        public int Int32() => BinaryPrimitives.ReadInt32LittleEndian(Take(4));
-        public long Int64() => BinaryPrimitives.ReadInt64LittleEndian(Take(8));
-
-        private ReadOnlySpan<byte> Take(int count)
-        {
-            if (_at + count > _bytes.Length) throw new ArgumentOutOfRangeException(nameof(count));
-            var taken = _bytes.Slice(_at, count);
-            _at += count;
-            return taken;
-        }
     }
 }

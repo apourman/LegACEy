@@ -136,6 +136,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailAttackSwitchFile = "retail-attack-native";
     // Beside the DLL: while this file exists, retail's character panel stays retail's. Without it the Dereth character window replaces it.
     private const string RetailCharacterSwitchFile = "retail-character-native";
+    private const string RetailSocialSwitchFile = "retail-social-native";
     // Present: retail's yellow game messages stay retail's; absent: LegACEy's bands show them.
     private const string RetailGameMessagesSwitchFile = "retail-game-messages-native";
     // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
@@ -326,6 +327,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private CharacterFeature? _character;
     private bool _retailCharacterSwitch;
     private DateTime _lastCharacterSwitchCheck;
+    // The Dereth social window and the server's account of the allegiance, fellowship, friends and squelches it shows.
+    private SocialFeature? _social;
+    private bool _retailSocialSwitch;
+    private DateTime _lastSocialSwitchCheck;
     // The Appraisal card was switched: once the switch is read, a turn to retail hands the open appraisal over to retail's panel.
     private bool _appraisalSwitched;
     private RetailExamine? _retailExamine;
@@ -451,6 +456,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     : null,
                 () => _portal?.ReadCharacterTables(Log) ?? CharacterTables.None, () => _portal?.ReadCharacterNames(Log).Titles ?? new Dictionary<uint, string>(),
                 () => _channelTransport, _settingsStore, () => (SessionServer(), SessionCharacter()), Log);
+            _social = new SocialFeature(this,
+                NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.SocialPanel, NativeRetailPanelPort.SocialPanelId) : null,
+                () => _portal?.ReadCharacterTables(Log) ?? CharacterTables.None, () => _channelTransport, StartTell, Log);
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
@@ -699,6 +707,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The character window's sheet: the login description, then the raises, experience and titles that follow.
         try { _character?.Sheet.Receive(type, raw); }
         catch (Exception exception) { Log($"Could not read the character from the server: {exception}"); }
+        try { _social?.State.Receive(type, raw); }
+        catch (Exception exception) { Log($"Could not read the social state from the server: {exception}"); }
         // The selection plaque's health and mana, which retail asks the server for itself when the selection changes.
         _selectionMeters.Receive(type, raw);
         try { _lookCache.Receive(type, raw); }
@@ -942,6 +952,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _portal?.ForgetImages();
         Guard(() => _appraisal.Clear());
         Guard(() => _character?.Sheet.Clear());
+        Guard(() => _social?.State.Clear());
         Guard(() => _busyCursor?.Show(false));
         if (_worldEffects != null)
         {
@@ -1136,6 +1147,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default, InventoryWindowId),
         Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }, AppraisalFeature.WindowId),
         Choice("Character", RetailCharacterSwitchFile, () => _lastCharacterSwitchCheck = default, CharacterWindow.WindowId),
+        Choice("Social", RetailSocialSwitchFile, () => _lastSocialSwitchCheck = default, SocialWindow.WindowId),
         Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default, ToolbarSurfaceId),
         Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default, ChatWindowId),
         Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default, DerethVitalsWindow.StackedId, DerethVitalsWindow.SideBySideId),
@@ -1870,7 +1882,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void TickRetailPanels(bool loggingIn = false)
     {
-        if (_retailPanels.Count == 0 && _examination == null && _character == null)
+        if (_retailPanels.Count == 0 && _examination == null && _character == null && _social == null)
         {
             // Nothing to hand over to: a switch made now must not fire later.
             _appraisalSwitched = false;
@@ -1884,6 +1896,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var appraisalOn = SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch);
         _examination?.Tick(canOpen && appraisalOn, canShow: !loggingIn);
         _character?.Tick(canOpen && SwitchOn(RetailCharacterSwitchFile, ref _lastCharacterSwitchCheck, ref _retailCharacterSwitch), canShow: !loggingIn);
+        _social?.Tick(canOpen && SwitchOn(RetailSocialSwitchFile, ref _lastSocialSwitchCheck, ref _retailSocialSwitch), canShow: !loggingIn);
         // Turned to retail: the item in our window opens in retail's panel, now given back. The other way, the takeover already parks an
         // open retail panel and examines the selection in our window.
         if (_appraisalSwitched)
@@ -1904,6 +1917,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             takeover.EndSession();
         _examination?.EndSession();
         _character?.EndSession();
+        _social?.EndSession();
     }
 
     /// <summary>A LegACEy window's content by its id, for the drop routing that the window manager's hit test drives.</summary>
@@ -4008,6 +4022,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const uint RecklessnessSkill = 50;
 
     /// <summary>Whether the character has Recklessness trained or specialized, as the server described the character.</summary>
+    /// <summary>The social window's Send Tell: the Dereth chat's next line goes to that player. Retail's chat has no way in, so it is only logged.</summary>
+    private void StartTell(string name, uint id)
+    {
+        if (_chatWindows?.Main is { } chat) chat.StartTell(name, id);
+        else Log($"Send Tell to {name} needs the Dereth chat window.");
+    }
+
     private bool Reckless() => _character?.Sheet.Skills.TryGetValue(RecklessnessSkill, out var skill) == true && skill.Training >= SkillTraining.Trained;
 
     private sealed class AttackWindowHandle : IDisposable
