@@ -27,6 +27,16 @@ public interface IOptionsGame
     void Apply(IReadOnlyDictionary<int, bool> options);
     /// <summary>Retail's interface text by its string name (an option's tooltip), or null.</summary>
     string? Text(string name);
+    /// <summary>A Config preference as retail holds it (a switch as 1 or 0), or null when it cannot be read.</summary>
+    double? Preference(PreferenceKind kind, string name);
+    /// <summary>A slider preference's range, or null when it cannot be read.</summary>
+    (double Low, double High)? Range(string name);
+    /// <summary>A menu preference's choices in retail's order; a listed menu's are text (Resolution), the others retail's string ids.</summary>
+    IReadOnlyList<MenuChoice> Choices(string name, bool listed);
+    /// <summary>Retail's tooltip for a Config preference, or null.</summary>
+    string? PreferenceTip(string name);
+    /// <summary>Sets the preferences as retail's Config Apply does, telling retail's windows each one changed.</summary>
+    void SetPreferences(IReadOnlyList<PreferenceChange> changes);
     /// <summary>Whether the button does anything here; one that does not is dimmed.</summary>
     bool CanPress(GameplayButton button);
     /// <summary>Does what retail's button does.</summary>
@@ -40,16 +50,17 @@ public sealed record CharacterOptionRow(string Label, int Option = -1, string? N
 }
 
 /// <summary>
-/// The Dereth options window, retail's options panel in its layout and art: the Gameplay Options buttons and the Character tab's switches.
-/// As in retail, a click on a switch is held until Apply, which sends every held change; Reset drops them and Defaults holds retail's
-/// defaults. Closing the window drops what was not applied. One instance serves the session; <see cref="Refresh"/> redraws what changed.
+/// The Dereth options window, retail's options panel in its layout and art: the Gameplay Options buttons, the Character tab's switches and
+/// the Config tab's settings. As in retail, a change on a tab is held until that tab's Apply, which sends every held change; Reset drops them
+/// and Defaults holds retail's defaults. Closing the window drops what was not applied. One instance serves the session; <see cref="Refresh"/>
+/// redraws what changed.
 /// </summary>
-public sealed class OptionsWindow
+public sealed partial class OptionsWindow
 {
     public const string WindowId = "options";
     public const int Width = 310, Height = 600;
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(290, 360));
-    private static readonly string[] TabNames = { "Gameplay Options", "Character" };
+    private static readonly string[] TabNames = { "Gameplay Options", "Character", "Config" };
     private const double RowHeight = 20, HeadingHeight = 22;
 
     // Retail's art (client_portal.dat): the blue Gameplay buttons and the Apply/Reset/Defaults buttons, each a left, middle and right
@@ -147,7 +158,7 @@ public sealed class OptionsWindow
     private readonly Control[] _pages;
     private readonly Dictionary<int, Light> _lights = new();
     private readonly Dictionary<GameplayButton, ArtButton> _gameplay = new();
-    private readonly ArtButton _apply, _reset, _defaults;
+    private readonly ArtButton _apply, _reset;
     // Clicks not yet applied: each option whose shown value differs from retail's.
     private readonly Dictionary<int, bool> _held = new();
     private int _tab;
@@ -156,7 +167,7 @@ public sealed class OptionsWindow
     {
         _game = game;
         _art = art;
-        _tabs = new DerethSegmented(TabNames, cellPadding: new Thickness(4, 4)) { VerticalAlignment = VerticalAlignment.Center };
+        _tabs = new DerethSegmented(TabNames, cellPadding: new Thickness(4, 4), fitLabels: true) { VerticalAlignment = VerticalAlignment.Center };
         _tabs.Chosen += ShowTab;
 
         var gameplay = new Canvas { Width = 298, Height = 337, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
@@ -180,30 +191,15 @@ public sealed class OptionsWindow
                 rows.Children.Add(new Border { Height = HeadingHeight, Padding = new Thickness(4, 0), Child = Label(row.Label, 12.5, HeadingBrush) });
                 continue;
             }
-            var light = new Light(this, row);
+            var option = row.Option;
+            var light = new Light(this, row.Label, row.Name == null ? null : _game.Text($"ID_PlayerOption_{row.Name}_Help"), () => Shown(option),
+                () => Toggle(option));
             _lights[row.Option] = light;
             rows.Children.Add(light);
         }
-        var list = new ScrollViewer
-        {
-            Content = rows, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Visible
-        };
-        _apply = new ArtButton(this, "Apply", RedButton, RedPressed, RedDisabled, Apply) { Width = 80, Height = 32 };
-        _reset = new ArtButton(this, "Reset", RedButton, RedPressed, RedDisabled, Reset) { Width = 80, Height = 32 };
-        _defaults = new ArtButton(this, "Defaults", RedButton, RedPressed, RedDisabled, Defaults) { Width = 80, Height = 32 };
-        // Retail's places: x 16, 106 and 196 in the page.
-        var buttons = new Canvas { Width = 298, Height = 32, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4) };
-        foreach (var (button, x) in new[] { (_apply, 16.0), (_reset, 106.0), (_defaults, 196.0) })
-        {
-            Canvas.SetLeft(button, x);
-            buttons.Children.Add(button);
-        }
-        var character = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
-        character.Children.Add(list);
-        Grid.SetRow(buttons, 1);
-        character.Children.Add(buttons);
+        var character = PageWithButtons(rows, Apply, Reset, Defaults, out _apply, out _reset);
 
-        _pages = new Control[] { gameplay, character };
+        _pages = new Control[] { gameplay, character, BuildConfig() };
         _page = new ContentControl { Margin = new Thickness(0, 5, 0, 0) };
         // The tabs sit in the header beside the close box, as the social window's do.
         Window = new DerethWindow(string.Empty, null, _page, _tabs, stretchActions: true);
@@ -242,6 +238,7 @@ public sealed class OptionsWindow
         foreach (var pair in _gameplay) pair.Value.IsEnabled = _game.CanPress(pair.Key);
         foreach (var light in _lights.Values) light.Refresh();
         _apply.IsEnabled = _reset.IsEnabled = _held.Count > 0;
+        RefreshConfig();
     }
 
     /// <summary>Flips an option as a click on its switch does: held until Apply, or let go when it is back to retail's value.</summary>
@@ -278,7 +275,34 @@ public sealed class OptionsWindow
     }
 
     /// <summary>The window was hidden: as retail's page does, what was not applied is dropped.</summary>
-    public void Hidden() => _held.Clear();
+    public void Hidden()
+    {
+        _held.Clear();
+        _heldConfig.Clear();
+    }
+
+    /// <summary>A settings page as retail lays it out: its rows in a scrolling list, and Apply, Reset and Defaults below at x 16, 106 and 196.</summary>
+    private Control PageWithButtons(Control rows, Action apply, Action reset, Action defaults, out ArtButton applyButton, out ArtButton resetButton)
+    {
+        var list = new ScrollViewer
+        {
+            Content = rows, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Visible
+        };
+        applyButton = new ArtButton(this, "Apply", RedButton, RedPressed, RedDisabled, apply) { Width = 80, Height = 32 };
+        resetButton = new ArtButton(this, "Reset", RedButton, RedPressed, RedDisabled, reset) { Width = 80, Height = 32 };
+        var defaultsButton = new ArtButton(this, "Defaults", RedButton, RedPressed, RedDisabled, defaults) { Width = 80, Height = 32 };
+        var buttons = new Canvas { Width = 298, Height = 32, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4) };
+        foreach (var (button, x) in new[] { (applyButton, 16.0), (resetButton, 106.0), (defaultsButton, 196.0) })
+        {
+            Canvas.SetLeft(button, x);
+            buttons.Children.Add(button);
+        }
+        var page = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        page.Children.Add(list);
+        Grid.SetRow(buttons, 1);
+        page.Children.Add(buttons);
+        return page;
+    }
 
     private Control Rule() => new Border
     {
@@ -298,40 +322,40 @@ public sealed class OptionsWindow
         TextTrimming = TextTrimming.CharacterEllipsis
     });
 
-    /// <summary>One of retail's check lights and its words: a click flips the option; an option retail cannot read is dimmed.</summary>
+    /// <summary>One of retail's check lights and its words: a click flips the setting; one retail cannot read is dimmed.</summary>
     private sealed class Light : Border
     {
         private readonly OptionsWindow _window;
-        private readonly int _option;
+        private readonly Func<bool?> _shown;
         private readonly Image _light = new() { Width = 13, Height = 13, VerticalAlignment = VerticalAlignment.Center };
         private bool _hover;
 
-        public Light(OptionsWindow window, CharacterOptionRow row)
+        public Light(OptionsWindow window, string label, string? tip, Func<bool?> shown, Action toggle)
         {
             _window = window;
-            _option = row.Option;
+            _shown = shown;
             Height = RowHeight;
             Padding = new Thickness(6, 0, 0, 0);
             Background = Brushes.Transparent;
             Cursor = new Cursor(StandardCursorType.Hand);
             var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
             line.Children.Add(_light);
-            line.Children.Add(Label(row.Label, 11.5, LabelBrush));
+            line.Children.Add(Label(label, 11.5, LabelBrush));
             Child = line;
-            if (row.Name != null && window._game.Text($"ID_PlayerOption_{row.Name}_Help") is { } tip) ToolTip.SetTip(this, tip);
+            if (tip != null) ToolTip.SetTip(this, tip);
             PointerEntered += (_, _) => { _hover = true; Refresh(); };
             PointerExited += (_, _) => { _hover = false; Refresh(); };
             PointerPressed += (_, e) =>
             {
                 if (!IsEnabled || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
                 e.Handled = true;
-                _window.Toggle(_option);
+                toggle();
             };
         }
 
         public void Refresh()
         {
-            var shown = _window.Shown(_option);
+            var shown = _shown();
             IsEnabled = shown != null;
             var art = shown switch
             {

@@ -13,7 +13,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// The Dereth options window in place of retail's options panel, held as the social panel is: retail's key and toolbar button open and close
 /// our window, and its close box closes retail's panel. The Character switches are retail's PlayerModule options, read and set through
 /// retail's own GetOption and SetOption; Apply then calls retail's SaveToServer, so the server has them at once. The Gameplay buttons make the calls
-/// retail's buttons make (gmGameplayOptionsUI::ListenToElementMessage). Call everything on the game thread.
+/// retail's buttons make (gmGameplayOptionsUI::ListenToElementMessage, UIElement_Button::HandleButtonClick). The Config settings are retail's
+/// UserPreferences, read and set through the calls retail's option widgets make. Call everything on the game thread.
 /// </summary>
 internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
 {
@@ -54,6 +55,71 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
         Entry("UIElementManager::BroadcastGlobalMessage body", RetailHudCatalogue.BroadcastGlobalMessage + 1, "8B 5C 24 08 33 D2 8B C3 F7 B1 8C 01 00 00")
     };
 
+    // The UserPreferences calls retail's option widgets make (cdecl, PStringBase<char>& name, then the value or where to put it; true when
+    // the preference exists): get/set a switch, a whole number, a menu value and a decimal; a slider's range; a preference's label, tooltip
+    // and string table; a menu's string ids, values and text. Then CM_UI's change notices, the menu one with the old and new value.
+    private const uint GetSwitch = 0x005DEC90, SetSwitch = 0x005DEB90, GetWhole = 0x005DECD0, SetWhole = 0x005DEBD0, GetChoice = 0x005DED10,
+        SetChoice = 0x005DEC10, GetDecimal = 0x005DED50, SetDecimal = 0x005DEC50, DecimalRange = 0x005DE9E0, WholeRange = 0x005DEA30,
+        Description = 0x005DE940, ChoiceIds = 0x005DEAC0, ChoiceValues = 0x00438750, ChoiceStrings = 0x00438860,
+        PreferenceChanged = 0x0047A740, MenuChanged = 0x0047A790;
+    // Freeing what the menu calls hand back: operator delete for the id and value arrays, PStringBase<char>'s vector deleting destructor
+    // for the text.
+    private const uint Free = 0x005DF164, FreeStrings = 0x00407920;
+    // UIElement_Button::HandleButtonClick sends a button's property 0x12 as an input action: through UIElementManager's first vtable slot,
+    // once the input gate at 0x00837FF4 answers its +0x44 call. Configure Keyboard's action is 0x1000001F, In-Game Help Files' 0x7B.
+    private const uint ButtonAction = 0x00472227, InputGate = 0x00837FF4, KeyboardAction = 0x1000001F, HelpAction = 0x7B;
+
+    /// <summary>gmConfigUI's preference names: each a PStringBase&lt;char&gt; global retail builds at start-up, so the calls get retail's own names.</summary>
+    private static readonly IReadOnlyDictionary<string, uint> PreferenceNames = new Dictionary<string, uint>
+    {
+        ["Camera.AlignToSlope"] = 0x0083F59C, ["Camera.Stiffness"] = 0x0083F5A0, ["Camera.AdjustmentSpeed"] = 0x0083F5A4,
+        ["Sound.SoundDisabled"] = 0x0083F5A8, ["Sound.SoundVolume"] = 0x0083F5AC, ["Sound.AmbientSoundDisabled"] = 0x0083F5B0,
+        ["Sound.AmbientSoundVolume"] = 0x0083F5B4, ["Sound.InterfaceSoundDisabled"] = 0x0083F5B8, ["Sound.InterfaceSoundVolume"] = 0x0083F5BC,
+        ["Sound.SoundFeatures"] = 0x0083F5C0, ["Sound.PlaySoundOnlyWhenActive"] = 0x0083F5C4, ["Display.Resolution"] = 0x0083F5D8,
+        ["Display.FullScreen"] = 0x0083F5DC, ["Display.SyncToRefresh"] = 0x0083F5E4, ["Render.TextureFiltering"] = 0x0083F5E8,
+        ["Render.BuildingDetailTextures"] = 0x0083F5F0, ["Render.FieldOfView"] = 0x0083F5F4, ["Render.LandscapeTextureDetail"] = 0x0083F5F8,
+        ["Render.EnvironmentTextureDetail"] = 0x0083F5FC, ["Render.LandscapeDrawDistance"] = 0x0083F604, ["Render.ScreenBrightness"] = 0x0083F608,
+        ["Render.AutomaticDegrades"] = 0x0083F618, ["Render.GraphicsPerformance"] = 0x0083F61C, ["Render.DegradeDistance"] = 0x0083F620,
+        ["Render.MultiPassAlpha"] = 0x0083F624, ["Input.MouseLookSensitivity"] = 0x0083F690, ["Input.InvertMouseLookYAxis"] = 0x0083F698,
+        ["Input.UseMouseTurning"] = 0x0083F69C, ["UI.ChatFontFace"] = 0x0083F6C8, ["UI.ChatFontSize"] = 0x0083F6CC
+    };
+
+    private const string Lookup = "8B 44 24 04 83 EC 0C 50 8D 4C 24 04 51 B9 4C 51 82 00 E8";
+    private static readonly IReadOnlyList<NativeUiEntry> PreferenceNatives = new[]
+    {
+        Wrapper("switch", GetSwitch, "59 44 E5 FF", "04"), Wrapper("set switch", SetSwitch, "59 45 E5 FF", "08"),
+        Wrapper("whole number", GetWhole, "19 44 E5 FF", "0C"), Wrapper("set whole number", SetWhole, "19 45 E5 FF", "10"),
+        Wrapper("menu value", GetChoice, "D9 43 E5 FF", "1C"), Wrapper("set menu value", SetChoice, "D9 44 E5 FF", "20"),
+        Wrapper("decimal", GetDecimal, "99 43 E5 FF", "30"), Wrapper("set decimal", SetDecimal, "99 44 E5 FF", "34"),
+        new NativeUiEntry("UserPreferences: decimal range (vtable +0x38)", DecimalRange, NativeUiCatalogue.Bytes(Lookup +
+            " 09 47 E5 FF 8B 44 24 08 85 C0 74 1C 8B 48 08 85 C9 B0 01 74 0F 8B 44 24 18 8B 11 50 8B 44 24 18 50 FF 52 38"), Source, "Cdecl"),
+        new NativeUiEntry("UserPreferences: whole number range (vtable +0x14)", WholeRange, NativeUiCatalogue.Bytes(Lookup +
+            " B9 46 E5 FF 8B 44 24 08 85 C0 74 1C 8B 48 08 85 C9 B0 01 74 0F 8B 44 24 18 8B 11 50 8B 44 24 18 50 FF 52 14"), Source, "Cdecl"),
+        new NativeUiEntry("UserPreferences: label, tooltip and string table ids", Description, NativeUiCatalogue.Bytes(Lookup +
+            " A9 47 E5 FF 8B 44 24 08 85 C0 74 2A 8B 48 08 85 C9 B0 01 74 1D 8B 51 0C 8B 44 24 14 89 10 8B 51 10"), Source, "Cdecl"),
+        new NativeUiEntry("UserPreferences: menu string ids (vtable +0x24)", ChoiceIds, NativeUiCatalogue.Bytes(Lookup +
+            " 29 46 E5 FF 8B 44 24 08 85 C0 74 17 8B 48 08 85 C9 B0 01 74 0A 8B 44 24 14 8B 11 50 FF 52 24"), Source, "Cdecl"),
+        new NativeUiEntry("UserPreferences::InqChoiceValues", ChoiceValues, NativeUiCatalogue.Bytes(
+            "A1 C8 80 83 00 83 EC 0C 85 C0 75 21 68 00 81 00 00 E8 8F 69 1A 00"), Source, "Cdecl"),
+        new NativeUiEntry("UserPreferences::InqChoiceStrings", ChoiceStrings, NativeUiCatalogue.Bytes(
+            "A1 C8 80 83 00 83 EC 0C 85 C0 75 21 68 00 81 00 00 E8 7F 68 1A 00"), Source, "Cdecl"),
+        new NativeUiEntry("CM_UI::SendNotice_UserPreferenceChanged", PreferenceChanged, NativeUiCatalogue.Bytes(
+            "E8 CB 00 00 00 8B 10 68 1E D2 4D 00 8B C8 FF 52 10"), Source, "Cdecl"),
+        new NativeUiEntry("CM_UI::SendNotice_UserPreferenceChanged_Menu", MenuChanged, NativeUiCatalogue.Bytes(
+            "E8 7B 00 00 00 8B 10 68 76 D2 4D 00 8B C8 FF 52 10"), Source, "Cdecl"),
+        new NativeUiEntry("operator delete", Free, NativeUiCatalogue.Bytes("FF 25 34 32 79 00"), Source, "Cdecl"),
+        new NativeUiEntry("PStringBase<char> vector deleting destructor", FreeStrings, NativeUiCatalogue.Bytes(
+            "51 F6 44 24 08 02 56 57 8B F9 74 64 8B 47 FC 53 8D 5F FC 8D 3C 87"), Source, "ThisCall")
+    };
+
+    private static readonly IReadOnlyList<NativeUiEntry> ButtonNatives = new[]
+    {
+        new NativeUiEntry("UIElement_Button::HandleButtonClick: property 0x12 sent as an input action", ButtonAction, NativeUiCatalogue.Bytes(
+            "8B 44 24 08 BB 01 00 00 00 3B C3 74 4F 8B 0D F4 7F 83 00 85 C9 74 45 8B 11 FF 52 44 85 C0 74 3C 8B 35 3C E0 83 00 85 F6 74 32 " +
+            "8D 4C 24 0C E8 86 EC FB FF 8B 44 24 08 89 44 24 0C 8D 44 24 0C C7 44 24 28 03 00 00 00 88 5C 24 2C 8B 16 50 8B CE FF 12"),
+            Source, "ThisCall")
+    };
+
     private readonly ILegACEyPluginHost _host;
     private readonly RetailPanelTakeover? _panel;
     private readonly Func<IReadOnlyDictionary<uint, string>> _strings;
@@ -62,7 +128,9 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
     private Action? _hide;
     private bool _shown;
     private long _refreshedAt;
-    private bool? _optionsValid, _broadcastsValid;
+    private bool? _optionsValid, _broadcastsValid, _preferencesValid, _buttonsValid;
+    // Whether a number preference is held as a decimal (else a whole number), as each first read finds it.
+    private readonly Dictionary<string, bool> _decimal = new();
 
     public OptionsFeature(ILegACEyPluginHost host, IRetailPanelPort? port, Func<IReadOnlyDictionary<uint, string>> strings, Action<string> log)
     {
@@ -92,6 +160,7 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
         _view = null;
         _hide = null;
         _shown = false;
+        _decimal.Clear();
     }
 
     public void Dispose() => _panel?.Dispose();
@@ -176,10 +245,9 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
 
     string? IOptionsGame.Text(string name) => _strings().TryGetValue(CharacterNames.Hash(name), out var text) ? text : null;
 
-    // Configure Keyboard and In-Game Help Files open through the button's own property, not yet followed; they stay dimmed.
     bool IOptionsGame.CanPress(GameplayButton button) => button switch
     {
-        GameplayButton.ConfigureKeyboard or GameplayButton.HelpFiles => false,
+        GameplayButton.ConfigureKeyboard or GameplayButton.HelpFiles => ButtonsValid(),
         GameplayButton.ExitToCharacterSelection => NativeUi.Ready,
         GameplayButton.ExitGame or GameplayButton.MouseTurning => BroadcastsValid(),
         _ => true
@@ -198,6 +266,12 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
             case GameplayButton.MouseTurning:
                 Broadcast(MouseTurningMessage, 0);
                 break;
+            case GameplayButton.ConfigureKeyboard:
+                SendAction(KeyboardAction);
+                break;
+            case GameplayButton.HelpFiles:
+                SendAction(HelpAction);
+                break;
             case GameplayButton.UrgentAssistance:
             case GameplayButton.ReportAbuse:
                 try { Process.Start(new ProcessStartInfo(SupportPage) { UseShellExecute = true }); }
@@ -213,6 +287,176 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
         if (manager != IntPtr.Zero)
             ((delegate* unmanaged[Thiscall]<IntPtr, uint, uint, void>)RetailHudCatalogue.BroadcastGlobalMessage)(manager, message, parameter);
     }
+
+    // The Config settings.
+
+    double? IOptionsGame.Preference(PreferenceKind kind, string name)
+    {
+        if (Name(name) is not { } at) return null;
+        switch (kind)
+        {
+            case PreferenceKind.Switch:
+            {
+                byte on = 0;
+                return ((delegate* unmanaged[Cdecl]<IntPtr, byte*, byte>)GetSwitch)(at, &on) != 0 ? on != 0 ? 1 : 0 : null;
+            }
+            case PreferenceKind.Choice:
+            {
+                uint value = 0;
+                return ((delegate* unmanaged[Cdecl]<IntPtr, uint*, byte>)GetChoice)(at, &value) != 0 ? value : null;
+            }
+            default:
+            {
+                // A slider's preference is a decimal or a whole number; retail's slider knows which, here the first read that answers does.
+                if (!_decimal.TryGetValue(name, out var isDecimal) || isDecimal)
+                {
+                    float value = 0;
+                    if (((delegate* unmanaged[Cdecl]<IntPtr, float*, byte>)GetDecimal)(at, &value) != 0)
+                    {
+                        _decimal[name] = true;
+                        return value;
+                    }
+                }
+                int whole = 0;
+                if (((delegate* unmanaged[Cdecl]<IntPtr, int*, byte>)GetWhole)(at, &whole) == 0) return null;
+                _decimal[name] = false;
+                return whole;
+            }
+        }
+    }
+
+    (double Low, double High)? IOptionsGame.Range(string name)
+    {
+        if (Name(name) is not { } at || !_decimal.TryGetValue(name, out var isDecimal)) return null;
+        if (isDecimal)
+        {
+            float low = 0, high = 0;
+            return ((delegate* unmanaged[Cdecl]<IntPtr, float*, float*, byte>)DecimalRange)(at, &low, &high) != 0 ? (low, high) : null;
+        }
+        int lowWhole = 0, highWhole = 0;
+        return ((delegate* unmanaged[Cdecl]<IntPtr, int*, int*, byte>)WholeRange)(at, &lowWhole, &highWhole) != 0 ? (lowWhole, highWhole) : null;
+    }
+
+    IReadOnlyList<MenuChoice> IOptionsGame.Choices(string name, bool listed)
+    {
+        if (Name(name) is not { } at) return Array.Empty<MenuChoice>();
+        var values = Fill(ChoiceValues, at, out var valuesData, out var valueCount);
+        var choices = new List<MenuChoice>();
+        if (listed)
+        {
+            // Resolution: retail's own words for each choice ("1920x1080").
+            var strings = Fill(ChoiceStrings, at, out var stringsData, out var stringCount);
+            for (var i = 0; i < Math.Min(stringCount, valueCount); i++)
+                choices.Add(new MenuChoice(Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(stringsData, i * 4)) ?? string.Empty, (uint)Marshal.ReadInt32(valuesData, i * 4)));
+            if (strings.Owned) ((delegate* unmanaged[Thiscall]<IntPtr, uint, IntPtr>)FreeStrings)(stringsData, 3);
+        }
+        else
+        {
+            // The others: retail's string ids, with the values in order, or 0, 1, 2, ... when the preference has none.
+            var ids = Fill(ChoiceIds, at, out var idsData, out var idCount);
+            for (var i = 0; i < idCount; i++)
+            {
+                var id = (uint)Marshal.ReadInt32(idsData, i * 4);
+                var value = valueCount > 0 ? i < valueCount ? (uint)Marshal.ReadInt32(valuesData, i * 4) : (uint?)null : (uint)i;
+                if (value is { } v) choices.Add(new MenuChoice(_strings().TryGetValue(id, out var text) ? text : v.ToString(), v));
+            }
+            if (ids.Owned) ((delegate* unmanaged[Cdecl]<IntPtr, void>)Free)(idsData);
+        }
+        if (values.Owned) ((delegate* unmanaged[Cdecl]<IntPtr, void>)Free)(valuesData);
+        return choices;
+    }
+
+    string? IOptionsGame.PreferenceTip(string name)
+    {
+        if (Name(name) is not { } at) return null;
+        uint label = 0, tip = 0, table = 0;
+        return ((delegate* unmanaged[Cdecl]<IntPtr, uint*, uint*, uint*, byte>)Description)(at, &label, &tip, &table) != 0
+            && _strings().TryGetValue(tip, out var text) ? text : null;
+    }
+
+    void IOptionsGame.SetPreferences(IReadOnlyList<PreferenceChange> changes)
+    {
+        foreach (var change in changes)
+        {
+            if (Name(change.Name) is not { } at) continue;
+            // As retail's option widgets apply: the set, then the change notice (a menu's also with its old and new value).
+            var set = change.Kind switch
+            {
+                PreferenceKind.Switch => ((delegate* unmanaged[Cdecl]<IntPtr, int, byte>)SetSwitch)(at, change.Value != 0 ? 1 : 0),
+                PreferenceKind.Choice => ((delegate* unmanaged[Cdecl]<IntPtr, uint, byte>)SetChoice)(at, (uint)change.Value),
+                _ => _decimal.TryGetValue(change.Name, out var isDecimal) && !isDecimal
+                    ? ((delegate* unmanaged[Cdecl]<IntPtr, int, byte>)SetWhole)(at, (int)Math.Round(change.Value))
+                    : ((delegate* unmanaged[Cdecl]<IntPtr, float, byte>)SetDecimal)(at, (float)change.Value)
+            };
+            if (set == 0) continue;
+            ((delegate* unmanaged[Cdecl]<IntPtr, byte>)PreferenceChanged)(at);
+            if (change.Kind == PreferenceKind.Choice)
+                ((delegate* unmanaged[Cdecl]<IntPtr, uint, uint, byte>)MenuChanged)(at, (uint)change.Old, (uint)change.Value);
+        }
+    }
+
+    /// <summary>
+    /// Fills a SmartArray (data, capacity with the owned bit 0x80000000, count) through one of retail's menu calls. The caller frees the
+    /// data when it is owned.
+    /// </summary>
+    private static (bool Answered, bool Owned) Fill(uint call, IntPtr name, out IntPtr data, out int count)
+    {
+        var array = stackalloc uint[3];
+        array[0] = array[1] = array[2] = 0;
+        var answered = ((delegate* unmanaged[Cdecl]<IntPtr, uint*, byte>)call)(name, array) != 0;
+        data = new IntPtr((int)array[0]);
+        count = data == IntPtr.Zero ? 0 : (int)array[2];
+        return (answered, data != IntPtr.Zero && (array[1] & 0x80000000) != 0);
+    }
+
+    /// <summary>The address of retail's name for a preference, once the preference calls and every name have matched; null otherwise.</summary>
+    private IntPtr? Name(string name)
+    {
+        _preferencesValid ??= NativeUi.Ready && NativeUiCatalogue.Validate(NativeUi.ReadMemory, _log, PreferenceNatives,
+            "The options window's Config tab is off: the running client does not match retail's preference calls.") && NamesMatch();
+        return _preferencesValid == true && PreferenceNames.TryGetValue(name, out var at) ? new IntPtr((int)at) : null;
+    }
+
+    private bool NamesMatch()
+    {
+        foreach (var pair in PreferenceNames)
+        {
+            var (name, at) = (pair.Key, pair.Value);
+            var text = Marshal.ReadIntPtr(new IntPtr((int)at));
+            var found = text == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(text);
+            if (found == name) continue;
+            _log($"The options window's Config tab is off: retail's preference name at 0x{at:X8} is \"{found}\", not \"{name}\".");
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>Sends an input action as a click on a retail button with property 0x12 does.</summary>
+    private void SendAction(uint action)
+    {
+        if (!ButtonsValid()) return;
+        var gate = Marshal.ReadIntPtr(new IntPtr((int)InputGate));
+        if (gate == IntPtr.Zero || ((delegate* unmanaged[Thiscall]<IntPtr, int>)Marshal.ReadIntPtr(Marshal.ReadIntPtr(gate), 0x44))(gate) == 0) return;
+        var manager = Marshal.ReadIntPtr(new IntPtr(NativeUi.Manager));
+        if (manager == IntPtr.Zero) return;
+        // The event retail builds (InputEvent's constructor, 0x00430EE0): zeroes, -1 at +0x08, 0xC0000000 at +0x14; then the action, the
+        // type 3 at +0x1C and "pressed" at +0x20.
+        var input = stackalloc byte[0x48];
+        new Span<byte>(input, 0x48).Clear();
+        *(uint*)input = action;
+        *(int*)(input + 0x08) = -1;
+        *(uint*)(input + 0x14) = 0xC0000000;
+        *(int*)(input + 0x1C) = 3;
+        input[0x20] = 1;
+        ((delegate* unmanaged[Thiscall]<IntPtr, byte*, byte>)Marshal.ReadIntPtr(Marshal.ReadIntPtr(manager)))(manager, input);
+    }
+
+    private bool ButtonsValid() => _buttonsValid ??= NativeUi.Ready && NativeUiCatalogue.Validate(NativeUi.ReadMemory, _log, ButtonNatives,
+        "The options window's Configure Keyboard and In-Game Help Files are off: the running client does not match retail's buttons.");
+
+    private static NativeUiEntry Wrapper(string what, uint address, string lookupCall, string slot) =>
+        new($"UserPreferences: {what} (vtable +0x{slot})", address, NativeUiCatalogue.Bytes(Lookup + " " + lookupCall +
+            " 8B 44 24 08 85 C0 74 07 8B 48 08 B0 01 EB 04 32 C0 33 C9 84 C0 74 0A 8B 44 24 14 8B 11 50 FF 52 " + slot), Source, "Cdecl");
 
     private bool BroadcastsValid() => _broadcastsValid ??= NativeUi.Ready && NativeUiCatalogue.Validate(NativeUi.ReadMemory, _log, BroadcastNatives,
         "The options window's Exit Game and Use Mouse Turning Settings are off: the running client does not match retail's buttons.");
