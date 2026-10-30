@@ -86,7 +86,7 @@ public sealed class DerethSegmented : Border
 /// <summary>
 /// A horizontal slider in the Dereth look: a groove filled in gold up to a cream thumb. It takes values from <paramref name="minimum"/> to
 /// <paramref name="maximum"/> in steps of <paramref name="step"/>. The thumb follows a drag, and <see cref="ValueChanged"/> is raised as it
-/// moves. <see cref="Committed"/> is raised with the value when the pointer lets go, if the value moved; a drag that loses the pointer's
+/// moves. <see cref="Committed"/> is raised with the value when the pointer lets go, if the value moved or <see cref="CommitsUnchanged"/>; a drag that loses the pointer's
 /// capture is cancelled, and the thumb goes back where it was pressed.
 /// </summary>
 public sealed class DerethSlider : Control
@@ -127,6 +127,9 @@ public sealed class DerethSlider : Control
     /// <summary>The player let go after moving the thumb, with the value it stopped on.</summary>
     public event Action<int>? Committed;
 
+    /// <summary>Whether letting go raises <see cref="Committed"/> even where the thumb was pressed, for a setting that re-applies at the same value.</summary>
+    public bool CommitsUnchanged { get; set; }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
@@ -165,7 +168,7 @@ public sealed class DerethSlider : Control
         _dragging = false;
         // Releasing the capture raises PointerCaptureLost, which finds the drag already over.
         e.Pointer.Capture(null);
-        if (_value != _pressedValue) Committed?.Invoke(_value);
+        if (_value != _pressedValue || CommitsUnchanged) Committed?.Invoke(_value);
     }
 
     private void CancelDrag()
