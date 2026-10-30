@@ -526,7 +526,7 @@ public sealed class DerethWindow : UserControl
         _name = new DerethTitleText
         {
             FullText = title, Foreground = DerethPalette.CreamBrush, FontFamily = DerethPalette.Title, VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = centreTitle ? TextAlignment.Center : TextAlignment.Left
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
         _header = header;
         // The header buttons' width on the right, kept clear on both sides of a centred title.

@@ -271,8 +271,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// </summary>
     private static string TypeLineOf(AppraisalResponse response, string covered)
     {
-        var weaponType = response.Ints.TryGetValue(WeaponTypeInt, out var kind) && kind > 0 && kind < WeaponTypeNames.Length ? WeaponTypeNames[kind] : null;
-        var type = weaponType ?? (response.Ints.TryGetValue(ItemTypeInt, out var bits) ? ItemTypeNames.FirstOrDefault(item => (bits & item.Bit) != 0).Name : null);
+        var type = WeaponTypeName(response) ?? (response.Ints.TryGetValue(ItemTypeInt, out var bits) ? ItemTypeNames.FirstOrDefault(item => (bits & item.Bit) != 0).Name : null);
         return string.Join(" · ", new[] { type, covered.Length == 0 ? null : "Covers " + covered }.Where(part => !string.IsNullOrEmpty(part)));
     }
 
@@ -284,11 +283,15 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     {
         // The skill comes from the weapon profile: PropertyInt WeaponSkill is not an assessment property, so the server never sends it as one.
         if (weapon.WeaponSkill == 0 || weapon.WeaponSkill >= SkillNames.Length) return null;
-        var kind = response.Ints.TryGetValue(WeaponTypeInt, out var type) && type > 0 && type < WeaponTypeNames.Length ? WeaponTypeNames[type] : null;
+        var kind = WeaponTypeName(response);
         // Retail's one subtype that is not the type word (OpenAC's WeaponSubtype, MIT).
-        if (kind == "Unarmed") kind = "Unarmed Weapon";
+        if (kind == WeaponTypeNames[UnarmedType]) kind = "Unarmed Weapon";
         return kind == null ? SkillNames[weapon.WeaponSkill] : $"{SkillNames[weapon.WeaponSkill]} ({kind})";
     }
+
+    /// <summary>The weapon's type word ("Staff"), or null when the server sent none or one with no word.</summary>
+    private static string? WeaponTypeName(AppraisalResponse response) =>
+        response.Ints.TryGetValue(WeaponTypeInt, out var kind) && kind > 0 && kind < WeaponTypeNames.Length ? WeaponTypeNames[kind] : null;
 
     // The clothing slots (0x0800_7FFF) and the weapon and shield slots (0x03F0_0000), as OpenAC's formatter tests them.
     private const uint ClothingLocations = 0x0800_7FFF, WeaponAndShieldLocations = 0x03F0_0000;
@@ -314,6 +317,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// ACE's WeaponType names by its value (Unarmed 1 to Thrown 10), as OpenAC names them. Two-handed (11) and magic (12) have no word in
     /// either, so for them the type line falls back to the item type name.
     /// </summary>
+    private const int UnarmedType = 1;
     private static readonly string[] WeaponTypeNames =
     {
         "", "Unarmed", "Sword", "Axe", "Mace", "Spear", "Dagger", "Staff", "Bow", "Crossbow", "Thrown"

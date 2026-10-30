@@ -640,6 +640,7 @@ public sealed class AppraisalTests
         }.Build();
 
         var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
+        Assert.Equal(new[] { "Material", "Gems" }, content.Sections.Single(section => section.Heading == "Properties").Rows.Select(row => row.Label).Take(2));
         var lines = RetailAppraisalLayout.Groups(content).SelectMany(group => group.Lines).Select(line => line.Value).ToList();
 
         Assert.Equal("Ruby Claw", content.Name);
