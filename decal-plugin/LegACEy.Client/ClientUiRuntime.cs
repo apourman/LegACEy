@@ -624,12 +624,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>
     /// /legacey (or @legacey) opens or closes the Settings window, so it can be reached without the Dereth toolbar. /water on, off or a percent
     /// (0 to 200) sets the water effect, and /water alone says how it is set; the line is eaten either way, so the server never sees it.
+    /// After the UI has turned off from an error, /legacey starts it again.
     /// </summary>
     public bool CommandLine(string text)
     {
-        if (_failed || !_inGame) return false;
         var command = text.Trim();
-        if (command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) || command.Equals("@legacey", StringComparison.OrdinalIgnoreCase))
+        var legacey = command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) || command.Equals("@legacey", StringComparison.OrdinalIgnoreCase);
+        if (legacey && _failed && _loggedIn)
+        {
+            Restart();
+            return true;
+        }
+        if (_failed || !_inGame) return false;
+        if (legacey)
         {
             Guard(ToggleSettings);
             return true;
@@ -640,12 +647,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             return false;
         if (_water.Apply(space < 0 ? "" : command[space..]) is not { } water)
         {
-            WaterChat("Water: /water on, /water off or /water 0 to 200 (percent; 100 is the usual look).");
+            SayInChat("Water: /water on, /water off or /water 0 to 200 (percent; 100 is the usual look).");
             return true;
         }
         SetWater(water);
-        WaterChat(water.ToString());
+        SayInChat(water.ToString());
         return true;
+    }
+
+    /// <summary>/legacey after the UI turned off: clears the failure, builds the UI again as a login does, and says how it went.</summary>
+    private void Restart()
+    {
+        Log("Restarting the LegACEy UI from /legacey.");
+        _failed = false;
+        StartSession();
+        SayInChat(_failed ? "LegACEy could not start again. Restart the game to bring it back." : "LegACEy is back on.");
     }
 
     /// <summary>
@@ -719,7 +735,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     // A chat line that fails only goes to the log: it is no reason to switch the UI off.
-    private static void WaterChat(string line)
+    private static void SayInChat(string line)
     {
         try { Bridge.Chat(line, SystemChat); }
         catch (Exception exception) { Log($"Could not write '{line}' to chat: {exception.Message}"); }
@@ -786,9 +802,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // A Log out and update whose logout never came through is forgotten, so this session's own logout doesn't close the game.
         _quitPending = false;
         _updates.Check();
-        if (_failed || !NativeUi.Ready)
-            return;
+        if (!_failed) StartSession();
+    }
 
+    /// <summary>Builds whatever the UI is missing for this character, at login and when /legacey restarts it.</summary>
+    private void StartSession()
+    {
+        if (!NativeUi.Ready) return;
         Guard(() =>
         {
             if (_portal == null)
@@ -4869,6 +4889,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _failed = true;
         Log($"LegACEy UI disabled: {exception}");
         TearDown();
+        SayInChat("LegACEy hit an error and turned off. Type /legacey to start it again.");
     }
 
     /// <summary>Disable only the post-UI windows when EndScene fails; retail surfaces continue.</summary>
@@ -5012,6 +5033,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up feature UI during unload: {exception}"); }
         _clientUi = null;
+        _settings = null;
         try { _serverChannel?.Reset(); }
         catch (Exception exception) { Log($"Could not fail outstanding server channel requests: {exception}"); }
         _hovered = null;
