@@ -1,4 +1,7 @@
+using Avalonia.Controls;
 using LegACEy.Client.Demo;
+using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -25,4 +28,27 @@ public sealed class WindowOpacitiesTests
         Assert.Equal(WindowOpacities.Faintest, restarted.Of("server", "Alice", "Vault/vault"));
         Assert.Equal(40, restarted.Of("server", "Alice", "dereth-radar"));
     }
+
+    [Fact]
+    public void Opacity_fades_a_window_background_and_leaves_its_frame_and_title_solid() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new DerethWindow("Opacity", null, new Border()), 200, 150);
+        byte[] Drawn(double fill)
+        {
+            DerethFrame.SetFillOpacity(panel.Content, fill);
+            panel.Tick();
+            return panel.Frame.Pixels.ToArray();
+        }
+        var whole = Drawn(1);
+        var faded = Drawn(0.3);
+        var stride = panel.Frame.Stride;
+        byte Alpha(byte[] pixels, int x, int y) => pixels[y * stride + x * 4 + 3];
+
+        // The fill in the middle of the window fades to the setting.
+        Assert.Equal(255, Alpha(whole, 100, 100));
+        Assert.InRange(Alpha(faded, 100, 100), 70, 84);
+        // The frame's edge and the title draw as they did.
+        for (var y = 20; y < 140; y++) Assert.Equal(Alpha(whole, 3, y), Alpha(faded, 3, y));
+        Assert.Contains(Enumerable.Range(8, 60), x => Alpha(whole, x, 22) == 255 && Alpha(faded, x, 22) == 255);
+    });
 }

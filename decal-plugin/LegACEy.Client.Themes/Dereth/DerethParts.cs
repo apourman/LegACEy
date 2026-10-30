@@ -112,6 +112,19 @@ public sealed class DerethFrame : Decorator
     private static readonly IBrush GripFill = DerethPalette.Brush(Color.FromArgb(0x80, DerethPalette.Cream.R, DerethPalette.Cream.G, DerethPalette.Cream.B));
     private static readonly IPen GripPen = new Pen(DerethPalette.CreamBrush, 1.2);
 
+    /// <summary>
+    /// How opaque a window's background draws, 0 to 1, from its Opacity setting. Set on the window's root and inherited: as in retail, only
+    /// the backgrounds fade (a window frame's fill, a plate's, the radar's ground); the frame art, text, icons and 3D dolls stay solid.
+    /// </summary>
+    public static readonly AttachedProperty<double> FillOpacityProperty =
+        AvaloniaProperty.RegisterAttached<DerethFrame, Visual, double>("FillOpacity", 1, inherits: true);
+
+    public static double GetFillOpacity(Visual visual) => visual.GetValue(FillOpacityProperty);
+
+    public static void SetFillOpacity(Visual visual, double value) => visual.SetValue(FillOpacityProperty, value);
+
+    static DerethFrame() => AffectsRender<DerethFrame>(FillOpacityProperty);
+
     private readonly DerethFrameArt _kind;
     private NineSlice _art;
     private DerethCorner _hoveredCorner;
@@ -186,11 +199,15 @@ public sealed class DerethFrame : Decorator
         // through at the corners.
         if (_kind == DerethFrameArt.Button)
             context.FillRectangle(_art.Fill, new Rect(Bounds.Size).Deflate(1), ButtonFillRadius);
-        else if (_hole.Width > 0 && _hole.Height > 0)
-            context.DrawGeometry(_art.Fill, null,
-                new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(new Rect(Bounds.Size)), new RectangleGeometry(_hole)));
         else
-            context.FillRectangle(_art.Fill, new Rect(Bounds.Size));
+        {
+            using var faded = context.PushOpacity(GetFillOpacity(this));
+            if (_hole.Width > 0 && _hole.Height > 0)
+                context.DrawGeometry(_art.Fill, null,
+                    new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(new Rect(Bounds.Size)), new RectangleGeometry(_hole)));
+            else
+                context.FillRectangle(_art.Fill, new Rect(Bounds.Size));
+        }
         DerethSheet.Draw(context, _art.TopSource, new Rect(corner, 0, width - 2 * corner, edge));
         DerethSheet.Draw(context, _art.TopSource, new Rect(corner, height - edge, width - 2 * corner, edge), flipY: true);
         DerethSheet.Draw(context, _art.LeftSource, new Rect(0, corner, edge, height - 2 * corner));

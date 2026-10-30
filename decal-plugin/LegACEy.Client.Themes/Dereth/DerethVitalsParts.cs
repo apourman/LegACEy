@@ -120,6 +120,8 @@ public sealed class DerethGildedPlate : Decorator
     private readonly bool _ornate;
     private double? _ornamentX;
 
+    static DerethGildedPlate() => AffectsRender<DerethGildedPlate>(DerethFrame.FillOpacityProperty);
+
     /// <param name="cut">How far the corners are cut, in DIPs.</param>
     /// <param name="ornate">Whether the corners, the top lozenge and the bottom stud are drawn.</param>
     /// <param name="ornamentX">Where the top lozenge, the bottom rule and the stud are centred, in DIPs; the plate's middle when null.</param>
@@ -146,8 +148,11 @@ public sealed class DerethGildedPlate : Decorator
     {
         var size = Bounds.Size;
         var outline = DerethGilt.Chamfered(new Rect(size), _cut);
-        context.DrawGeometry(Navy, null, outline);
-        using (context.PushGeometryClip(outline)) DrawDamask(context, size);
+        using (context.PushOpacity(DerethFrame.GetFillOpacity(this)))
+        {
+            context.DrawGeometry(Navy, null, outline);
+            using (context.PushGeometryClip(outline)) DrawDamask(context, size);
+        }
         context.DrawGeometry(null, OuterRule, DerethGilt.Chamfered(new Rect(size).Deflate(0.8), _cut));
         context.DrawGeometry(null, InnerRule, DerethGilt.Chamfered(new Rect(size).Deflate(3.4), _cut - 1.2));
         context.DrawGeometry(null, Shadow, DerethGilt.Chamfered(new Rect(size).Deflate(4.4), _cut - 1.6));
