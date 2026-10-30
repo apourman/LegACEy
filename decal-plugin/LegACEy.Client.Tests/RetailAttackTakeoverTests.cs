@@ -244,6 +244,38 @@ public sealed class RetailAttackTakeoverTests
     /// A retail attack panel root: its visibility is the state the takeover hides and restores. Retail shows it when the stance changes to melee,
     /// missile (the attack bar) or magic (the spell bar) and hides it when the stance changes to peace.
     /// </summary>
+    [Fact]
+    public void The_spell_bar_holds_the_same_panel_in_magic_and_each_switch_gives_it_back_as_retail_shows_it()
+    {
+        var panel = new FakeRoot(true);
+        var opened = new List<RetailStance>();
+        RetailAttackTakeover Bar(RetailStance covers) => new(() => true, () => new RetailHeldWindows(new IRetailTakeoverPort[] { panel }),
+            () => Place, _ => { opened.Add(covers); return new FakeWindow(); }, _ => { }, covers);
+        var attack = Bar(RetailStance.Melee | RetailStance.Missile);
+        var spells = Bar(RetailStance.Magic);
+        // As the runtime ticks them: the bar leaving the stance first, so it gives the panel back before the other holds it.
+        void Tick(RetailStance stance, bool attackOn = true)
+        {
+            panel.RetailTakes(stance);
+            var (first, second, firstOn) = stance == RetailStance.Magic ? (attack, spells, attackOn) : (spells, attack, true);
+            first.Tick(firstOn, true, true, stance, Viewport);
+            second.Tick(second == attack ? attackOn : true, true, true, stance, Viewport);
+        }
+
+        Tick(RetailStance.Melee);
+        Tick(RetailStance.Magic);
+        Assert.False(panel.Visible);
+        Assert.True(spells.Holds);
+        Assert.False(attack.Holds);
+        Tick(RetailStance.Melee);
+        Assert.Equal(new[] { RetailStance.Melee | RetailStance.Missile, RetailStance.Magic, RetailStance.Melee | RetailStance.Missile }, opened);
+
+        // The attack bar switched off in melee shows retail's panel, as retail has it in melee.
+        Tick(RetailStance.Melee, attackOn: false);
+        Assert.True(panel.Visible);
+        Assert.False(attack.Holds || spells.Holds);
+    }
+
     private sealed class FakeRoot : IRetailTakeoverPort
     {
         private RetailStance? _stance;
