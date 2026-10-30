@@ -23,9 +23,7 @@ internal sealed unsafe class ModelRenderer : IDisposable
     public ModelRenderer(IntPtr device) => _device = device;
 
     /// <param name="outlined">Model parts outlined in <paramref name="colour"/> (RGB): what a drop adds or a lift takes off.</param>
-    /// <param name="opacity">How opaque the model draws, 0 to 1, with its window. It draws whole while parts are outlined.</param>
-    public void Draw(CharacterModel model, Rectangle area, Quaternion orientation, float zoom, float focus, IReadOnlyCollection<int> outlined, uint colour,
-        double opacity = 1)
+    public void Draw(CharacterModel model, Rectangle area, Quaternion orientation, float zoom, float focus, IReadOnlyCollection<int> outlined, uint colour)
     {
         area.Intersect(Viewport(_device));
         if (area.Width <= 0 || area.Height <= 0) return;
@@ -90,26 +88,6 @@ internal sealed unsafe class ModelRenderer : IDisposable
             SetSamplerState(_device, 0, SamplerState.AddressU, AddressWrap);
             SetSamplerState(_device, 0, SamplerState.AddressV, AddressWrap);
 
-            if (opacity < 1 && outlined.Count == 0)
-            {
-                // Each pixel's nearest surface goes into the depth buffer first and only it is blended in after, so the model fades as one
-                // picture instead of showing its far side through its near one.
-                SetRenderState(_device, RenderState.ColorWriteEnable, 0);
-                foreach (var mesh in _meshes)
-                    DrawMesh(mesh, mesh.Vertices);
-                var alpha = (int)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
-                SetRenderState(_device, RenderState.ColorWriteEnable, 0xF);
-                SetRenderState(_device, RenderState.ZWriteEnable, 0);
-                SetRenderState(_device, RenderState.TextureFactor, alpha << 24);
-                SetRenderState(_device, RenderState.AlphaRef, 0x80 * alpha / 255);
-                SetStageState(_device, 0, StageState.AlphaOp, OpModulate);
-                SetStageState(_device, 0, StageState.AlphaArg2, ArgFactor);
-                SetRenderState(_device, RenderState.AlphaBlendEnable, 1);
-                SetRenderState(_device, RenderState.SeparateAlphaBlendEnable, 0);
-                SetRenderState(_device, RenderState.BlendOp, BlendOpAdd);
-                SetRenderState(_device, RenderState.SrcBlend, BlendSrcAlpha);
-                SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
-            }
             foreach (var mesh in _meshes)
                 DrawMesh(mesh, mesh.Vertices);
 
