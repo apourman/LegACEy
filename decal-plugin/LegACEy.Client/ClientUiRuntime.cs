@@ -154,10 +154,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const int SystemChat = 5;
     private WaterChoice _water = WaterChoice.Default;
     // How big LegACEy windows show against their design size, in percent: the player's UI size from the Settings window, kept for every
-    // character. Drag icons keep retail's 32 pixels. An Avalonia that cannot scale panels shows them
-    // at design size rather than failing every window.
+    // character. Windows are designed at retail's pixel size, so 100 is retail's size. Drag icons keep retail's 32 pixels. An Avalonia that
+    // cannot scale panels shows them at design size rather than failing every window.
     private const string UiSizeKey = "client-ui-size";
-    private const int DefaultUiSize = 85;
+    private const int DefaultUiSize = 100;
     private int _uiSize = DefaultUiSize;
     private bool _uiSizeChanged;
     // Set by Reset window positions in the Settings window, applied on the next frame, outside that window's click.
@@ -1283,7 +1283,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// The UI size set from the Settings window, kept within the bounds and snapped to the step: saved now, and applied on the next frame,
-    /// outside the window's own click, since applying it closes the window.
+    /// outside the window's own click, since applying it closes the window. It overrides every window's own size, for every character, so
+    /// every window shows at exactly the new size.
     /// </summary>
     private void SetUiSize(int percent)
     {
@@ -1291,6 +1292,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (size == _uiSize) return;
         _uiSize = size;
         _settingsStore.Save("", "", UiSizeKey, (new Point(size, 0), null));
+        if (!_positionStore.ForgetWindowSizes())
+            Log("Could not reset the windows' own sizes: the position file can't be read or written. If only writing failed, they're reset for this session.");
         if (_settings != null) _settings.UiSize = new UiSizeChoice(size, SetUiSize);
         _uiSizeChanged = true;
     }

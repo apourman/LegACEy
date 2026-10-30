@@ -616,6 +616,32 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void Forgetting_window_sizes_puts_every_characters_windows_back_at_the_ui_size_and_keeps_their_places()
+    {
+        var path = TempPath();
+        try
+        {
+            var store = new FileWindowPositionStore(path);
+            store.Save("server-a", "character-a", "vault", (new Point(10, 20), null));
+            Assert.True(new WindowManager(new Size(1920, 1080), store, "server-a", "character-a", 0.9).Rescale("vault", 2));
+            Assert.True(new WindowManager(new Size(1920, 1080), store, "server-b", "character-b", 0.9).Rescale("dereth-toolbar", -3));
+            store.Save("server-a", "character-a", "dereth-chat-text-size", (new Point(140, 0), null));
+
+            Assert.True(new FileWindowPositionStore(path).ForgetWindowSizes());
+
+            var reloaded = new FileWindowPositionStore(path);
+            Assert.Equal(0.9, new WindowManager(new Size(1920, 1080), reloaded, "server-a", "character-a", 0.9).ScaleOf("vault"));
+            Assert.Equal(0.9, new WindowManager(new Size(1920, 1080), reloaded, "server-b", "character-b", 0.9).ScaleOf("dereth-toolbar"));
+            Assert.Equal(new Point(10, 20), reloaded.Load("server-a", "character-a", "vault")!.Value.Location);
+            Assert.Equal(140, reloaded.Load("server-a", "character-a", "dereth-chat-text-size")!.Value.Location.X);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Two_clients_saving_at_once_keep_each_others_places()
     {
         var path = TempPath();
