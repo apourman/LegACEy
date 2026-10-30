@@ -68,11 +68,13 @@ public sealed record AppraisalCreatureHeader(IReadOnlyList<string> Lines, string
 /// draws this model and nothing else, so the rules that build it are tested without drawing. Built by <see cref="From"/>. A creature also
 /// has <see cref="Creature"/>, the header the retail layout boxes. An item also has what the retail layout writes on its own lines:
 /// <see cref="Covers"/>, the body areas a piece of clothing or armour covers ("Chest, Upper Arms"), and <see cref="RetailProperties"/>,
-/// retail's one Properties line.
+/// retail's one Properties line. A spell has <see cref="Formula"/>, the icons of the components it is cast with, which the window draws in
+/// retail's spell layout.
 /// </summary>
 public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Visual, string TypeLine, IReadOnlyList<AppraisalFigure> Figures,
     IReadOnlyList<AppraisalSection> Sections, string Description, AppraisalInscription? Inscription, string Subtitle = "",
-    AppraisalCreatureHeader? Creature = null, string Covers = "", IReadOnlyList<string>? RetailProperties = null)
+    AppraisalCreatureHeader? Creature = null, string Covers = "", IReadOnlyList<string>? RetailProperties = null,
+    IReadOnlyList<uint>? Formula = null)
 {
     // The server's property ids (ACE.Entity PropertyInt, PropertyString and PropertyDataId).
     private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;

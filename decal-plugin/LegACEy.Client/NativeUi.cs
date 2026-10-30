@@ -35,6 +35,8 @@ internal static class NativeUi
     public const uint MapPanel = 0x1000018C;
     /// <summary>The quest panel (Contracts, Journal, Page List), placed under PanelPages as panel 25.</summary>
     public const uint QuestsPanel = 0x10000559;
+    /// <summary>The magic panel (Spellbook, Components), placed under PanelPages as panel 13.</summary>
+    public const uint MagicPanel = 0x10000190;
     /// <summary>The options panel (Gameplay Options, Character, Chat, Config), placed under PanelPages as panel 10.</summary>
     public const uint OptionsPanel = 0x1000018D;
     /// <summary>

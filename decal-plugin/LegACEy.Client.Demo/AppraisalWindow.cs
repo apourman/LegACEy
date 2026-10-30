@@ -94,7 +94,7 @@ public sealed class AppraisalWindow
     public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe,
         Func<Control, Size, Size>? measure = null, Action<AppraisalContent>? inspect = null, bool retail = false, Func<AppraisalContent, Control?>? figure = null)
     {
-        var layout = Layout(content, inscribe, retail);
+        var layout = Layout(content, inscribe, retail, art);
         var scroll = Scroll(layout.Body);
         var foot = new ContentControl { Content = layout.Foot };
         var top = new ContentControl { Content = layout.Top };
@@ -122,7 +122,7 @@ public sealed class AppraisalWindow
     public void Show(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe, Action<AppraisalContent>? inspect = null,
         bool retail = false, Func<AppraisalContent, Control?>? figure = null)
     {
-        var layout = Layout(content, inscribe, retail);
+        var layout = Layout(content, inscribe, retail, art);
         var sameLayout = retail == _retail;
         if (!(sameLayout && content.ObjectId == _content.ObjectId && _behind.Content != null)) _behind.Content = Figure(content, retail, figure);
         _content = content;
@@ -158,10 +158,10 @@ public sealed class AppraisalWindow
     /// within the body (<see cref="RetailBody"/>).
     /// </summary>
     private static (Control Body, Control? Top, Control? Foot, int Height, InscriptionField? Field, Thickness Room) Layout(AppraisalContent content,
-        Func<uint, string, bool> inscribe, bool retail)
+        Func<uint, string, bool> inscribe, bool retail, IGameArtSource? art)
     {
         var room = default(Thickness);
-        var body = retail ? RetailBody(content, out room) : SectionsBody(content);
+        var body = content.Formula != null ? SpellBody(content, content.Formula, art) : retail ? RetailBody(content, out room) : SectionsBody(content);
         var top = retail && content.Creature is { } creature ? HeaderBox(creature) : null;
         InscriptionField? field = null;
         var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, retail, out field) : null;
@@ -173,6 +173,29 @@ public sealed class AppraisalWindow
             return (int)Math.Ceiling(part.DesiredSize.Height);
         });
         return (body, top, foot, Math.Min(MaxHeight, needed), field, room);
+    }
+
+    /// <summary>
+    /// A spell, in either layout as retail's examination lays one out (page 0x10000153 of LayoutDesc 0x2100006B): its type line and its
+    /// figures under the name, a rule, the description, a rule, then FORMULA and the components' icons in a centred row.
+    /// </summary>
+    private static Control SpellBody(AppraisalContent content, IReadOnlyList<uint> formula, IGameArtSource? art)
+    {
+        var body = new StackPanel { Margin = new Thickness(BodySide, 6, BodySide, 8), Spacing = 2 };
+        if (content.TypeLine.Length > 0) body.Children.Add(RetailText(content.TypeLine, DerethPalette.CreamBrush));
+        if (content.Subtitle.Length > 0) body.Children.Add(RetailText(content.Subtitle, DerethPalette.TextBrush));
+        body.Children.Add(new DerethRule { Margin = new Thickness(0, 6, 0, 6) });
+        if (content.Description.Length > 0) body.Children.Add(RetailText(content.Description, DerethPalette.TextBrush, wrap: true));
+        body.Children.Add(new DerethRule { Margin = new Thickness(0, 6, 0, 4) });
+        body.Children.Add(new TextBlock
+        {
+            Text = "FORMULA", Foreground = DerethPalette.TextBrush, FontFamily = DerethPalette.Title, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center
+        });
+        var icons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+        foreach (var icon in formula)
+            icons.Children.Add(new Image { Source = GameArtImageExtension.CreateBitmap(art, icon), Width = 32, Height = 32 });
+        body.Children.Add(icons);
+        return body;
     }
 
     /// <summary>The sections layout: the summary, then each section under its heading, then the description under a rule.</summary>

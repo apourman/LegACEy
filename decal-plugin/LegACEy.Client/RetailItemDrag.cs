@@ -295,6 +295,16 @@ internal sealed class RetailItemDrag
         return over == panel || _isAncestorOfMe!(over, panel) != 0;
     }
 
+    /// <summary>Whether the pointer is over a shown retail panel or anything inside it, by the element retail last found under the pointer.</summary>
+    public bool IsPointerOver(uint panelId)
+    {
+        var panel = NativeUi.GetElement(panelId);
+        if (panel == IntPtr.Zero || !NativeUi.IsVisible(panel) || !Available) return false;
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        var over = manager == IntPtr.Zero ? IntPtr.Zero : Marshal.ReadIntPtr(manager, ElementLastOverOffset);
+        return over != IntPtr.Zero && (over == panel || _isAncestorOfMe!(over, panel) != 0);
+    }
+
     /// <summary>
     /// Shows the client's own drop indicator (the green circle) on the inventory cell under the pointer, as a retail
     /// drag over the inventory does, and clears it from the cell it was on. Call every frame of a LegACEy item drag;
