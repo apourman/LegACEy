@@ -261,14 +261,26 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
     /// </summary>
     public bool ForgetPlaces(string server, string character, IEnumerable<string> keep)
     {
+        var owned = Encode(server) + "|" + Encode(character) + "|";
+        var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
+        return ForgetWhere(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key));
+    }
+
+    /// <summary>
+    /// Forgets every window's own size (Ctrl+wheel, or Size in the Settings window) for every server and character, so the UI size alone
+    /// sizes every window. Places and options stay. Returns false as <see cref="ForgetPlaces"/> does.
+    /// </summary>
+    public bool ForgetWindowSizes() =>
+        ForgetWhere(key => Decode(key.Substring(key.LastIndexOf('|') + 1))?.EndsWith(WindowManager.SizeKeySuffix, StringComparison.Ordinal) == true);
+
+    private bool ForgetWhere(Func<string, bool> match)
+    {
         lock (_sync)
         {
-            var owned = Encode(server) + "|" + Encode(character) + "|";
-            var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
             var forgotten = new List<string>();
             if (Change(rows =>
                 {
-                    forgotten.AddRange(rows.Keys.Where(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key)));
+                    forgotten.AddRange(rows.Keys.Where(match));
                     foreach (var key in forgotten) rows.Remove(key);
                 }))
                 return true;
@@ -362,6 +374,12 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
         Encode(server) + "|" + Encode(character) + "|" + Encode(windowId);
 
     private static string Encode(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value ?? string.Empty));
+
+    private static string? Decode(string value)
+    {
+        try { return Encoding.UTF8.GetString(Convert.FromBase64String(value)); }
+        catch (FormatException) { return null; }
+    }
 }
 
 /// <summary>
@@ -502,7 +520,8 @@ public sealed class WindowManager
     }
 
     // A window's own size is saved beside its place, under its id with this added, so a reset of the places resets it too.
-    private static string SizeKey(string id) => id + "\u001fsize";
+    internal const string SizeKeySuffix = "\u001fsize";
+    private static string SizeKey(string id) => id + SizeKeySuffix;
 
     private int SavedSizePercent(string id) =>
         _positions.Load(_server, _character, SizeKey(id))?.Location.X is int percent && percent >= SmallestSize && percent <= LargestSize ? percent : 100;
