@@ -488,8 +488,10 @@ public sealed class WindowManagerTests
     [InlineData(101, 300, WindowEdges.None)]
     [InlineData(443, 703, WindowEdges.Bottom)]
     [InlineData(200, 703, WindowEdges.Bottom)]
-    [InlineData(200, 101, WindowEdges.Top)]
-    public void A_fixed_width_window_resizes_only_from_its_top_and_bottom_edges(int x, int y, WindowEdges expected)
+    [InlineData(200, 101, WindowEdges.None)]
+    [InlineData(103, 101, WindowEdges.Top)]
+    [InlineData(440, 101, WindowEdges.Top)]
+    public void A_fixed_width_window_resizes_only_from_its_top_corners_and_bottom_edge(int x, int y, WindowEdges expected)
     {
         var manager = NewManager(1920, 1080);
         manager.Open(new WindowDefinition("inventory", "Inventory", 344, 606, resizing: new WindowResizing(new Size(344, 300), new Size(344, 10_000))),
@@ -499,11 +501,11 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
-    public void A_retail_panel_window_moves_from_its_top_edge_and_resizes_its_height_from_the_top_corners_and_bottom()
+    public void A_fixed_width_window_moves_from_its_top_edge_and_resizes_its_height_from_the_top_corners_and_bottom()
     {
         var manager = NewManager(1920, 1080);
-        manager.Open(new WindowDefinition("social", "Social", 310, 600, resizing: new WindowResizing(new Size(310, 400), new Size(310, 10_000)),
-            dragsFromContent: true), new Point(100, 100));
+        manager.Open(new WindowDefinition("social", "Social", 310, 600, resizing: new WindowResizing(new Size(310, 400), new Size(310, 10_000))),
+            new Point(100, 100));
 
         Assert.Equal(WindowEdges.None, manager.HoverAt(new Point(101, 400)).Edges);
         Assert.Equal(WindowEdges.Top, manager.HoverAt(new Point(103, 101)).Edges);

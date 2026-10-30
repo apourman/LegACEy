@@ -117,7 +117,7 @@ internal sealed class QuestsFeature : IQuestsGame, IDisposable
         var place = _panel?.HeldPlace ?? new Point(200, 150);
         var definition = new WindowDefinition(QuestsWindow.WindowId, "Quests", QuestsWindow.Width, QuestsWindow.Height,
             DerethWindow.TitleBarHeight, new DerethClientTheme(), QuestsWindow.Sizing,
-            sharesPlaceWith: RetailPanelSlot.WindowPlace, dragsFromContent: true);
+            sharesPlaceWith: RetailPanelSlot.WindowPlace);
         var opened = _host.OpenWindow(definition, place, close =>
         {
             _hide = close;

@@ -103,9 +103,8 @@ public sealed class WindowDefinition
     /// was left. The first to open sets the place from its own.
     /// </param>
     /// <param name="dragsFromContent">
-    /// No title-bar move: a press in the title bar does not start a move, only one on the top edge does, which then does not resize. The
-    /// window's content may start one with <see cref="WindowManager.BeginMove"/>, on the presses that should drag it, so the rest of the
-    /// window (its buttons and slots) stays a click. Retail's panel windows use it to move only from their top border, as retail's do.
+    /// No title bar: a press does not start a move. The window's content starts one with <see cref="WindowManager.BeginMove"/>, on the presses
+    /// that should drag it, so the rest of the window (its buttons and slots) stays a click.
     /// </param>
     public WindowDefinition(string id, string title, int width, int height, int titleBarHeight = 28, IClientTheme? theme = null, WindowResizing? resizing = null,
         string? sharesLocationWith = null, bool dragsFromContent = false, string? sharesPlaceWith = null)
@@ -136,6 +135,12 @@ public sealed class WindowDefinition
     public string? SharesLocationWith { get; }
     public string? SharesPlaceWith { get; }
     public bool DragsFromContent { get; }
+
+    /// <summary>
+    /// Whether the top edge moves the window and the title bar does not: a window that drags from its content, or one with a fixed width,
+    /// which is retail's panel and moves only from its top border as retail's do.
+    /// </summary>
+    internal bool MovesFromTopEdge => DragsFromContent || Resizing?.FixedWidth == true;
 }
 
 /// <summary>The live state of one LegACEy window. The preferred location and size are where the window was last left.</summary>
@@ -364,7 +369,8 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 /// frontmost. Pointer coordinates are screen coordinates and all returned positions are clamped.
 /// A press in a resizable window's side or bottom band, its top band when it has a title bar, or in its corner square unless it has no
 /// corners, resizes it, within its <see cref="WindowResizing"/>: its minimum and maximum hold on every edge, a fixed height has no top or
-/// bottom edge, and a locked window does not resize. A press on any other window's top edge or in its title bar moves it. While retail's UI is locked no window moves or resizes.
+/// bottom edge, and a locked window does not resize. A press on any other window's top edge or in its title bar moves it; a window that
+/// moves from its top edge (<see cref="WindowDefinition.MovesFromTopEdge"/>) moves from there only. While retail's UI is locked no window moves or resizes.
 /// </summary>
 public sealed class WindowManager
 {
@@ -558,7 +564,7 @@ public sealed class WindowManager
             _pressPoint = point;
             _pressBounds = window.Bounds;
         }
-        else if (OnMoveEdge(window, point) || !window.Definition.DragsFromContent && point.Y - window.Location.Y < window.TitleBarHeight)
+        else if (OnMoveEdge(window, point) || !window.Definition.MovesFromTopEdge && point.Y - window.Location.Y < window.TitleBarHeight)
         {
             _dragging = window;
             _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
@@ -621,8 +627,8 @@ public sealed class WindowManager
     /// <summary>
     /// The edges a point is on: within <see cref="ResizeBand"/> of a side or the bottom, or inside a corner square of
     /// <see cref="CornerBand"/> pixels, unless the window has no corners. The top edge between the corners resizes a window with a title bar
-    /// (the bar moves it); a window that drags from its content has no title bar, so its top edge moves it instead, except at a fixed-width
-    /// window's top corners, which resize its height.
+    /// (the bar moves it); a window that moves from its top edge does not resize there, except at a fixed-width window's top corners,
+    /// which resize its height as retail's panels do.
     /// </summary>
     private static WindowEdges EdgesAt(ManagedWindow window, Point point)
     {
@@ -641,8 +647,7 @@ public sealed class WindowManager
         if (!resizing.FixedWidth && left < ResizeBand) edges |= WindowEdges.Left;
         if (!resizing.FixedWidth && right < ResizeBand) edges |= WindowEdges.Right;
         if (!resizing.FixedHeight && bottom < ResizeBand) edges |= WindowEdges.Bottom;
-        // A fixed-width window whose top edge moves it, like retail's panels, keeps the ends of that edge to resize its height.
-        var topResizes = !window.Definition.DragsFromContent || resizing.FixedWidth && !resizing.NoCorners && Math.Min(left, right) < CornerBand;
+        var topResizes = !window.Definition.MovesFromTopEdge || resizing.FixedWidth && !resizing.NoCorners && Math.Min(left, right) < CornerBand;
         if (!resizing.FixedHeight && topResizes && top < ResizeBand) edges |= WindowEdges.Top;
         return edges;
     }
