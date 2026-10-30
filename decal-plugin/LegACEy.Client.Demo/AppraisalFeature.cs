@@ -337,12 +337,17 @@ public sealed class AppraisalFeature
 
     /// <summary>
     /// The retail layout's figure, standing still behind the lines: always for a player, whose look the doll waits for when the game has not
-    /// sent it yet, and for another creature when the looks know it. No status line shows behind the text.
+    /// sent it yet, and for another creature when the looks know it. No status line shows behind the text. It draws under the window's
+    /// text, on the window's fill, as retail's does, and is framed as retail's: 84 % of the body's height, a little room over the head and
+    /// more under the feet (measured from retail's panel, 29 Oct 2026).
     /// </summary>
-    private Avalonia.Controls.Control? Figure(AppraisalContent content) =>
-        content.Formula == null && (content.Creature is { Character: true } || _host.Looks.Knows(content.ObjectId))
-            ? new PaperdollView(_host.Looks, _host.PortalPath, content.ObjectId) { Still = true, StatusShown = false }
-            : null;
+    private Avalonia.Controls.Control? Figure(AppraisalContent content)
+    {
+        if (content.Formula != null || (content.Creature is not { Character: true } && !_host.Looks.Knows(content.ObjectId))) return null;
+        var doll = new PaperdollView(_host.Looks, _host.PortalPath, content.ObjectId) { Still = true, StatusShown = false, Backdrop = DerethPalette.Navy };
+        doll.Frame(zoom: 0.84f * ModelView.Framing, focus: 0.48f);
+        return doll;
+    }
 
     /// <summary>
     /// The switch turned to retail's examination window: closes the open window and returns the world object it showed, for retail to
