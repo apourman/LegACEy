@@ -35,7 +35,6 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     private readonly Func<AppraisalContent, bool> _examine;
     private readonly Func<bool> _overSpellBar;
     private readonly Func<uint, bool> _dropOnDerethBar;
-    private readonly Action<bool> _hoverDerethBar;
     private readonly Action<string> _log;
     private MagicWindow? _view;
     private Action? _hide;
@@ -45,7 +44,7 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
 
     public MagicFeature(ILegACEyPluginHost host, IRetailPanelPort? port, Func<IReadOnlyDictionary<uint, SpellInfo>> spells,
         Func<SpellComponentTable> components, Func<GameChannelTransport?> transport, Func<InventorySnapshot> inventory,
-        Func<AppraisalContent, bool> examine, Func<bool> overSpellBar, Func<uint, bool> dropOnDerethBar, Action<bool> hoverDerethBar, Action<string> log)
+        Func<AppraisalContent, bool> examine, Func<bool> overSpellBar, Func<uint, bool> dropOnDerethBar, Action<string> log)
     {
         _host = host;
         _spells = spells;
@@ -55,7 +54,6 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         _examine = examine;
         _overSpellBar = overSpellBar;
         _dropOnDerethBar = dropOnDerethBar;
-        _hoverDerethBar = hoverDerethBar;
         _log = log;
         if (port != null) _panel = new RetailPanelTakeover(port, OpenChanged, log);
         State.Changed += Refresh;
@@ -189,15 +187,12 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     {
         _dragging = dragging;
         MagicNatives.HoverSpellBar(dragging, _log);
-        _hoverDerethBar(dragging);
     }
 
     /// <summary>Once a frame: a spell dragged out of our window lights the spell bar cell under the pointer.</summary>
     public void TickDrag()
     {
-        if (!_dragging) return;
-        MagicNatives.HoverSpellBar(true, _log);
-        _hoverDerethBar(true);
+        if (_dragging) MagicNatives.HoverSpellBar(true, _log);
     }
 
     void IMagicGame.Examine(uint spell) => Examine(spell);

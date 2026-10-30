@@ -47,9 +47,11 @@ public sealed class DerethSpellBarWindowTests
         Click(panel, TabX(5), TabY);
         Assert.Equal(5, port.Tab);
 
+        Assert.Equal(string.Empty, view.SelectedName);
         Click(panel, CellX(1), CellY);
         Assert.Equal(1u, port.Selected);
         Assert.Equal(new[] { 1u }, port.Examined);
+        Assert.Equal("Spell 1", view.SelectedName);
 
         // An empty cell does nothing; Cast casts what is selected.
         Click(panel, CellX(6), CellY);
@@ -86,7 +88,20 @@ public sealed class DerethSpellBarWindowTests
         Assert.Equal(3u, port.Selected);
         // It stops with the last spell in the last whole cell.
         for (var i = 0; i < 5; i++) Click(panel, 5 + 502 + 11, CellY);
-        Assert.Equal(16 - DerethSpellBarWindow.VisibleCells, view.First);
+        Assert.Equal(16 - view.VisibleCells, view.First);
+    });
+
+    [Fact]
+    public void Wider_the_bar_shows_more_cells_and_keeps_cast_at_its_right_edge() => RenderThread.Run(() =>
+    {
+        var port = new FakeSpellBarPort(3, 1, 2);
+        DerethSpellBarWindow view = null!;
+        using var panel = AvaloniaPanel.Create(() => view = new DerethSpellBarWindow(port, () => Spells, null, null, () => { }), 930, 90);
+        panel.Tick();
+
+        Assert.Equal(23, view.VisibleCells);
+        Click(panel, 930 - 5 - 37, CellY);
+        Assert.Equal(new[] { 0u }, port.Cast);
     });
 
     [Fact]
@@ -104,11 +119,13 @@ public sealed class DerethSpellBarWindowTests
         var ids = names.Select(n => spells.Where(s => s.Value.Name == n).Select(s => s.Key).DefaultIfEmpty(0u).Min()).Where(id => id != 0).ToArray();
         var port = new FakeSpellBarPort(ids);
         port.Select(ids.Skip(1).FirstOrDefault());
-        var (panel, _) = Open(port, spells, portal);
-        using var __ = panel;
-        panel.Tick();
-        panel.Tick();
-        PanelPng.Save(panel, Path.Combine(folder, "spellbar.png"));
+        foreach (var width in new[] { DerethSpellBarWindow.DesignWidth, 900 })
+        {
+            using var panel = AvaloniaPanel.Create(() => new DerethSpellBarWindow(port, () => spells, portal, null, () => { }), width, 90);
+            panel.Tick();
+            panel.Tick();
+            PanelPng.Save(panel, Path.Combine(folder, $"spellbar-{width}.png"));
+        }
     });
 
     private sealed class FakeSpellBarPort : ISpellBarPort

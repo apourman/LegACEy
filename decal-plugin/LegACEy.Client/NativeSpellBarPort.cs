@@ -100,7 +100,9 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
             for (var i = 0; i < count; i++)
             {
                 var item = Cast(((delegate* unmanaged[Thiscall]<byte*, int, byte*>)ItemAt)(list, i), ItemType);
-                if (item != null) spells.Add(*(uint*)(item + ItemSpell));
+                // Retail's list keeps its empty cells as items too, holding no spell.
+                var spell = item == null ? 0 : *(uint*)(item + ItemSpell);
+                if (spell != 0) spells.Add(spell);
             }
             return spells;
         }

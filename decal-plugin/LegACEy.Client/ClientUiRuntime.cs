@@ -495,7 +495,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.MagicPanel, NativeRetailPanelPort.MagicPanelId) : null,
                 () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), () => _portal?.ReadSpellComponents(Log) ?? SpellComponentTable.None,
                 () => _channelTransport, () => _inventory.Snapshot, content => _appraisal.ShowSpell(content),
-                () => _retailDrag?.IsPointerOver(RetailAttackCatalogue.CombatPanel) == true, DropOnDerethSpellBar, HoverDerethSpellBar, Log);
+                () => _retailDrag?.IsPointerOver(RetailAttackCatalogue.CombatPanel) == true, DropOnDerethSpellBar, Log);
             _inventory.Changed += () => _magic?.Refresh();
             _options = new OptionsFeature(this,
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.OptionsPanel, NativeRetailPanelPort.OptionsPanelId) : null,
@@ -4085,7 +4085,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var port = new NativeSpellBarPort(HudNatives().Lock, spell => _magic?.Examine(spell));
         var window = new DerethSpellBarWindow(port, () => portal.ReadSpells(Log), portal, new ItemDragHost(this),
             () => _windows?.BeginMove(DerethSpellBarWindow.WindowId, _pointer));
-        var definition = DerethSpellBarWindow.Definition();
+        var definition = DerethSpellBarWindow.Definition(() => port.UiLocked);
         try { OpenWindowCore(definition, window, at, SpellBarFailed); }
         catch
         {
@@ -4101,9 +4101,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>A spell from the spellbook released over the Dereth spell bar's cells goes there. False when the bar is not under the pointer.</summary>
     private bool DropOnDerethSpellBar(uint spell) => SpellBarPoint() is { } at && _spellBarWindow!.DropAt(spell, at);
-
-    /// <summary>A spell dragged from the spellbook lights the Dereth spell bar's cell it would land in, while <paramref name="dragging"/>.</summary>
-    private void HoverDerethSpellBar(bool dragging) => _spellBarWindow?.HoverAt(dragging ? SpellBarPoint() : null);
 
     /// <summary>The pointer in the Dereth spell bar's DIPs, while the bar is open and the window under the pointer; otherwise null.</summary>
     private Avalonia.Point? SpellBarPoint() =>
