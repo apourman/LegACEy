@@ -632,7 +632,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var legacey = command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) || command.Equals("@legacey", StringComparison.OrdinalIgnoreCase);
         if (legacey && _failed && _loggedIn)
         {
-            Restart();
+            RestartFromCommand();
             return true;
         }
         if (_failed || !_inGame) return false;
@@ -655,13 +655,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return true;
     }
 
-    /// <summary>/legacey after the UI turned off: clears the failure, builds the UI again as a login does, and says how it went.</summary>
-    private void Restart()
+    /// <summary>
+    /// /legacey after the UI turned off: clears the failure and rebuilds as a relog does. Failing again says so through Disable.
+    /// </summary>
+    private void RestartFromCommand()
     {
         Log("Restarting the LegACEy UI from /legacey.");
         _failed = false;
-        StartSession();
-        SayInChat(_failed ? "LegACEy could not start again. Restart the game to bring it back." : "LegACEy is back on.");
+        Rebuild(resetPositions: false);
+        if (!_failed) SayInChat("LegACEy is back on.");
     }
 
     /// <summary>
@@ -802,13 +804,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // A Log out and update whose logout never came through is forgotten, so this session's own logout doesn't close the game.
         _quitPending = false;
         _updates.Check();
-        if (!_failed) StartSession();
-    }
+        if (_failed || !NativeUi.Ready)
+            return;
 
-    /// <summary>Builds whatever the UI is missing for this character, at login and when /legacey restarts it.</summary>
-    private void StartSession()
-    {
-        if (!NativeUi.Ready) return;
         Guard(() =>
         {
             if (_portal == null)
@@ -5036,7 +5034,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up feature UI during unload: {exception}"); }
         _clientUi = null;
-        _settings = null;
         try { _serverChannel?.Reset(); }
         catch (Exception exception) { Log($"Could not fail outstanding server channel requests: {exception}"); }
         _hovered = null;
