@@ -1687,7 +1687,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             for (var i = order.Count - 1; i >= 0; i--)
             {
                 var surface = SurfaceById(order[i].Id);
-                if (surface != null) surface.FillOpacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Moving || order[i] == _windows.Resizing);
+                if (surface != null) surface.FillOpacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Changing);
                 DrawModelViews(surface, behind: true);
                 surface?.DrawNow();
                 DrawModelViews(surface, behind: false);

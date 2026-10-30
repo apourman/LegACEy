@@ -316,6 +316,22 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_press_on_the_title_bar_changes_the_window_only_once_the_drag_moves_it()
+    {
+        var manager = NewManager(1920, 1080);
+        var window = manager.Open(Resizable("vault"), new Point(100, 100));
+
+        // A click on a tab in the header: pressed and released where it was.
+        manager.Press(new Point(200, 110));
+        manager.Move(new Point(200, 110));
+        Assert.Null(manager.Changing);
+        manager.Move(new Point(230, 120));
+        Assert.Same(window, manager.Changing);
+        manager.Release();
+        Assert.Null(manager.Changing);
+    }
+
+    [Fact]
     public void Dragging_the_right_edge_resizes_the_window_by_the_drag()
     {
         var manager = NewManager(1920, 1080);

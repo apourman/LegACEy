@@ -429,6 +429,8 @@ public sealed class WindowManager
     public ManagedWindow? Resizing => _resizeEdges == WindowEdges.None ? null : _dragging;
     /// <summary>The window a title-bar drag is moving, or null.</summary>
     public ManagedWindow? Moving => _resizeEdges == WindowEdges.None ? _dragging : null;
+    /// <summary>The window a drag has moved or resized since the press, or null: a press on a title-bar tab alone changes nothing.</summary>
+    public ManagedWindow? Changing => _dragging != null && _dragging.Bounds != _pressBounds ? _dragging : null;
     /// <summary>Whether retail's UI is locked, so no window moves or resizes.</summary>
     public bool Locked => _uiLocked?.Invoke() == true;
 
@@ -559,6 +561,7 @@ public sealed class WindowManager
         {
             _dragging = window;
             _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
+            _pressBounds = window.Bounds;
         }
         return true;
     }
@@ -571,6 +574,7 @@ public sealed class WindowManager
         _resizeEdges = WindowEdges.None;
         _dragging = window;
         _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
+        _pressBounds = window.Bounds;
         return true;
     }
 
