@@ -103,8 +103,9 @@ public sealed class WindowDefinition
     /// was left. The first to open sets the place from its own.
     /// </param>
     /// <param name="dragsFromContent">
-    /// No title bar: a press does not start a move. The window's content starts one with <see cref="WindowManager.BeginMove"/>, on the presses
-    /// that should drag it, so the rest of the window (its buttons and slots) stays a click.
+    /// No title-bar move: a press in the title bar does not start a move, only one on the top edge does, which then does not resize. The
+    /// window's content may start one with <see cref="WindowManager.BeginMove"/>, on the presses that should drag it, so the rest of the
+    /// window (its buttons and slots) stays a click. Retail's panel windows use it to move only from their top border, as retail's do.
     /// </param>
     public WindowDefinition(string id, string title, int width, int height, int titleBarHeight = 28, IClientTheme? theme = null, WindowResizing? resizing = null,
         string? sharesLocationWith = null, bool dragsFromContent = false, string? sharesPlaceWith = null)

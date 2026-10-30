@@ -44,7 +44,7 @@ public sealed class MagicWindow
 {
     public const string WindowId = "magic";
     public const int Width = 310, Height = 600;
-    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(310, 320));
+    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(Width, 320), new System.Drawing.Size(Width, 10_000));
     private const double RowHeight = 32, DragThreshold = 4;
     private static readonly string[] TabNames = { "Spellbook", "Components" };
     // Retail's art: the list rows (and their selected edge), the filter block, the toggles' off, off-hover, on and on-hover lights, Delete.

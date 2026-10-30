@@ -59,7 +59,7 @@ public sealed partial class OptionsWindow
 {
     public const string WindowId = "options";
     public const int Width = 310, Height = 600;
-    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(290, 360));
+    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(Width, 360), new System.Drawing.Size(Width, 10_000));
     private static readonly string[] TabNames = { "Gameplay Options", "Character", "Config" };
     private const double RowHeight = 20, HeadingHeight = 22;
 
