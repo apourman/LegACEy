@@ -134,6 +134,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailRadarSwitchFile = "retail-radar-native";
     // Beside the DLL: while this file exists, retail's attack panel stays retail's. Without it the Dereth attack bar replaces it in melee and missile.
     private const string RetailAttackSwitchFile = "retail-attack-native";
+    // Beside the DLL: while this file exists, retail's spell bar stays retail's. Without it the Dereth spell bar replaces it in magic.
+    private const string RetailSpellBarSwitchFile = "retail-spellbar-native";
     // Beside the DLL: while this file exists, retail's character panel stays retail's. Without it the Dereth character window replaces it.
     private const string RetailCharacterSwitchFile = "retail-character-native";
     private const string RetailSocialSwitchFile = "retail-social-native";
@@ -309,6 +311,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private NativeAttackBarPort? _attackPort;
     private bool _attackSwitch;
     private DateTime _lastAttackSwitchCheck;
+    // The Dereth spell bar over the same panel in magic: whether its natives matched, the takeover, its port and window.
+    private bool? _spellBarNatives;
+    private RetailAttackTakeover? _spellBar;
+    private NativeSpellBarPort? _spellBarPort;
+    private DerethSpellBarWindow? _spellBarWindow;
+    private bool _spellBarSwitch;
+    private DateTime _lastSpellBarSwitchCheck;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
@@ -486,7 +495,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.MagicPanel, NativeRetailPanelPort.MagicPanelId) : null,
                 () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), () => _portal?.ReadSpellComponents(Log) ?? SpellComponentTable.None,
                 () => _channelTransport, () => _inventory.Snapshot, content => _appraisal.ShowSpell(content),
-                () => _retailDrag?.IsPointerOver(RetailAttackCatalogue.CombatPanel) == true, Log);
+                () => _retailDrag?.IsPointerOver(RetailAttackCatalogue.CombatPanel) == true, DropOnDerethSpellBar, HoverDerethSpellBar, Log);
             _inventory.Changed += () => _magic?.Refresh();
             _options = new OptionsFeature(this,
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.OptionsPanel, NativeRetailPanelPort.OptionsPanelId) : null,
@@ -1013,8 +1022,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not give the retail chat back at logoff: {exception}"); }
         // The Dereth vitals window closes and retail's vitals come back; the next login holds them again while the switch is on.
         _vitals?.Release();
-        // The attack bar closes and retail's attack panel comes back; the next melee or missile holds it again while the switch is on.
+        // The attack and spell bars close and retail's combat panel comes back; the next stance they cover holds it again while their switch is on.
         _attack?.Release();
+        _spellBar?.Release();
         try { ReleaseRetailRadar(); }
         catch (Exception exception) { Log($"Could not give the retail radar back at logoff: {exception}"); }
         _toast?.Hide();
@@ -1195,6 +1205,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default, DerethVitalsWindow.StackedId, DerethVitalsWindow.SideBySideId),
         Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default, RadarWindowId),
         Choice("Attack bar", RetailAttackSwitchFile, () => _lastAttackSwitchCheck = default, DerethAttackBarWindow.WindowId),
+        Choice("Spell bar", RetailSpellBarSwitchFile, () => _lastSpellBarSwitchCheck = default, DerethSpellBarWindow.WindowId),
         Choice("Game messages", RetailGameMessagesSwitchFile, () =>
         {
             _gameMessagesRetail = !SwitchCustom(IOPath.Combine(PluginDirectory, RetailGameMessagesSwitchFile));
@@ -4009,19 +4020,39 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Holds retail's attack panel in melee and missile and draws the Dereth attack bar over it, unless the <c>retail-attack-native</c> file is
-    /// beside the DLL; with it retail's panel is left as it is. The bar's port is polled each frame while its window is open.
+    /// Holds retail's combat panel and draws a Dereth bar over it: the attack bar in melee and missile, unless the <c>retail-attack-native</c>
+    /// file is beside the DLL, and the spell bar in magic, unless <c>retail-spellbar-native</c> is; with its file retail's panel is left as it
+    /// is in those stances. Each bar's port is polled each frame while its window is open.
     /// </summary>
     private void TickRetailAttack()
     {
         _attack ??= new RetailAttackTakeover(AttackNatives, HoldRetailAttack, RetailAttackPlace, OpenAttackBar, Log);
+        _spellBar ??= new RetailAttackTakeover(SpellBarNatives, HoldRetailAttack, RetailAttackPlace, OpenSpellBar, Log, RetailStance.Magic, "spell bar");
+        var attackOn = SwitchOn(RetailAttackSwitchFile, ref _lastAttackSwitchCheck, ref _attackSwitch);
+        var spellsOn = SwitchOn(RetailSpellBarSwitchFile, ref _lastSpellBarSwitchCheck, ref _spellBarSwitch);
+        // Retail's panel is given back if the post-UI draw is gone or the LegACEy windows failed, as the radar's is.
+        var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
+        var stance = (attackOn || spellsOn) && _inGame ? (RetailStance)Bridge.Fact(BridgeFact.CombatMode) : RetailStance.Peace;
+        var viewport = GameDevice.ViewportSize(_device);
+        // Both hold the one panel: the bar leaving gives it back before the bar arriving holds it, so the one holding last restores it right.
+        if (stance == RetailStance.Magic) TickAttackBar(attackOn, canDraw, stance, viewport);
         try
         {
-            var switchOn = SwitchOn(RetailAttackSwitchFile, ref _lastAttackSwitchCheck, ref _attackSwitch);
-            // Retail's panel is given back if the post-UI draw is gone or the LegACEy windows failed, as the radar's is.
-            var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
-            var stance = switchOn && _inGame ? (RetailStance)Bridge.Fact(BridgeFact.CombatMode) : RetailStance.Peace;
-            _attack.Tick(switchOn, canDraw, _inGame, stance, GameDevice.ViewportSize(_device));
+            _spellBar.Tick(spellsOn, canDraw, _inGame, stance, viewport);
+            _spellBarPort?.Poll();
+        }
+        catch (Exception exception)
+        {
+            SpellBarFailed(exception);
+        }
+        if (stance != RetailStance.Magic) TickAttackBar(attackOn, canDraw, stance, viewport);
+    }
+
+    private void TickAttackBar(bool switchOn, bool canDraw, RetailStance stance, Size viewport)
+    {
+        try
+        {
+            _attack!.Tick(switchOn, canDraw, _inGame, stance, viewport);
             _attackPort?.Poll();
         }
         catch (Exception exception)
@@ -4030,23 +4061,81 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
+    /// <summary>The spell bar's natives, checked once a session; null until the UI can be read.</summary>
+    private bool? SpellBarNatives() => NativesOnce(ref _spellBarNatives, NativeSpellBarPort.Validate, "spell bar");
+
+    /// <summary>
+    /// Opens the Dereth spell bar at <paramref name="at"/> with its port. Null while the windows cannot open yet, so the next frame asks again.
+    /// The takeover opens it only in magic and closes it outside.
+    /// </summary>
+    private IDisposable? OpenSpellBar(Point at)
+    {
+        if (!CanOpenWindows || _portal is not { } portal) return null;
+        var port = new NativeSpellBarPort(HudNatives().Lock, spell => _magic?.Examine(spell));
+        var window = new DerethSpellBarWindow(port, () => portal.ReadSpells(Log), portal, new ItemDragHost(this),
+            () => _windows?.BeginMove(DerethSpellBarWindow.WindowId, _pointer));
+        var definition = DerethSpellBarWindow.Definition(() => port.UiLocked);
+        try { OpenWindowCore(definition, window, at, SpellBarFailed); }
+        catch
+        {
+            window.Dispose();
+            throw;
+        }
+        _spellBarPort = port;
+        _spellBarWindow = window;
+        return new BarWindowHandle(this, window, definition.Id, () =>
+        {
+            _spellBarPort = null;
+            _spellBarWindow = null;
+        });
+    }
+
+    private void SpellBarFailed(Exception exception) => _spellBar?.Fail(exception);
+
+    /// <summary>
+    /// Gives retail's combat panel back from a bar at unload, with a second try. A bar still holding it is kept, so a disabled UI's frames go
+    /// on retrying the give-back; otherwise null.
+    /// </summary>
+    private RetailAttackTakeover? ReleaseAtUnload(RetailAttackTakeover? bar, string name)
+    {
+        try
+        {
+            bar?.Release();
+            if (bar?.Holds == true) bar.Release();
+        }
+        catch (Exception exception) { Log($"Could not give the retail combat panel back from the {name} during unload: {exception}"); }
+        if (bar?.Holds != true) return null;
+        Log($"Retail's combat panel is still held by the {name} after two tries at unload; it stays hidden until the client restarts.");
+        return bar;
+    }
+
+    /// <summary>A spell from the spellbook released over the Dereth spell bar's cells goes there. False when the bar is not under the pointer.</summary>
+    private bool DropOnDerethSpellBar(uint spell) => SpellBarPoint() is { } at && _spellBarWindow!.DropAt(spell, at);
+
+    /// <summary>A spell dragged from the spellbook over the Dereth spell bar rings the cell it would land in, while <paramref name="dragging"/>.</summary>
+    private void HoverDerethSpellBar(bool dragging) => _spellBarWindow?.HoverAt(dragging ? SpellBarPoint() : null);
+
+    /// <summary>The pointer in the Dereth spell bar's DIPs, while the bar is open and the window under the pointer; otherwise null.</summary>
+    private Avalonia.Point? SpellBarPoint() =>
+        _spellBarWindow != null && _windows?.HitTest(_pointer) is { Id: DerethSpellBarWindow.WindowId } window ? ItemDropRouting.ContentPoint(window, _pointer) : null;
+
     /// <summary>
     /// The attack bar's natives, checked once a session; null until the UI can be read. A check that cannot complete turns every feature off.
     /// </summary>
-    private bool? AttackNatives()
+    private bool? AttackNatives() => NativesOnce(ref _attackNatives, RetailAttackCatalogue.Validate, "attack bar");
+
+    /// <summary>A bar's natives, checked once a session against the running client; null until the UI can be read.</summary>
+    private bool? NativesOnce(ref bool? checkedOnce, Func<Func<uint, int, byte[]>, Action<string>, bool> validate, string bar)
     {
         if (!NativeUi.Ready || _device == IntPtr.Zero) return null;
-        return _attackNatives ??= ValidateAttackNatives();
-    }
-
-    private bool ValidateAttackNatives()
-    {
-        try { return RetailAttackCatalogue.Validate(NativeUi.ReadMemory, Log); }
+        if (checkedOnce is { } ok) return ok;
+        try { checkedOnce = validate(NativeUi.ReadMemory, Log); }
         catch (Exception exception)
         {
-            Log($"Dereth attack bar is off: its native addresses could not be checked: {exception.Message}");
-            return false;
+            Log($"Dereth {bar} is off: its native addresses could not be checked: {exception.Message}");
+            checkedOnce = false;
         }
+        return checkedOnce;
     }
 
     /// <summary>Retail's attack panel, held by its placed id: hidden while the takeover holds it.</summary>
@@ -4087,7 +4176,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             throw;
         }
         _attackPort = port;
-        return new AttackWindowHandle(this, window, definition.Id);
+        return new BarWindowHandle(this, window, definition.Id, () => _attackPort = null);
     }
 
     private void AttackFailed(Exception exception) => _attack?.Fail(exception);
@@ -4109,22 +4198,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Whether the character has Recklessness trained or specialized, as the server described the character.</summary>
     private bool Reckless() => _character?.Sheet.Skills.TryGetValue(RecklessnessSkill, out var skill) == true && skill.Training >= SkillTraining.Trained;
 
-    private sealed class AttackWindowHandle : IDisposable
+    /// <summary>An open attack or spell bar: closing it drops its port and window.</summary>
+    private sealed class BarWindowHandle : IDisposable
     {
         private readonly ClientUiRuntime _owner;
-        private readonly DerethAttackBarWindow _window;
+        private readonly IDisposable _window;
         private readonly string _windowId;
+        private readonly Action _closed;
 
-        public AttackWindowHandle(ClientUiRuntime owner, DerethAttackBarWindow window, string windowId)
+        /// <param name="closed">Drops the bar's port and window from the runtime.</param>
+        public BarWindowHandle(ClientUiRuntime owner, IDisposable window, string windowId, Action closed)
         {
             _owner = owner;
             _window = window;
             _windowId = windowId;
+            _closed = closed;
         }
 
         public void Dispose()
         {
-            _owner._attackPort = null;
+            _closed();
             _window.Dispose();
             _owner.ReleaseFeatureWindow(_windowId);
         }
@@ -4908,15 +5001,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         catch (Exception exception) { Log($"Could not give the retail radar back during unload: {exception}"); }
         if (_radarTakeover != null) Log("Retail's radar is still held after two tries at unload; it stays hidden until the client restarts.");
-        try
-        {
-            _attack?.Release();
-            if (_attack?.Holds == true) _attack?.Release();
-        }
-        catch (Exception exception) { Log($"Could not give the retail attack panel back during unload: {exception}"); }
-        if (_attack?.Holds == true) Log("Retail's attack panel is still held after two tries at unload; it stays hidden until the client restarts.");
-        // Kept while still held, so a disabled UI's frames go on retrying the give-back.
-        else _attack = null;
+        _attack = ReleaseAtUnload(_attack, "attack bar");
+        _spellBar = ReleaseAtUnload(_spellBar, "spell bar");
         DisposeRadarTiles();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
