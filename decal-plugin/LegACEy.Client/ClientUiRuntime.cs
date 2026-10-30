@@ -463,7 +463,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 var examinationPort = new NativeExaminationPort();
                 _examination = new RetailExaminationTakeover(examinationPort, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
-                    _appraisal, Log, examinationPort.VerifyRoot);
+                    _appraisal, Log, examinationPort.VerifyRoot, () => examinationPort.ExaminedSpell(Log), spell => _magic?.Examine(spell) == true);
             }
             else Log("Retail's examination panel is left to retail: the native UI or its addresses are not ready.");
             // The sheet reads the server's messages from the start; retail's character panel is taken over only with its addresses checked.
@@ -1464,6 +1464,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
+            _magic?.TickDrag();
             _phaseTimes.Add("panels", start);
             start = PhaseTimes.Start();
             TickFeatureWindows();

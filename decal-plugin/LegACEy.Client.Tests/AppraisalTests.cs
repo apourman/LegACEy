@@ -1402,6 +1402,24 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void A_spell_examined_from_the_spell_bar_shows_the_spell_not_the_selection() => OnWindowThread(() =>
+    {
+        const uint Spell = 2091;
+        var shown = new List<uint>();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(new FakeAppraisalHost(), _ => { }, game: game);
+        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true };
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { }, () => true,
+            () => Spell, spell => { shown.Add(spell); return true; });
+
+        examination.Tick(enabled: true);
+
+        Assert.Equal(new[] { Spell }, shown);
+        Assert.Empty(game.Appraised);
+        Assert.Equal(1, panel.CloseCalls);
+    });
+
+    [Fact]
     public void An_examination_with_no_response_within_the_timeout_closes_retails_panel() => OnWindowThread(() =>
     {
         long now = 0;

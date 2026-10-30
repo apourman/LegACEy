@@ -7,7 +7,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// Takes retail's examination panel over for the session, with the inventory takeover's park and return. Whenever the panel shows (the
 /// E key on any selection, or any other way retail opens it), the current selection is handed to the appraisal window. When the window
 /// shows it, the panel is closed again so that the next examination is a new show. While the window waits for the object's response, the
-/// panel stays parked (hidden). Retail's panel never comes back while the takeover is on: if the window cannot show the object, no response
+/// panel stays parked (hidden). A spell retail examines (a click on its spell bar) is shown as a spell, not as the selection. Retail's panel never comes back while the takeover is on: if the window cannot show the object, no response
 /// arrives within the request timeout, or nothing is selected, the panel is closed and the reason logged. While our window cannot show yet
 /// (portal space at login), a panel that shows is parked and held, and handed to the window once it can show. Call <see cref="Tick"/> on
 /// the game thread once a frame.
@@ -20,6 +20,8 @@ internal sealed class RetailExaminationTakeover : IDisposable
     private readonly AppraisalFeature _appraisals;
     private readonly Action<string> _log;
     private readonly Func<bool> _verifyRoot;
+    private readonly Func<uint> _examinedSpell;
+    private readonly Func<uint, bool> _showSpell;
     // The root check, made on the first show of a session before the panel is parked. Null until then.
     private bool? _rootVerified;
     private uint _selected;
@@ -37,8 +39,13 @@ internal sealed class RetailExaminationTakeover : IDisposable
     /// <param name="verifyRoot">Checks at runtime that the port's root is the examination panel. Run once a session, on the first enabled
     /// tick where the panel is open and our window can show, before the panel is parked. False, or a throw, leaves retail's panel alone for
     /// the session.</param>
-    public RetailExaminationTakeover(IRetailPanelPort port, Func<uint> selection, AppraisalFeature appraisals, Action<string> log, Func<bool> verifyRoot)
+    /// <param name="examinedSpell">The spell retail's panel opened for, or zero when it opened for an object.</param>
+    /// <param name="showSpell">Shows a spell in the appraisal window; false when it could not.</param>
+    public RetailExaminationTakeover(IRetailPanelPort port, Func<uint> selection, AppraisalFeature appraisals, Action<string> log, Func<bool> verifyRoot,
+        Func<uint>? examinedSpell = null, Func<uint, bool>? showSpell = null)
     {
+        _examinedSpell = examinedSpell ?? (() => 0);
+        _showSpell = showSpell ?? (_ => false);
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _appraisals = appraisals ?? throw new ArgumentNullException(nameof(appraisals));
@@ -191,6 +198,13 @@ internal sealed class RetailExaminationTakeover : IDisposable
         if (_appraisals.ExamineStored())
         {
             _closeAfterShow = true;
+            return;
+        }
+        var spell = _examinedSpell();
+        if (spell != 0)
+        {
+            if (_showSpell(spell)) _closeAfterShow = true;
+            else Drop($"Retail's examination is dropped: the appraisal window could not show spell {spell}.");
             return;
         }
         if (_selected == 0)
