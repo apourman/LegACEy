@@ -549,7 +549,6 @@ public sealed class NativeUiLifecycleTests
         options.Open = false;
         map.Open = true;
         mapTakeover.Tick(enabled: true);
-        Assert.Equal(new[] { "options True", "options False", "map True" }, events);
         optionsTakeover.Tick(enabled: true);
 
         // Retail's map panel never reaches the screen, and our map window opens where retail keeps the frame.

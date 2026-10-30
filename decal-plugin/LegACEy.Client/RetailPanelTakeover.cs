@@ -155,9 +155,6 @@ internal sealed class RetailPanelTakeover : IDisposable
         if (_disposed) return;
         _disposed = true;
         Release();
-        if (_slot == null) return;
-        if (_slot.Holder == this) _slot.Holder = null;
-        if (_slot.Shown == this) _slot.Shown = null;
     }
 
     private Point ParkedAt => _parkedAt ?? Parked;
