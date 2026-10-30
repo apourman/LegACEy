@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.23.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.22.0...decal-plugin-v0.23.0) (2026-10-30)
+
+
+### Features
+
+* Dereth panel windows keep retail's width ([#246](https://github.com/apourman/LegACEy/issues/246)) ([64fbac1](https://github.com/apourman/LegACEy/commit/64fbac16695a70499a8f7b542689b707c355ac36))
+* Dereth spell bar ([#242](https://github.com/apourman/LegACEy/issues/242)) ([f3388d4](https://github.com/apourman/LegACEy/commit/f3388d44348ccaa4ce52fd8cb9343adfad9ccf69))
+* UI scale overrides window scaling ([#245](https://github.com/apourman/LegACEy/issues/245)) ([9295703](https://github.com/apourman/LegACEy/commit/92957031c23d4ab8e5178c5bf35d0c0f6cdbe01d))
+
+
+### Bug Fixes
+
+* hotkey clicks select, double click uses ([#241](https://github.com/apourman/LegACEy/issues/241)) ([74ca589](https://github.com/apourman/LegACEy/commit/74ca58951d64077fbc5a3e651432f19a80925646))
+* LegACEy stays on through slow frames and logout ([#247](https://github.com/apourman/LegACEy/issues/247)) ([0819c66](https://github.com/apourman/LegACEy/commit/0819c6610636620e419cf7fbe13be1935c91842b))
+* LegACEy windows come back after an error or a relog ([#243](https://github.com/apourman/LegACEy/issues/243)) ([64ee1b1](https://github.com/apourman/LegACEy/commit/64ee1b1049cd47f71f3279ac94893e1737e73eae))
+* Options window button borders ([#244](https://github.com/apourman/LegACEy/issues/244)) ([cec04de](https://github.com/apourman/LegACEy/commit/cec04de3c99c9fb4e8b5b3b2123ed9354e21b461))
+* spell bar clicks and drops with Dereth windows ([#240](https://github.com/apourman/LegACEy/issues/240)) ([1e462fe](https://github.com/apourman/LegACEy/commit/1e462fe4546e238eaf36f3eb8cfe533b8d4758c9))
+
 ## [0.22.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.21.0...decal-plugin-v0.22.0) (2026-10-30)
 
 
