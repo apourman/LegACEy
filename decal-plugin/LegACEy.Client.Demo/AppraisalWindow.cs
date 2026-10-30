@@ -18,7 +18,7 @@ namespace LegACEy.Client.Demo;
 /// retail creature taller, with room under its lines for its figure's feet)
 /// and resizes from its edges. One instance serves the session: <see cref="Show"/> swaps in the next appraisal at the window's size.
 /// The retail layout (<see cref="RetailAppraisalLayout"/>) draws the same content as retail's examination panel does, in the Dereth frame:
-/// no icon, a creature's header box pinned over its lines with its figure standing behind them, and a parchment inscription box.
+/// no icon, a centred title, a creature's header box pinned over its lines with its figure standing behind them, and a parchment inscription box.
 /// </summary>
 public sealed class AppraisalWindow
 {
@@ -108,7 +108,8 @@ public sealed class AppraisalWindow
         var glyph = new DerethPathGlyph(FigureGlyph) { Stroke = DerethPalette.MutedBrush };
         var button = new DerethHeaderButton(glyph) { Name = "InspectButton" };
         ToolTip.SetTip(button, "Inspect");
-        var window = new DerethWindow(content.Name, retail ? null : Icon(content.Visual, art), Frame(top, behind, scroll, foot), button, iconHeader: true);
+        var window = new DerethWindow(content.Name, retail ? null : Icon(content.Visual, art), Frame(top, behind, scroll, foot), button,
+            centreTitle: retail, iconHeader: true);
         // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels. A
         // figure gets room under the lines for its feet, below the body so the body never scrolls for it.
         var needed = measure == null ? layout.Needed : measure(window, new Size(Width, double.PositiveInfinity)).Height;
@@ -139,6 +140,7 @@ public sealed class AppraisalWindow
         SetInspect(inspect);
         _window.Title = content.Name;
         _window.SetIcon(retail ? null : Icon(content.Visual, art));
+        _window.CentreTitle = retail;
         _scroll.Content = layout.Body;
         _behind.Margin = _scroll.Margin = layout.MiddleMargin;
         _window.SeeThrough = _behind.Content != null ? _behind : null;

@@ -69,13 +69,14 @@ public static class RetailAppraisalLayout
 
     /// <summary>
     /// The properties group with retail's one Properties line in place of the rows it gathers (the imbues, the properties, Dyeable, the
-    /// bond and Attuned, which the sections layout lists one by one).
+    /// bond and Attuned, which the sections layout lists one by one). Retail has no Material or Gems line: the material is in the name.
     /// </summary>
     private static IEnumerable<RetailAppraisalLine> PropertyLines(IReadOnlyList<AppraisalRow> rows, IReadOnlyList<string> words)
     {
         var written = false;
         foreach (var row in rows)
         {
+            if (row.Label is "Material" or "Gems") continue;
             if (row.Label is "Imbued Effect" or "Properties" || (row.Label == null && words.Contains(row.Text)))
             {
                 if (!written && words.Count > 0) yield return Text("Properties: " + string.Join(", ", words));
@@ -108,10 +109,20 @@ public static class RetailAppraisalLayout
                 yield return Text($"{row.Label} requires {row.Text}");
                 yield break;
             default:
-                yield return Text($"{row.Label}: {row.Text}");
+                yield return Text($"{(row.Label != null && RetailLabels.TryGetValue(row.Label, out var label) ? label : row.Label)}: {row.Text}");
                 yield break;
         }
     }
+
+    /// <summary>Retail's words for the combat bonuses the sections layout labels short (OpenAC's ItemAppraisalTextFormatter, MIT).</summary>
+    private static readonly Dictionary<string, string> RetailLabels = new()
+    {
+        ["Attack"] = "Bonus to Attack Skill",
+        ["Melee defense"] = "Bonus to Melee Defense",
+        ["Missile defense"] = "Bonus to Missile Defense",
+        ["Magic defense"] = "Bonus to Magic Defense",
+        ["Mana conversion"] = "Bonus to Mana Conversion",
+    };
 
     private static IReadOnlyList<RetailAppraisalGroup> CreatureGroups(AppraisalContent content)
     {

@@ -506,10 +506,7 @@ public sealed class DerethWindow : UserControl
 
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
     /// <param name="stretchActions">The header actions take the header's free width, and the title only its own.</param>
-    /// <param name="centreTitle">
-    /// The title is centred across the header, as retail centres its panel titles, with the close box's width kept clear on both sides.
-    /// For a window without an icon or header actions.
-    /// </param>
+    /// <param name="centreTitle">Sets <see cref="CentreTitle"/>.</param>
     /// <param name="iconHeader">
     /// The header is <see cref="IconHeaderHeight"/> tall, for a window that shows an icon, or may show one later; otherwise
     /// <see cref="HeaderHeight"/>.
@@ -529,14 +526,12 @@ public sealed class DerethWindow : UserControl
         _name = new DerethTitleText
         {
             FullText = title, Foreground = DerethPalette.CreamBrush, FontFamily = DerethPalette.Title, VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = centreTitle ? TextAlignment.Center : TextAlignment.Left
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
-        if (centreTitle)
-        {
-            Grid.SetColumnSpan(_name, 3);
-            _name.Margin = new Thickness(HeaderButtonSize + ActionGap, 0);
-        }
-        else Grid.SetColumn(_name, 1);
+        _header = header;
+        // The header buttons' width on the right, kept clear on both sides of a centred title.
+        _titleClear = HeaderButtonSize + ActionGap + (headerActions != null && !stretchActions ? HeaderButtonSize + header.ColumnSpacing : 0);
+        CentreTitle = centreTitle;
         header.Children.Add(_name);
         // The X is smaller than the other glyphs: at their size its two strokes read heavier than their outlines.
         var close = new DerethHeaderButton(new DerethPathGlyph("M0,0 L8,8 M8,0 L0,8", 8) { Stroke = DerethPalette.CreamBrush, StrokeThickness = 1.5 });
@@ -568,6 +563,24 @@ public sealed class DerethWindow : UserControl
 
     private readonly DerethFrame _frame;
     private readonly Decorator _emblem;
+    private readonly Grid _header;
+    private readonly double _titleClear;
+
+    /// <summary>
+    /// The title is centred across the header, as retail centres its panel titles, with the header buttons' width kept clear on both
+    /// sides. For a window without an icon and with at most one header action beside the close box.
+    /// </summary>
+    public bool CentreTitle
+    {
+        get => _name.TextAlignment == TextAlignment.Center;
+        set
+        {
+            _name.TextAlignment = value ? TextAlignment.Center : TextAlignment.Left;
+            Grid.SetColumn(_name, value ? 0 : 1);
+            Grid.SetColumnSpan(_name, value ? _header.ColumnDefinitions.Count : 1);
+            _name.Margin = value ? new Thickness(_titleClear, 0) : default;
+        }
+    }
 
     /// <summary>A control in the content whose area the window's fill leaves see-through (see <see cref="DerethFrame.SeeThrough"/>).</summary>
     public Control? SeeThrough
