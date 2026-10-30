@@ -1053,6 +1053,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         DropGameMessageToast();
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
+        // The panel windows (character, social, map, quests, magic, options) forgot theirs in EndRetailPanels; released here, or the next
+        // login finds the old window still registered and the panel stays retail's.
+        ReleaseFeatureWindows();
         // Windows released their requests above; anything still outstanding fails as disconnected.
         Guard(() => _serverChannel?.Reset());
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
