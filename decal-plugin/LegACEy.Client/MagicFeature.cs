@@ -171,11 +171,10 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
 
     bool IMagicGame.DropOnSpellBar(uint spell) => _overSpellBar() && ((IMagicGame)this).AddToSpellBar(spell);
 
-    void IMagicGame.Examine(uint spell)
-    {
-        if (!_spells().TryGetValue(spell, out var info)) return;
-        _examine(Examination(info));
-    }
+    void IMagicGame.Examine(uint spell) => Examine(spell);
+
+    /// <summary>Shows the spell in the appraisal window, as a click in the spellbook does. False for a spell the portal does not know.</summary>
+    public bool Examine(uint spell) => _spells().TryGetValue(spell, out var info) && _examine(Examination(info));
 
     /// <summary>
     /// The spell as the appraisal window shows it: its school and level, its mana and duration, its description, and the components the
