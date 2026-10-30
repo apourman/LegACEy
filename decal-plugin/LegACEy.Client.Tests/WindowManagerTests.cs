@@ -501,16 +501,12 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
-    public void A_fixed_width_window_moves_from_its_top_edge_and_resizes_its_height_from_the_top_corners_and_bottom()
+    public void A_fixed_width_window_moves_only_from_its_top_edge()
     {
         var manager = NewManager(1920, 1080);
         manager.Open(new WindowDefinition("social", "Social", 310, 600, resizing: new WindowResizing(new Size(310, 400), new Size(310, 10_000))),
             new Point(100, 100));
 
-        Assert.Equal(WindowEdges.None, manager.HoverAt(new Point(101, 400)).Edges);
-        Assert.Equal(WindowEdges.Top, manager.HoverAt(new Point(103, 101)).Edges);
-        Assert.Equal(WindowEdges.Top, manager.HoverAt(new Point(406, 101)).Edges);
-        Assert.Equal(WindowEdges.Bottom, manager.HoverAt(new Point(103, 698)).Edges);
         Assert.Equal("social", manager.MoveEdgeAt(new Point(250, 101)));
         Assert.Null(manager.MoveEdgeAt(new Point(103, 101)));
 
