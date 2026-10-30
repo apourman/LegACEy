@@ -14,7 +14,8 @@ namespace LegACEy.Client.Demo;
 /// <summary>
 /// The appraisal window: a Dereth window whose header carries the item's icon and name, drawing an <see cref="AppraisalContent"/>. The
 /// summary, then the sections (each a gold heading over a rule), then the long description in italics under a rule. The body scrolls
-/// when it does not fit, and the inscription stays pinned under it. The window opens fitted to its content (up to <see cref="MaxHeight"/>)
+/// when it does not fit, and the inscription stays pinned under it. The window opens fitted to its content (up to <see cref="MaxHeight"/>, a
+/// retail creature taller, with room under its lines for its figure's feet)
 /// and resizes from its edges. One instance serves the session: <see cref="Show"/> swaps in the next appraisal at the window's size.
 /// The retail layout (<see cref="RetailAppraisalLayout"/>) draws the same content as retail's examination panel does, in the Dereth frame:
 /// no icon, a creature's header box pinned over its lines with its figure standing behind them, and a parchment inscription box.
@@ -28,6 +29,9 @@ public sealed class AppraisalWindow
     private static readonly Color HealthFill = Color.Parse("#B8453A");
     /// <summary>The tallest the window opens at before its body scrolls; the player can resize it from there.</summary>
     public const int MaxHeight = 520;
+    // A retail creature's window opens taller, with room under its lines for the figure's feet, as retail's panel has.
+    private const int RetailFigureMaxHeight = 720;
+    private const double FloorRoom = 7 * RetailLineHeight;
     /// <summary>The smallest the player can resize the window to: the header, the summary and a few rows.</summary>
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(260, 160));
     // The Dereth frame and header, the title rule and the body's bottom margin, around the body.
@@ -109,7 +113,7 @@ public sealed class AppraisalWindow
         // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels.
         var height = measure == null
             ? layout.Height
-            : Math.Min(MaxHeight, (int)Math.Ceiling(measure(window, new Size(Width, double.PositiveInfinity)).Height - 0.001));
+            : Math.Min(layout.MaxHeight, (int)Math.Ceiling(measure(window, new Size(Width, double.PositiveInfinity)).Height - 0.001));
         if (behind.Content != null) window.SeeThrough = behind;
         var view = new AppraisalWindow(window, scroll, foot, top, behind, height, layout.Field, content.ObjectId, button, content, retail);
         view.SetInspect(inspect);
@@ -166,7 +170,7 @@ public sealed class AppraisalWindow
     /// The body, the header box and the inscription for the content, the height the window needs to show all of it, and the margin of the
     /// body and the figure behind it: a retail creature's reach the frame, as retail's do.
     /// </summary>
-    private static (Control Body, Control? Top, Control? Foot, int Height, InscriptionField? Field, Thickness Middle) Layout(AppraisalContent content,
+    private static (Control Body, Control? Top, Control? Foot, int Height, int MaxHeight, InscriptionField? Field, Thickness Middle) Layout(AppraisalContent content,
         Func<uint, string, bool> inscribe, bool retail, IGameArtSource? art)
     {
         var body = content.Formula != null ? SpellBody(content, content.Formula, art) : retail ? RetailBody(content) : SectionsBody(content);
@@ -181,7 +185,8 @@ public sealed class AppraisalWindow
             return (int)Math.Ceiling(part.DesiredSize.Height);
         });
         var middle = top != null ? new Thickness(-FrameInset, 0, -FrameInset, -FrameInset) : default;
-        return (body, top, foot, Math.Min(MaxHeight, needed), field, middle);
+        var most = top != null ? RetailFigureMaxHeight : MaxHeight;
+        return (body, top, foot, Math.Min(most, needed), most, field, middle);
     }
 
     /// <summary>
@@ -240,7 +245,8 @@ public sealed class AppraisalWindow
     private static Control RetailBody(AppraisalContent content)
     {
         var creature = content.Creature != null;
-        var body = new StackPanel { Margin = new Thickness(BodySide, 4, BodySide, 6) };
+        // Under a creature's lines, room for its figure's feet to stand clear of the words, as in retail's taller panel.
+        var body = new StackPanel { Margin = new Thickness(BodySide, 4, BodySide, creature ? FloorRoom : 6) };
         if (creature) body.Effect = new DropShadowEffect { BlurRadius = 2, OffsetX = 0, OffsetY = 1, Color = Colors.Black, Opacity = 1 };
         var first = true;
         foreach (var group in RetailAppraisalLayout.Groups(content))
