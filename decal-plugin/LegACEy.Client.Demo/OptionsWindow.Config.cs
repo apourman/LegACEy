@@ -86,7 +86,7 @@ public sealed partial class OptionsWindow
     // The open drop-down's list, drawn over the rows below its box as retail's is, and the preference it is for.
     private readonly Canvas _menuLayer = new();
     private readonly StackPanel _menuItems = new();
-    private Border? _menuList;
+    private readonly Border _menuList;
     private string? _openMenu;
     private readonly Dictionary<string, Control> _menuBoxes = new();
 
@@ -106,12 +106,14 @@ public sealed partial class OptionsWindow
     public bool CanApplyConfig => _configApply?.IsEnabled == true;
 
     /// <summary>A Config preference as the window shows it: a held change, else retail's value; null when retail's cannot be read.</summary>
-    public double? ShownConfig(string name) => _heldConfig.TryGetValue(name, out var held) ? held : _game.Preference(_preferences[name].Kind, name);
+    public double? ShownConfig(string name) => _heldConfig.TryGetValue(name, out var held) ? held : Retail(name);
+
+    private double? Retail(string name) => _game.Preference(_preferences[name].Kind, name);
 
     /// <summary>Holds a Config value until Apply, as a change on retail's page is; one back at retail's value is let go.</summary>
     public void HoldConfig(string name, double value)
     {
-        if (_game.Preference(_preferences[name].Kind, name) is not { } current) return;
+        if (Retail(name) is not { } current) return;
         if (Same(name, value, current)) _heldConfig.Remove(name);
         else _heldConfig[name] = value;
         Refresh();
@@ -121,7 +123,7 @@ public sealed partial class OptionsWindow
     {
         if (_heldConfig.Count == 0) return;
         var changes = _heldConfig.Select(held => new PreferenceChange(_preferences[held.Key].Kind, held.Key, held.Value,
-            _game.Preference(_preferences[held.Key].Kind, held.Key) ?? held.Value)).ToList();
+            Retail(held.Key) ?? held.Value)).ToList();
         _game.SetPreferences(changes);
         _heldConfig.Clear();
         Refresh();
@@ -138,7 +140,7 @@ public sealed partial class OptionsWindow
     {
         _heldConfig.Clear();
         foreach (var preference in _preferences)
-            if (_game.Preference(preference.Value.Kind, preference.Key) is { } current && !Same(preference.Key, preference.Value.Default, current))
+            if (Retail(preference.Key) is { } current && !Same(preference.Key, preference.Value.Default, current))
                 _heldConfig[preference.Key] = preference.Value.Default;
         Refresh();
     }
@@ -152,7 +154,7 @@ public sealed partial class OptionsWindow
     private void RefreshConfig()
     {
         // A held change retail has since come to (Use Mouse Turning Settings, another window) is no longer a change.
-        foreach (var name in _heldConfig.Where(held => _game.Preference(_preferences[held.Key].Kind, held.Key) is { } current && Same(held.Key, held.Value, current))
+        foreach (var name in _heldConfig.Where(held => Retail(held.Key) is { } current && Same(held.Key, held.Value, current))
                      .Select(held => held.Key).ToList())
             _heldConfig.Remove(name);
         foreach (var refresh in _configRefresh) refresh();
@@ -182,17 +184,12 @@ public sealed partial class OptionsWindow
             if (row.Slider != null) _preferences[row.Slider] = (PreferenceKind.Number, row.SliderDefault);
             rows.Children.Add(row.Kind switch
             {
-                ConfigRowKind.Switch => SwitchRow(row.Label, name),
+                ConfigRowKind.Switch => ConfigLight(row.Label, name),
                 ConfigRowKind.SwitchSlider => SwitchSliderRow(row.Label, name, row.Slider!),
                 ConfigRowKind.Slider => SliderRow(row),
                 _ => MenuRow(row)
             });
         }
-        _menuList = new Border
-        {
-            IsVisible = false, Width = ControlWidth, Background = MenuBrush, BorderBrush = MenuEdgeBrush, BorderThickness = new Thickness(1),
-            Child = new ScrollViewer { Content = _menuItems, MaxHeight = 200, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }
-        };
         _menuLayer.Children.Add(_menuList);
         var content = new Panel();
         content.Children.Add(rows);
@@ -208,16 +205,22 @@ public sealed partial class OptionsWindow
 
     private const string MenuTag = "menu";
 
+    private static Border MenuList(Control items) => new()
+    {
+        IsVisible = false, Width = ControlWidth, Background = MenuBrush, BorderBrush = MenuEdgeBrush, BorderThickness = new Thickness(1),
+        Child = new ScrollViewer { Content = items, MaxHeight = 200, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }
+    };
+
     private void CloseMenu()
     {
         _openMenu = null;
-        if (_menuList != null) _menuList.IsVisible = false;
+        _menuList.IsVisible = false;
     }
 
     /// <summary>Lists a drop-down's choices over the rows just below its box, or above it when the list would run past the page.</summary>
     private void OpenMenu(string name, bool listed, Control box)
     {
-        if (_openMenu == name || _menuList == null)
+        if (_openMenu == name)
         {
             CloseMenu();
             return;
@@ -261,8 +264,6 @@ public sealed partial class OptionsWindow
         _configRefresh.Add(light.Refresh);
         return light;
     }
-
-    private Control SwitchRow(string label, string name) => ConfigLight(label, name);
 
     private Control SwitchSliderRow(string label, string name, string slider)
     {

@@ -199,6 +199,7 @@ public sealed partial class OptionsWindow
         }
         var character = PageWithButtons(rows, Apply, Reset, Defaults, out _apply, out _reset);
 
+        _menuList = MenuList(_menuItems);
         _pages = new Control[] { gameplay, character, BuildConfig() };
         _page = new ContentControl { Margin = new Thickness(0, 5, 0, 0) };
         // The tabs sit in the header beside the close box, as the social window's do.

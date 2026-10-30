@@ -91,23 +91,19 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
         Wrapper("whole number", GetWhole, "19 44 E5 FF", "0C"), Wrapper("set whole number", SetWhole, "19 45 E5 FF", "10"),
         Wrapper("menu value", GetChoice, "D9 43 E5 FF", "1C"), Wrapper("set menu value", SetChoice, "D9 44 E5 FF", "20"),
         Wrapper("decimal", GetDecimal, "99 43 E5 FF", "30"), Wrapper("set decimal", SetDecimal, "99 44 E5 FF", "34"),
-        new NativeUiEntry("UserPreferences: decimal range (vtable +0x38)", DecimalRange, NativeUiCatalogue.Bytes(Lookup +
-            " 09 47 E5 FF 8B 44 24 08 85 C0 74 1C 8B 48 08 85 C9 B0 01 74 0F 8B 44 24 18 8B 11 50 8B 44 24 18 50 FF 52 38"), Source, "Cdecl"),
-        new NativeUiEntry("UserPreferences: whole number range (vtable +0x14)", WholeRange, NativeUiCatalogue.Bytes(Lookup +
-            " B9 46 E5 FF 8B 44 24 08 85 C0 74 1C 8B 48 08 85 C9 B0 01 74 0F 8B 44 24 18 8B 11 50 8B 44 24 18 50 FF 52 14"), Source, "Cdecl"),
-        new NativeUiEntry("UserPreferences: label, tooltip and string table ids", Description, NativeUiCatalogue.Bytes(Lookup +
-            " A9 47 E5 FF 8B 44 24 08 85 C0 74 2A 8B 48 08 85 C9 B0 01 74 1D 8B 51 0C 8B 44 24 14 89 10 8B 51 10"), Source, "Cdecl"),
-        new NativeUiEntry("UserPreferences: menu string ids (vtable +0x24)", ChoiceIds, NativeUiCatalogue.Bytes(Lookup +
-            " 29 46 E5 FF 8B 44 24 08 85 C0 74 17 8B 48 08 85 C9 B0 01 74 0A 8B 44 24 14 8B 11 50 FF 52 24"), Source, "Cdecl"),
-        new NativeUiEntry("UserPreferences::InqChoiceValues", ChoiceValues, NativeUiCatalogue.Bytes(
-            "A1 C8 80 83 00 83 EC 0C 85 C0 75 21 68 00 81 00 00 E8 8F 69 1A 00"), Source, "Cdecl"),
-        new NativeUiEntry("UserPreferences::InqChoiceStrings", ChoiceStrings, NativeUiCatalogue.Bytes(
-            "A1 C8 80 83 00 83 EC 0C 85 C0 75 21 68 00 81 00 00 E8 7F 68 1A 00"), Source, "Cdecl"),
-        new NativeUiEntry("CM_UI::SendNotice_UserPreferenceChanged", PreferenceChanged, NativeUiCatalogue.Bytes(
-            "E8 CB 00 00 00 8B 10 68 1E D2 4D 00 8B C8 FF 52 10"), Source, "Cdecl"),
-        new NativeUiEntry("CM_UI::SendNotice_UserPreferenceChanged_Menu", MenuChanged, NativeUiCatalogue.Bytes(
-            "E8 7B 00 00 00 8B 10 68 76 D2 4D 00 8B C8 FF 52 10"), Source, "Cdecl"),
-        new NativeUiEntry("operator delete", Free, NativeUiCatalogue.Bytes("FF 25 34 32 79 00"), Source, "Cdecl"),
+        Cdecl("UserPreferences: decimal range (vtable +0x38)", DecimalRange, Lookup +
+            " 09 47 E5 FF 8B 44 24 08 85 C0 74 1C 8B 48 08 85 C9 B0 01 74 0F 8B 44 24 18 8B 11 50 8B 44 24 18 50 FF 52 38"),
+        Cdecl("UserPreferences: whole number range (vtable +0x14)", WholeRange, Lookup +
+            " B9 46 E5 FF 8B 44 24 08 85 C0 74 1C 8B 48 08 85 C9 B0 01 74 0F 8B 44 24 18 8B 11 50 8B 44 24 18 50 FF 52 14"),
+        Cdecl("UserPreferences: label, tooltip and string table ids", Description, Lookup +
+            " A9 47 E5 FF 8B 44 24 08 85 C0 74 2A 8B 48 08 85 C9 B0 01 74 1D 8B 51 0C 8B 44 24 14 89 10 8B 51 10"),
+        Cdecl("UserPreferences: menu string ids (vtable +0x24)", ChoiceIds, Lookup +
+            " 29 46 E5 FF 8B 44 24 08 85 C0 74 17 8B 48 08 85 C9 B0 01 74 0A 8B 44 24 14 8B 11 50 FF 52 24"),
+        Cdecl("UserPreferences::InqChoiceValues", ChoiceValues, "A1 C8 80 83 00 83 EC 0C 85 C0 75 21 68 00 81 00 00 E8 8F 69 1A 00"),
+        Cdecl("UserPreferences::InqChoiceStrings", ChoiceStrings, "A1 C8 80 83 00 83 EC 0C 85 C0 75 21 68 00 81 00 00 E8 7F 68 1A 00"),
+        Cdecl("CM_UI::SendNotice_UserPreferenceChanged", PreferenceChanged, "E8 CB 00 00 00 8B 10 68 1E D2 4D 00 8B C8 FF 52 10"),
+        Cdecl("CM_UI::SendNotice_UserPreferenceChanged_Menu", MenuChanged, "E8 7B 00 00 00 8B 10 68 76 D2 4D 00 8B C8 FF 52 10"),
+        Cdecl("operator delete", Free, "FF 25 34 32 79 00"),
         new NativeUiEntry("PStringBase<char> vector deleting destructor", FreeStrings, NativeUiCatalogue.Bytes(
             "51 F6 44 24 08 02 56 57 8B F9 74 64 8B 47 FC 53 8D 5F FC 8D 3C 87"), Source, "ThisCall")
     };
@@ -327,6 +323,8 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
 
     (double Low, double High)? IOptionsGame.Range(string name)
     {
+        // Which range call fits is learnt by the first read of the value.
+        if (!_decimal.ContainsKey(name)) ((IOptionsGame)this).Preference(PreferenceKind.Number, name);
         if (Name(name) is not { } at || !_decimal.TryGetValue(name, out var isDecimal)) return null;
         if (isDecimal)
         {
@@ -348,7 +346,7 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
             var strings = Fill(ChoiceStrings, at, out var stringsData, out var stringCount);
             for (var i = 0; i < Math.Min(stringCount, valueCount); i++)
                 choices.Add(new MenuChoice(Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(stringsData, i * 4)) ?? string.Empty, (uint)Marshal.ReadInt32(valuesData, i * 4)));
-            if (strings.Owned) ((delegate* unmanaged[Thiscall]<IntPtr, uint, IntPtr>)FreeStrings)(stringsData, 3);
+            if (strings) ((delegate* unmanaged[Thiscall]<IntPtr, uint, IntPtr>)FreeStrings)(stringsData, 3);
         }
         else
         {
@@ -360,9 +358,9 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
                 var value = valueCount > 0 ? i < valueCount ? (uint)Marshal.ReadInt32(valuesData, i * 4) : (uint?)null : (uint)i;
                 if (value is { } v) choices.Add(new MenuChoice(_strings().TryGetValue(id, out var text) ? text : v.ToString(), v));
             }
-            if (ids.Owned) ((delegate* unmanaged[Cdecl]<IntPtr, void>)Free)(idsData);
+            if (ids) ((delegate* unmanaged[Cdecl]<IntPtr, void>)Free)(idsData);
         }
-        if (values.Owned) ((delegate* unmanaged[Cdecl]<IntPtr, void>)Free)(valuesData);
+        if (values) ((delegate* unmanaged[Cdecl]<IntPtr, void>)Free)(valuesData);
         return choices;
     }
 
@@ -395,18 +393,15 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
         }
     }
 
-    /// <summary>
-    /// Fills a SmartArray (data, capacity with the owned bit 0x80000000, count) through one of retail's menu calls. The caller frees the
-    /// data when it is owned.
-    /// </summary>
-    private static (bool Answered, bool Owned) Fill(uint call, IntPtr name, out IntPtr data, out int count)
+    /// <summary>Fills a SmartArray (data, capacity | 0x80000000 when owned, count) through a menu call; true when the caller must free it.</summary>
+    private static bool Fill(uint call, IntPtr name, out IntPtr data, out int count)
     {
         var array = stackalloc uint[3];
         array[0] = array[1] = array[2] = 0;
-        var answered = ((delegate* unmanaged[Cdecl]<IntPtr, uint*, byte>)call)(name, array) != 0;
+        ((delegate* unmanaged[Cdecl]<IntPtr, uint*, byte>)call)(name, array);
         data = new IntPtr((int)array[0]);
         count = data == IntPtr.Zero ? 0 : (int)array[2];
-        return (answered, data != IntPtr.Zero && (array[1] & 0x80000000) != 0);
+        return data != IntPtr.Zero && (array[1] & 0x80000000) != 0;
     }
 
     /// <summary>The address of retail's name for a preference, once the preference calls and every name have matched; null otherwise.</summary>
@@ -454,9 +449,11 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
     private bool ButtonsValid() => _buttonsValid ??= NativeUi.Ready && NativeUiCatalogue.Validate(NativeUi.ReadMemory, _log, ButtonNatives,
         "The options window's Configure Keyboard and In-Game Help Files are off: the running client does not match retail's buttons.");
 
+    private static NativeUiEntry Cdecl(string name, uint address, string bytes) => new(name, address, NativeUiCatalogue.Bytes(bytes), Source, "Cdecl");
+
     private static NativeUiEntry Wrapper(string what, uint address, string lookupCall, string slot) =>
-        new($"UserPreferences: {what} (vtable +0x{slot})", address, NativeUiCatalogue.Bytes(Lookup + " " + lookupCall +
-            " 8B 44 24 08 85 C0 74 07 8B 48 08 B0 01 EB 04 32 C0 33 C9 84 C0 74 0A 8B 44 24 14 8B 11 50 FF 52 " + slot), Source, "Cdecl");
+        Cdecl($"UserPreferences: {what} (vtable +0x{slot})", address, Lookup + " " + lookupCall +
+            " 8B 44 24 08 85 C0 74 07 8B 48 08 B0 01 EB 04 32 C0 33 C9 84 C0 74 0A 8B 44 24 14 8B 11 50 FF 52 " + slot);
 
     private bool BroadcastsValid() => _broadcastsValid ??= NativeUi.Ready && NativeUiCatalogue.Validate(NativeUi.ReadMemory, _log, BroadcastNatives,
         "The options window's Exit Game and Use Mouse Turning Settings are off: the running client does not match retail's buttons.");
