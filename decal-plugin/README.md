@@ -14,7 +14,8 @@ updates itself and offers them in game.
 
 ## Options
 
-Settings opens from the toolbar's LegACEy button or `/legacey` in chat. Its
+Settings opens from the toolbar's LegACEy button or `/legacey` in chat. After
+an error turns LegACEy off, `/legacey` starts it again. Settings'
 Windows tab switches each window between Dereth and Retail, and sets size and
 opacity. Each switch is an empty `retail-<window>-native` file beside the main
 DLL, so it holds for every character on the install.
