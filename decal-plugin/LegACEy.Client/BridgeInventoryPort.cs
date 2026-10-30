@@ -18,13 +18,16 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public BridgeInventoryPort(Action<string> log)
     {
         _log = log;
-        _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader()), log);
+        _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader()).WithShortcuts(Shortcuts()), log);
         var clock = Stopwatch.StartNew();
         // Without retail's request flag, every move after the first waits out the queue's timeout.
         _moves = new InventoryMoveQueue(Send, () => clock.Elapsed, () => Request?.Pending ?? true);
     }
 
     private readonly InventoryMoveQueue _moves;
+
+    /// <summary>Retail's shortcuts, read into each snapshot; none until the toolbar is read.</summary>
+    public Func<IReadOnlyList<RetailShortcut>> Shortcuts { get; set; } = Array.Empty<RetailShortcut>;
 
     /// <summary>Retail's inventory request in flight, set once the native UI is checked; null paces moves by the timeout alone.</summary>
     public RetailInventoryRequest? Request { get; set; }

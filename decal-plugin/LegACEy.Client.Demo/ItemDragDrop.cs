@@ -51,7 +51,9 @@ public enum ItemDropTarget
     /// <summary>Anywhere else.</summary>
     Elsewhere,
     /// <summary>The 3D world view: an item of the player's released here is dropped on the ground.</summary>
-    World
+    World,
+    /// <summary>The Dereth toolbar: a pack released here binds to a shortcut slot.</summary>
+    Toolbar
 }
 
 /// <summary>Host services for dragging an item out of a LegACEy window and onto the retail UI, and for handing one to a LegACEy window.</summary>

@@ -1,4 +1,3 @@
-using System;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
@@ -53,12 +52,14 @@ public sealed class RetailVitalsFrame : Decorator
     private static readonly IPen Dark = new Pen(new SolidColorBrush(Color.Parse("#67553B")), 1);
     private static readonly IPen Bronze = new Pen(new SolidColorBrush(Color.Parse("#907854")), 1);
 
+    static RetailVitalsFrame() => AffectsRender<RetailVitalsFrame>(DerethFrame.FillOpacityProperty);
+
     public RetailVitalsFrame() => Padding = new Thickness(EdgeWidth);
 
     public override void Render(DrawingContext context)
     {
         var box = new Rect(Bounds.Size);
-        context.DrawRectangle(Brushes.Black, null, box.Deflate(2));
+        using (context.PushOpacity(DerethFrame.GetFillOpacity(this))) context.DrawRectangle(Brushes.Black, null, box.Deflate(2));
         context.DrawRectangle(null, Dark, box.Deflate(2.5));
         context.DrawRectangle(null, Bronze, box.Deflate(3.5));
     }
@@ -97,7 +98,7 @@ public sealed class OutlinedText : Control
         _ink ??= new FormattedText(_text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Face, _size, Brushes.White).BuildGeometry(default);
         if (_ink == null) return;
         var ink = _ink.Bounds;
-        using (context.PushTransform(Matrix.CreateTranslation(Math.Round(Bounds.Width / 2 - ink.Center.X), Bounds.Height / 2 - ink.Center.Y)))
+        using (context.PushTransform(Matrix.CreateTranslation(Bounds.Width / 2 - ink.Center.X, Bounds.Height / 2 - ink.Center.Y)))
         {
             context.DrawGeometry(null, Outline, _ink);
             context.DrawGeometry(Brushes.White, null, _ink);

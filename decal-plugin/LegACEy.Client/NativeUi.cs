@@ -29,6 +29,16 @@ internal static class NativeUi
     public const uint InventoryPanel = 0x1000018B;
     /// <summary>The character panel (Attributes, Skills, Titles), placed under PanelPages as gmPanelUI's panel 11.</summary>
     public const uint CharacterPanel = 0x1000018E;
+    /// <summary>The social panel (Allegiance, Fellowship, Friends, Squelch), placed under PanelPages as panel 12.</summary>
+    public const uint SocialPanel = 0x1000018F;
+    /// <summary>The map panel (Map, House), placed under PanelPages as panel 16.</summary>
+    public const uint MapPanel = 0x1000018C;
+    /// <summary>The quest panel (Contracts, Journal, Page List), placed under PanelPages as panel 25.</summary>
+    public const uint QuestsPanel = 0x10000559;
+    /// <summary>The magic panel (Spellbook, Components), placed under PanelPages as panel 13.</summary>
+    public const uint MagicPanel = 0x10000190;
+    /// <summary>The options panel (Gameplay Options, Character, Chat, Config), placed under PanelPages as panel 10.</summary>
+    public const uint OptionsPanel = 0x1000018D;
     /// <summary>
     /// Retail's toolbar window: the framed panel placed in LayoutDesc 0x21000005 as 0x10000603 (from 0x21000070/0x10000602), holding the
     /// toolbar. The takeover hides and moves this one. RootToolbar_Field (0x10000191) is only the base id and finds nothing.
@@ -143,7 +153,7 @@ internal static class NativeUi
 
     public static void SetVisible(IntPtr element, bool visible) { EnsureReady(); SetVisibleNative(element, visible ? (byte)1 : (byte)0); }
 
-    /// <summary>The element's rectangle in screen pixels.</summary>
+    /// <summary>The element's rectangle in its parent's pixels: screen pixels for a root element.</summary>
     public static Rectangle GetBounds(IntPtr element)
     {
         EnsureReady();

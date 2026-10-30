@@ -28,6 +28,11 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     private IReadOnlyDictionary<uint, SpellInfo>? _spells;
     private CharacterNames? _characterNames;
     private CharacterTables? _characterTables;
+    private IReadOnlyDictionary<uint, ContractInfo>? _contracts;
+    private SpellComponentTable? _components;
+    private IReadOnlyDictionary<uint, string>? _interfaceStrings;
+    // The language DAT's interface strings: option labels and tooltips among them.
+    private const uint InterfaceStringTable = 0x23000003;
 
     public PortalDat(string path)
     {
@@ -66,24 +71,8 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     /// The spells' names and descriptions by spell id, read once. A spell table that is missing or cannot be read gives an empty table,
     /// logged once, so every spell is named by its id and the appraisal still shows.
     /// </summary>
-    public IReadOnlyDictionary<uint, SpellInfo> ReadSpells(Action<string>? log = null)
-    {
-        lock (_stream)
-        {
-            if (_spells != null) return _spells;
-            try
-            {
-                var file = ReadFile(SpellTable.FileId);
-                _spells = file == null ? new Dictionary<uint, SpellInfo>() : SpellTable.Parse(file);
-            }
-            catch (Exception exception)
-            {
-                log?.Invoke($"The spell names could not be read from the portal: {exception.Message}");
-                _spells = new Dictionary<uint, SpellInfo>();
-            }
-            return _spells;
-        }
-    }
+    public IReadOnlyDictionary<uint, SpellInfo> ReadSpells(Action<string>? log = null) =>
+        ReadTableOnce(ref _spells, SpellTable.FileId, SpellTable.Parse, "spell names", log);
 
     /// <summary>
     /// The creature type and title names, read once. Each is read on its own: a creature mapper that cannot be read leaves the creature types
@@ -129,6 +118,82 @@ public sealed class PortalDat : IDisposable, IGameArtSource
                 Read(CharacterTables.AttributeIconMapper, "attribute icons", CharacterTables.ParseDidMapper, new Dictionary<uint, uint>()),
                 Read(CharacterTables.VitalIconMapper, "vital icons", CharacterTables.ParseDidMapper, new Dictionary<uint, uint>()));
             return _characterTables;
+        }
+    }
+
+    /// <summary>The contracts by id, read once. A table that is missing or cannot be read gives none, logged once; the quests window then names contracts by id.</summary>
+    public IReadOnlyDictionary<uint, ContractInfo> ReadContracts(Action<string>? log = null) =>
+        ReadTableOnce(ref _contracts, ContractTable.FileId, ContractTable.Parse, "contracts", log);
+
+    /// <summary>
+    /// The spell components with the weenie class each one's items are made from, read once. A table that is missing or cannot be read gives
+    /// none, logged once; the magic window then lists no components and a formula shows no icons.
+    /// </summary>
+    public SpellComponentTable ReadSpellComponents(Action<string>? log = null)
+    {
+        lock (_stream)
+        {
+            if (_components != null) return _components;
+            try
+            {
+                var file = ReadFile(SpellComponentTable.FileId);
+                var mapper = ReadFile(SpellComponentTable.WcidMapper);
+                _components = file == null
+                    ? SpellComponentTable.None
+                    : SpellComponentTable.Parse(file, mapper == null ? new Dictionary<uint, uint>() : CharacterTables.ParseDidMapper(mapper));
+                if (file == null) log?.Invoke("The spell component table is missing from the portal.");
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"The spell components could not be read from the portal: {exception.Message}");
+                _components = SpellComponentTable.None;
+            }
+            return _components;
+        }
+    }
+
+    /// <summary>
+    /// Retail's interface text (string table 0x23000003 in client_local_English.dat beside this portal) by string id, read once; the client
+    /// finds a text by the hash of its name (<see cref="CharacterNames.Hash"/>). Missing or unreadable gives none, logged once.
+    /// </summary>
+    public IReadOnlyDictionary<uint, string> ReadInterfaceStrings(Action<string>? log = null)
+    {
+        lock (_stream)
+        {
+            if (_interfaceStrings != null) return _interfaceStrings;
+            try
+            {
+                using var language = new PortalDat(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!, "client_local_English.dat"));
+                var table = language.ReadFile(InterfaceStringTable);
+                _interfaceStrings = table == null ? new Dictionary<uint, string>() : CharacterNames.ParseStringTable(table);
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"Retail's interface text could not be read from the English language DAT: {exception.Message}");
+                _interfaceStrings = new Dictionary<uint, string>();
+            }
+            return _interfaceStrings;
+        }
+    }
+
+    /// <summary>A table by id, read into <paramref name="cache"/> once; missing or unreadable gives an empty table, logged once.</summary>
+    private IReadOnlyDictionary<uint, T> ReadTableOnce<T>(ref IReadOnlyDictionary<uint, T>? cache, uint id,
+        Func<byte[], IReadOnlyDictionary<uint, T>> parse, string what, Action<string>? log)
+    {
+        lock (_stream)
+        {
+            if (cache != null) return cache;
+            try
+            {
+                var file = ReadFile(id);
+                cache = file == null ? new Dictionary<uint, T>() : parse(file);
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"The {what} could not be read from the portal: {exception.Message}");
+                cache = new Dictionary<uint, T>();
+            }
+            return cache;
         }
     }
 

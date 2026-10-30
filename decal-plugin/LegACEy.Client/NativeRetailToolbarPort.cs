@@ -318,12 +318,12 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// </summary>
     private static uint PanelElementId(RetailPanel panel) => panel switch
     {
-        RetailPanel.WorldMap => 0x1000018C,
-        RetailPanel.Options => 0x1000018D,
+        RetailPanel.WorldMap => NativeUi.MapPanel,
+        RetailPanel.Options => NativeUi.OptionsPanel,
         RetailPanel.Skills => NativeUi.CharacterPanel,
-        RetailPanel.Social => 0x1000018F,
-        RetailPanel.Magic => 0x10000190,
-        RetailPanel.Quests => 0x10000559,
+        RetailPanel.Social => NativeUi.SocialPanel,
+        RetailPanel.Magic => NativeUi.MagicPanel,
+        RetailPanel.Quests => NativeUi.QuestsPanel,
         _ => NativeUi.InventoryPanel
     };
 }

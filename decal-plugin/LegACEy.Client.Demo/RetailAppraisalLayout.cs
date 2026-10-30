@@ -8,8 +8,8 @@ namespace LegACEy.Client.Demo;
 /// <summary>A line of the retail layout: a label and its value, or text across the window when there is no label. The tone colours the value.</summary>
 public sealed record RetailAppraisalLine(string? Label, string Value, AppraisalTone Tone = AppraisalTone.Normal);
 
-/// <summary>A run of lines with the blank lines above it (none above the first group).</summary>
-public sealed record RetailAppraisalGroup(IReadOnlyList<RetailAppraisalLine> Lines, int BlankLinesBefore = 1);
+/// <summary>A run of lines with the blank lines above it (none above the first group), and whether retail rules a line under it.</summary>
+public sealed record RetailAppraisalGroup(IReadOnlyList<RetailAppraisalLine> Lines, int BlankLinesBefore = 1, bool Ruled = false);
 
 /// <summary>
 /// The retail layout of an appraisal (backlog 082): the same content as the sections layout, without headings, in groups split by blank
@@ -69,13 +69,14 @@ public static class RetailAppraisalLayout
 
     /// <summary>
     /// The properties group with retail's one Properties line in place of the rows it gathers (the imbues, the properties, Dyeable, the
-    /// bond and Attuned, which the sections layout lists one by one).
+    /// bond and Attuned, which the sections layout lists one by one). Retail has no Material or Gems line: the material is in the name.
     /// </summary>
     private static IEnumerable<RetailAppraisalLine> PropertyLines(IReadOnlyList<AppraisalRow> rows, IReadOnlyList<string> words)
     {
         var written = false;
         foreach (var row in rows)
         {
+            if (row.Label is "Material" or "Gems") continue;
             if (row.Label is "Imbued Effect" or "Properties" || (row.Label == null && words.Contains(row.Text)))
             {
                 if (!written && words.Count > 0) yield return Text("Properties: " + string.Join(", ", words));
@@ -108,17 +109,28 @@ public static class RetailAppraisalLayout
                 yield return Text($"{row.Label} requires {row.Text}");
                 yield break;
             default:
-                yield return Text($"{row.Label}: {row.Text}");
+                yield return Text($"{(row.Label != null && RetailLabels.TryGetValue(row.Label, out var label) ? label : row.Label)}: {row.Text}");
                 yield break;
         }
     }
+
+    /// <summary>Retail's words for the combat bonuses the sections layout labels short (OpenAC's ItemAppraisalTextFormatter, MIT).</summary>
+    private static readonly Dictionary<string, string> RetailLabels = new()
+    {
+        ["Attack"] = "Bonus to Attack Skill",
+        ["Melee defense"] = "Bonus to Melee Defense",
+        ["Missile defense"] = "Bonus to Missile Defense",
+        ["Magic defense"] = "Bonus to Magic Defense",
+        ["Mana conversion"] = "Bonus to Mana Conversion",
+    };
 
     private static IReadOnlyList<RetailAppraisalGroup> CreatureGroups(AppraisalContent content)
     {
         IEnumerable<AppraisalRow> Rows(string heading) => content.Sections.FirstOrDefault(section => section.Heading == heading)?.Rows ?? Array.Empty<AppraisalRow>();
         var groups = new[]
         {
-            new RetailAppraisalGroup(Rows(AppraisalHeading.Attributes).Concat(Rows(AppraisalHeading.Vitals)).Select(CreatureLine).ToList()),
+            // Retail rules a line under the attributes and vitals.
+            new RetailAppraisalGroup(Rows(AppraisalHeading.Attributes).Concat(Rows(AppraisalHeading.Vitals)).Select(CreatureLine).ToList(), Ruled: true),
             new RetailAppraisalGroup(Rows(AppraisalHeading.Armor).Select(CreatureLine).ToList(), BlankLinesBefore: 2),
             new RetailAppraisalGroup(Rows(AppraisalHeading.Ratings).Select(CreatureLine).ToList()),
             new RetailAppraisalGroup(Rows(AppraisalHeading.Allegiance).Select(CreatureLine).ToList()),

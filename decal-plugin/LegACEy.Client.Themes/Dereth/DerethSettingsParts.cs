@@ -24,10 +24,12 @@ public sealed class DerethSegmented : Border
     private int _selected;
 
     /// <param name="blueOption">The option lit blue rather than gold when chosen, such as a switch's Retail choice; -1 for none.</param>
-    public DerethSegmented(IReadOnlyList<string> options, int blueOption = -1)
+    /// <param name="cellPadding">Each option's padding around its label; 8 by 4 when not given.</param>
+    /// <param name="fitLabels">Each option as wide as its label, rather than all the same width.</param>
+    public DerethSegmented(IReadOnlyList<string> options, int blueOption = -1, Thickness? cellPadding = null, bool fitLabels = false)
     {
         _blueOption = blueOption;
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions(string.Join(",", options.Select(_ => "*"))) };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions(string.Join(",", options.Select(_ => fitLabels ? "Auto" : "*"))) };
         for (var i = 0; i < options.Count; i++)
         {
             var index = i;
@@ -36,7 +38,7 @@ public sealed class DerethSegmented : Border
                 Text = options[i], FontFamily = DerethPalette.Body, FontSize = 12, Foreground = DerethPalette.MutedBrush,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             };
-            var cell = new Border { Background = Brushes.Transparent, Padding = new Thickness(8, 4), Child = label };
+            var cell = new Border { Background = Brushes.Transparent, Padding = cellPadding ?? new Thickness(8, 4), Child = label };
             cell.PointerPressed += (_, e) =>
             {
                 if (!e.GetCurrentPoint(cell).Properties.IsLeftButtonPressed || index == Selected) return;

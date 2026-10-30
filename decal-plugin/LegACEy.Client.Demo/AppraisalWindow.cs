@@ -14,10 +14,11 @@ namespace LegACEy.Client.Demo;
 /// <summary>
 /// The appraisal window: a Dereth window whose header carries the item's icon and name, drawing an <see cref="AppraisalContent"/>. The
 /// summary, then the sections (each a gold heading over a rule), then the long description in italics under a rule. The body scrolls
-/// when it does not fit, and the inscription stays pinned under it. The window opens fitted to its content (up to <see cref="MaxHeight"/>)
+/// when it does not fit, and the inscription stays pinned under it. The window opens fitted to its content (up to <see cref="MaxHeight"/>, a
+/// retail creature taller, with room under its lines for its figure's feet)
 /// and resizes from its edges. One instance serves the session: <see cref="Show"/> swaps in the next appraisal at the window's size.
 /// The retail layout (<see cref="RetailAppraisalLayout"/>) draws the same content as retail's examination panel does, in the Dereth frame:
-/// no icon, a creature's header box pinned over its lines with its figure standing behind them, and a parchment inscription box.
+/// no icon, a centred title, a creature's header box pinned over its lines with its figure standing behind them, and a parchment inscription box.
 /// </summary>
 public sealed class AppraisalWindow
 {
@@ -28,6 +29,9 @@ public sealed class AppraisalWindow
     private static readonly Color HealthFill = Color.Parse("#B8453A");
     /// <summary>The tallest the window opens at before its body scrolls; the player can resize it from there.</summary>
     public const int MaxHeight = 520;
+    // A window with a retail figure opens taller, with room under its lines for the figure's feet, as retail's panel has.
+    private const int RetailFigureMaxHeight = 720;
+    private const double FloorRoom = 7 * RetailLineHeight;
     /// <summary>The smallest the player can resize the window to: the header, the summary and a few rows.</summary>
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(260, 160));
     // The Dereth frame and header, the title rule and the body's bottom margin, around the body.
@@ -37,8 +41,8 @@ public sealed class AppraisalWindow
     // The retail layout's line height, a blank line's height, and the parchment inscription box's height, as in retail's panel.
     private const double RetailLineHeight = 19;
     private const int ParchmentHeight = 78;
-    // The retail body's side margins, and the space kept between the figure and the words either side of it.
-    private const double BodySide = 6, FigureGap = 6;
+    // The retail body's side margins.
+    private const double BodySide = 6;
     private static readonly IBrush ParchmentInkBrush = DerethPalette.Brush(Color.Parse("#2A2014"));
 
     // The inventory's figure glyph, for the Inspect button.
@@ -94,19 +98,25 @@ public sealed class AppraisalWindow
     public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe,
         Func<Control, Size, Size>? measure = null, Action<AppraisalContent>? inspect = null, bool retail = false, Func<AppraisalContent, Control?>? figure = null)
     {
-        var layout = Layout(content, inscribe, retail);
+        var layout = Layout(content, inscribe, retail, art);
         var scroll = Scroll(layout.Body);
         var foot = new ContentControl { Content = layout.Foot };
-        var top = new ContentControl { Content = layout.Top };
-        var behind = new ContentControl { Content = Figure(content, retail, figure), IsHitTestVisible = false, Margin = layout.Room };
+        var shown = Figure(content, retail, figure);
+        var top = new ContentControl { Content = layout.Top, Margin = HeaderMargin(layout.MiddleMargin) };
+        var behind = new ContentControl { Content = shown, IsHitTestVisible = false, Margin = layout.MiddleMargin };
+        scroll.Margin = layout.MiddleMargin;
         var glyph = new DerethPathGlyph(FigureGlyph) { Stroke = DerethPalette.MutedBrush };
         var button = new DerethHeaderButton(glyph) { Name = "InspectButton" };
         ToolTip.SetTip(button, "Inspect");
-        var window = new DerethWindow(content.Name, retail ? null : Icon(content.Visual, art), Frame(top, behind, scroll, foot), button, iconHeader: true);
-        // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels.
-        var height = measure == null
-            ? layout.Height
-            : Math.Min(MaxHeight, (int)Math.Ceiling(measure(window, new Size(Width, double.PositiveInfinity)).Height - 0.001));
+        var window = new DerethWindow(content.Name, retail ? null : Icon(content.Visual, art), Frame(top, behind, scroll, foot), button,
+            centreTitle: retail, iconHeader: true);
+        // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels. A
+        // figure gets room under the lines for its feet, below the body so the body never scrolls for it.
+        var needed = measure == null ? layout.Needed : measure(window, new Size(Width, double.PositiveInfinity)).Height;
+        var height = shown != null
+            ? Math.Min(RetailFigureMaxHeight, (int)Math.Ceiling(needed + FloorRoom - 0.001))
+            : Math.Min(MaxHeight, (int)Math.Ceiling(needed - 0.001));
+        if (shown != null) window.SeeThrough = behind;
         var view = new AppraisalWindow(window, scroll, foot, top, behind, height, layout.Field, content.ObjectId, button, content, retail);
         view.SetInspect(inspect);
         window.CloseRequested += (_, _) => view.Close?.Invoke();
@@ -122,7 +132,7 @@ public sealed class AppraisalWindow
     public void Show(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe, Action<AppraisalContent>? inspect = null,
         bool retail = false, Func<AppraisalContent, Control?>? figure = null)
     {
-        var layout = Layout(content, inscribe, retail);
+        var layout = Layout(content, inscribe, retail, art);
         var sameLayout = retail == _retail;
         if (!(sameLayout && content.ObjectId == _content.ObjectId && _behind.Content != null)) _behind.Content = Figure(content, retail, figure);
         _content = content;
@@ -130,9 +140,12 @@ public sealed class AppraisalWindow
         SetInspect(inspect);
         _window.Title = content.Name;
         _window.SetIcon(retail ? null : Icon(content.Visual, art));
+        _window.CentreTitle = retail;
         _scroll.Content = layout.Body;
-        _behind.Margin = layout.Room;
+        _behind.Margin = _scroll.Margin = layout.MiddleMargin;
+        _window.SeeThrough = _behind.Content != null ? _behind : null;
         _top.Content = layout.Top;
+        _top.Margin = HeaderMargin(layout.MiddleMargin);
         if (_field is { Unsaved: true } kept && layout.Field != null && content.ObjectId == _footObject && sameLayout)
         {
             kept.Rebase(content.Inscription?.Text ?? string.Empty);
@@ -144,6 +157,9 @@ public sealed class AppraisalWindow
         _footObject = content.ObjectId;
     }
 
+    // The header box reaches the frame as the body does; a margin on the box itself would be clipped to its slot.
+    private static Thickness HeaderMargin(Thickness middle) => new(middle.Left, 0, middle.Right, 0);
+
     private void SetInspect(Action<AppraisalContent>? inspect)
     {
         _inspect = inspect;
@@ -154,14 +170,13 @@ public sealed class AppraisalWindow
     public void Retire() => _field?.Detach();
 
     /// <summary>
-    /// The body, the header box and the inscription for the content, the height the window needs to show all of it, and the figure's margin
-    /// within the body (<see cref="RetailBody"/>).
+    /// The body, the header box and the inscription for the content, the height the window needs to show all of it, and the margin of the
+    /// body and the figure behind it: a retail creature's reach the frame, as retail's do.
     /// </summary>
-    private static (Control Body, Control? Top, Control? Foot, int Height, InscriptionField? Field, Thickness Room) Layout(AppraisalContent content,
-        Func<uint, string, bool> inscribe, bool retail)
+    private static (Control Body, Control? Top, Control? Foot, int Needed, InscriptionField? Field, Thickness MiddleMargin) Layout(AppraisalContent content,
+        Func<uint, string, bool> inscribe, bool retail, IGameArtSource? art)
     {
-        var room = default(Thickness);
-        var body = retail ? RetailBody(content, out room) : SectionsBody(content);
+        var body = content.Formula != null ? SpellBody(content, content.Formula, art) : retail ? RetailBody(content) : SectionsBody(content);
         var top = retail && content.Creature is { } creature ? HeaderBox(creature) : null;
         InscriptionField? field = null;
         var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, retail, out field) : null;
@@ -172,7 +187,31 @@ public sealed class AppraisalWindow
             part.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
             return (int)Math.Ceiling(part.DesiredSize.Height);
         });
-        return (body, top, foot, Math.Min(MaxHeight, needed), field, room);
+        var middle = top != null ? new Thickness(-DerethWindow.Inset, 0, -DerethWindow.Inset, -DerethWindow.Inset) : default;
+        return (body, top, foot, needed, field, middle);
+    }
+
+    /// <summary>
+    /// A spell, in either layout as retail's examination lays one out (page 0x10000153 of LayoutDesc 0x2100006B): its type line and its
+    /// figures under the name, a rule, the description, a rule, then FORMULA and the components' icons in a centred row.
+    /// </summary>
+    private static Control SpellBody(AppraisalContent content, IReadOnlyList<uint> formula, IGameArtSource? art)
+    {
+        var body = new StackPanel { Margin = new Thickness(BodySide, 6, BodySide, 8), Spacing = 2 };
+        if (content.TypeLine.Length > 0) body.Children.Add(RetailText(content.TypeLine, DerethPalette.CreamBrush));
+        if (content.Subtitle.Length > 0) body.Children.Add(RetailText(content.Subtitle, DerethPalette.TextBrush));
+        body.Children.Add(new DerethRule { Margin = new Thickness(0, 6, 0, 6) });
+        if (content.Description.Length > 0) body.Children.Add(RetailText(content.Description, DerethPalette.TextBrush, wrap: true));
+        body.Children.Add(new DerethRule { Margin = new Thickness(0, 6, 0, 4) });
+        body.Children.Add(new TextBlock
+        {
+            Text = "FORMULA", Foreground = DerethPalette.TextBrush, FontFamily = DerethPalette.Title, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center
+        });
+        var icons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+        foreach (var icon in formula)
+            icons.Children.Add(new Image { Source = GameArtImageExtension.CreateBitmap(art, icon), Width = 32, Height = 32 });
+        body.Children.Add(icons);
+        return body;
     }
 
     /// <summary>The sections layout: the summary, then each section under its heading, then the description under a rule.</summary>
@@ -203,15 +242,13 @@ public sealed class AppraisalWindow
     /// <summary>
     /// The retail layout's lines in Palatino, a blank line between groups. An item's lines wrap across the window in one colour. A
     /// creature's labels sit on the left with the values at the right edge, each value coloured by its tone; a label too long for a narrow
-    /// window is cut short before a value is. <paramref name="room"/> is the figure's margin: clear of the widest label and the widest value,
-    /// since the game draws the 3D view over the window's text, so the figure narrows with the window and is gone before it covers a word.
+    /// window is cut short before a value is. A ruled group has retail's line under it, frame to frame. The figure stands behind the lines.
     /// </summary>
-    private static Control RetailBody(AppraisalContent content, out Thickness room)
+    private static Control RetailBody(AppraisalContent content)
     {
         var creature = content.Creature != null;
         var body = new StackPanel { Margin = new Thickness(BodySide, 4, BodySide, 6) };
         if (creature) body.Effect = new DropShadowEffect { BlurRadius = 2, OffsetX = 0, OffsetY = 1, Color = Colors.Black, Opacity = 1 };
-        double labels = 0, values = 0;
         var first = true;
         foreach (var group in RetailAppraisalLayout.Groups(content))
         {
@@ -227,20 +264,13 @@ public sealed class AppraisalWindow
                 var label = RetailText(line.Label ?? string.Empty, DerethPalette.TextBrush);
                 label.HorizontalAlignment = HorizontalAlignment.Left;
                 var value = RetailText(line.Value, line.Tone == AppraisalTone.Normal ? DerethPalette.TextBrush : ToneBrush(line.Tone));
-                labels = Math.Max(labels, WidthOf(label));
-                values = Math.Max(values, WidthOf(value));
                 Grid.SetColumn(value, 1);
                 body.Children.Add(new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { label, value } });
             }
+            if (group.Ruled)
+                body.Children.Add(new Border { Height = 1, Margin = new Thickness(-BodySide, 4, -BodySide, 0), Background = DerethPalette.GoldDarkBrush });
         }
-        room = creature ? new Thickness(BodySide + labels + FigureGap, 0, BodySide + values + FigureGap, 0) : default;
         return body;
-    }
-
-    private static double WidthOf(TextBlock text)
-    {
-        text.Measure(Size.Infinity);
-        return text.DesiredSize.Width;
     }
 
     private static TextBlock RetailText(string text, IBrush brush, bool wrap = false) => new()
@@ -249,7 +279,10 @@ public sealed class AppraisalWindow
         TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap, TextTrimming = wrap ? TextTrimming.None : TextTrimming.CharacterEllipsis,
     };
 
-    /// <summary>Retail's header box: the creature's lines centred, and its level under the caption in a cell on the right.</summary>
+    /// <summary>
+    /// Retail's header box: the creature's lines centred, and its level under the caption in a cell on the right. Its rules run frame to
+    /// frame, as retail's do.
+    /// </summary>
     private static Control HeaderBox(AppraisalCreatureHeader header)
     {
         var lines = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 3, 4, 4) };
@@ -277,7 +310,7 @@ public sealed class AppraisalWindow
         Grid.SetColumn(cell, 1);
         return new Border
         {
-            Margin = new Thickness(6, 3, 6, 0), BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 3, 0, 0), BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 1),
             Background = DerethPalette.Brush(DerethPalette.Groove.WithAlpha(0xCC)),
             Child = new Grid { ColumnDefinitions = new ColumnDefinitions("*,70"), Children = { lines, cell } },
         };
@@ -289,7 +322,7 @@ public sealed class AppraisalWindow
 
     /// <summary>
     /// The frame's content: the header box, the scrolling body over the figure, and the inscription pinned under it. As retail's, the
-    /// figure stands between the labels on the left and the values on the right, by its margin.
+    /// figure stands behind the lines: the host draws it under the window, which leaves its area see-through.
     /// </summary>
     private static Grid Frame(Control top, Control behind, Control scroll, Control foot)
     {

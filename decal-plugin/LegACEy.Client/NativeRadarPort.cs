@@ -62,7 +62,7 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
             var buckets = (byte**)Pointer(maint, RetailHudCatalogue.MaintBuckets);
             var mask = *(uint*)(maint + RetailHudCatalogue.MaintMask);
             if (buckets == null || mask > MaxHashMask) return objects;
-            var playerId = *(uint*)(Global(RetailHudCatalogue.SmartBox) + RetailHudCatalogue.SmartBoxPlayerId);
+            var playerId = RetailHudCatalogue.PlayerId();
             var here = PositionOf(player);
             for (var bucket = 0u; bucket <= mask; bucket++)
                 for (var node = buckets[bucket]; node != null; node = Pointer(node, RetailHudCatalogue.ObjectNext))

@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// The port over the installed client for one of gmPanelUI's panels: the inventory, or the character panel (Attributes, Skills, Titles).
+/// The port over the installed client for one of gmPanelUI's panels: the inventory, the character panel (Attributes, Skills, Titles), the social panel, the map panel, the quest panel, the magic panel or the options panel.
 /// The shared parts are in <see cref="NativePanelPort"/>.
 /// </summary>
 internal sealed class NativeRetailPanelPort : NativePanelPort
@@ -16,6 +16,16 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
     private const uint InventoryPanelId = 7;
     // The character panel's number in gmPanelUI's panel table (RetailPanel.Skills).
     internal const uint CharacterPanelId = 11;
+    // The social panel's number (RetailPanel.Social).
+    internal const uint SocialPanelId = 12;
+    // The map panel's number (RetailPanel.WorldMap).
+    internal const uint MapPanelId = 16;
+    // The quest panel's number (RetailPanel.Quests).
+    internal const uint QuestsPanelId = 25;
+    // The magic panel's number (RetailPanel.Magic).
+    internal const uint MagicPanelId = 13;
+    // The options panel's number (RetailPanel.Options).
+    internal const uint OptionsPanelId = 10;
 
     private readonly uint _elementId;
     private readonly uint _panelId;
@@ -33,7 +43,12 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
     private static readonly RecvNoticeFn RecvNotice = (RecvNoticeFn)Marshal.GetDelegateForFunctionPointer(
         new IntPtr(RetailPanelCatalogue.RecvNoticeSetPanelVisibility), typeof(RecvNoticeFn));
 
+    /// <summary>Every gmPanelUI panel sits in the one panel frame.</summary>
+    internal static readonly RetailPanelSlot PanelFrame = new();
+
     protected override IntPtr Element => NativeUi.GetElement(_elementId);
+
+    public override RetailPanelSlot Slot => PanelFrame;
 
     // The place, save bit and move are the panel frame's, which draws the frame the inventory sits in: moving only the inventory element
     // left that frame on screen, empty. Places are relative to the parent, so the frame's is its place on screen.

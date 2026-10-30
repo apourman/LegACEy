@@ -136,6 +136,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailAttackSwitchFile = "retail-attack-native";
     // Beside the DLL: while this file exists, retail's character panel stays retail's. Without it the Dereth character window replaces it.
     private const string RetailCharacterSwitchFile = "retail-character-native";
+    private const string RetailSocialSwitchFile = "retail-social-native";
+    private const string RetailMapSwitchFile = "retail-map-native";
+    private const string RetailQuestsSwitchFile = "retail-quests-native";
+    private const string RetailMagicSwitchFile = "retail-magic-native";
+    private const string RetailOptionsSwitchFile = "retail-options-native";
     // Present: retail's yellow game messages stay retail's; absent: LegACEy's bands show them.
     private const string RetailGameMessagesSwitchFile = "retail-game-messages-native";
     // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
@@ -274,9 +279,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The layout the player picked on the vitals gear, kept per character; the window reopens in it on the next frame.
     private readonly VitalsLayoutChoice _vitalsLayouts;
     private bool _vitalsLayoutPicked;
-    private int? _loggedVitae;
-    private bool _vitaeReadLogged;
-    private TimeSpan _nextVitaeRead;
     // The Dereth radar over retail's radar: its natives, held root, port, window and ground. Held while the switch is on.
     private const string RadarWindowId = "dereth-radar";
     private const string RadarOptionsKey = "dereth-radar-options";
@@ -326,6 +328,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private CharacterFeature? _character;
     private bool _retailCharacterSwitch;
     private DateTime _lastCharacterSwitchCheck;
+    // The Dereth social window and the server's account of the allegiance, fellowship, friends and squelches it shows.
+    private SocialFeature? _social;
+    private bool _retailSocialSwitch;
+    private DateTime _lastSocialSwitchCheck;
+    // The Dereth map window, which reads retail's own map and house pages.
+    private MapFeature? _map;
+    private bool _retailMapSwitch;
+    private DateTime _lastMapSwitchCheck;
+    // The Dereth quests window: the server's contracts and the character's journal.
+    private QuestsFeature? _quests;
+    private bool _retailQuestsSwitch;
+    private DateTime _lastQuestsSwitchCheck;
+    // The Dereth magic window: the spellbook and the components to keep.
+    private MagicFeature? _magic;
+    private bool _retailMagicSwitch;
+    private DateTime _lastMagicSwitchCheck;
+    // The Dereth options window: retail's Gameplay Options buttons and Character switches.
+    private OptionsFeature? _options;
+    private bool _retailOptionsSwitch;
+    private DateTime _lastOptionsSwitchCheck;
     // The Appraisal card was switched: once the switch is read, a turn to retail hands the open appraisal over to retail's panel.
     private bool _appraisalSwitched;
     private RetailExamine? _retailExamine;
@@ -451,6 +473,24 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     : null,
                 () => _portal?.ReadCharacterTables(Log) ?? CharacterTables.None, () => _portal?.ReadCharacterNames(Log).Titles ?? new Dictionary<uint, string>(),
                 () => _channelTransport, _settingsStore, () => (SessionServer(), SessionCharacter()), Log);
+            _social = new SocialFeature(this,
+                NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.SocialPanel, NativeRetailPanelPort.SocialPanelId) : null,
+                () => _portal?.ReadCharacterTables(Log) ?? CharacterTables.None, () => _channelTransport, StartTell, Log);
+            _map = new MapFeature(this,
+                NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.MapPanel, NativeRetailPanelPort.MapPanelId) : null, Log);
+            _quests = new QuestsFeature(this,
+                NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.QuestsPanel, NativeRetailPanelPort.QuestsPanelId) : null,
+                () => _portal?.ReadContracts(Log) ?? new Dictionary<uint, ContractInfo>(), () => _channelTransport, PlayerPosition,
+                () => (SessionServer(), SessionCharacter()), PluginDirectory, Log);
+            _magic = new MagicFeature(this,
+                NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.MagicPanel, NativeRetailPanelPort.MagicPanelId) : null,
+                () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), () => _portal?.ReadSpellComponents(Log) ?? SpellComponentTable.None,
+                () => _channelTransport, () => _inventory.Snapshot, content => _appraisal.ShowSpell(content),
+                () => _retailDrag?.IsPointerOver(RetailAttackCatalogue.CombatPanel) == true, Log);
+            _inventory.Changed += () => _magic?.Refresh();
+            _options = new OptionsFeature(this,
+                NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.OptionsPanel, NativeRetailPanelPort.OptionsPanelId) : null,
+                () => _portal?.ReadInterfaceStrings(Log) ?? new Dictionary<uint, string>(), Log);
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
@@ -699,6 +739,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The character window's sheet: the login description, then the raises, experience and titles that follow.
         try { _character?.Sheet.Receive(type, raw); }
         catch (Exception exception) { Log($"Could not read the character from the server: {exception}"); }
+        try { _social?.State.Receive(type, raw); }
+        catch (Exception exception) { Log($"Could not read the social state from the server: {exception}"); }
+        try { _quests?.State.Receive(type, raw); }
+        catch (Exception exception) { Log($"Could not read the contracts from the server: {exception}"); }
+        try { _magic?.State.Receive(type, raw); }
+        catch (Exception exception) { Log($"Could not read the spellbook from the server: {exception}"); }
         // The selection plaque's health and mana, which retail asks the server for itself when the selection changes.
         _selectionMeters.Receive(type, raw);
         try { _lookCache.Receive(type, raw); }
@@ -942,6 +988,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _portal?.ForgetImages();
         Guard(() => _appraisal.Clear());
         Guard(() => _character?.Sheet.Clear());
+        Guard(() => _social?.State.Clear());
+        Guard(() => _quests?.State.Clear());
+        Guard(() => _magic?.State.Clear());
         Guard(() => _busyCursor?.Show(false));
         if (_worldEffects != null)
         {
@@ -1136,6 +1185,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default, InventoryWindowId),
         Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }, AppraisalFeature.WindowId),
         Choice("Character", RetailCharacterSwitchFile, () => _lastCharacterSwitchCheck = default, CharacterWindow.WindowId),
+        Choice("Social", RetailSocialSwitchFile, () => _lastSocialSwitchCheck = default, SocialWindow.WindowId),
+        Choice("Map", RetailMapSwitchFile, () => _lastMapSwitchCheck = default, MapWindow.WindowId),
+        Choice("Quests", RetailQuestsSwitchFile, () => _lastQuestsSwitchCheck = default, QuestsWindow.WindowId),
+        Choice("Magic", RetailMagicSwitchFile, () => _lastMagicSwitchCheck = default, MagicWindow.WindowId),
+        Choice("Options", RetailOptionsSwitchFile, () => _lastOptionsSwitchCheck = default, OptionsWindow.WindowId),
         Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default, ToolbarSurfaceId),
         Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default, ChatWindowId),
         Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default, DerethVitalsWindow.StackedId, DerethVitalsWindow.SideBySideId),
@@ -1622,7 +1676,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() =>
         {
             if (_toolbarSurface == null) return;
-            _toolbarSurface.Opacity = DrawOpacity(server, character, ToolbarSurfaceId, _toolbarDragOffset != null || _toolbarRowDragY != null);
+            _toolbarSurface.FillOpacity = DrawOpacity(server, character, ToolbarSurfaceId, _toolbarDragOffset != null || _toolbarRowDragY != null);
             _toolbarSurface.DrawNow();
         });
         var windows = !_failed && _windowsEnabled && _windows != null;
@@ -1633,9 +1687,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             for (var i = order.Count - 1; i >= 0; i--)
             {
                 var surface = SurfaceById(order[i].Id);
-                if (surface != null) surface.Opacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Moving || order[i] == _windows.Resizing);
+                if (surface != null) surface.FillOpacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Changing);
+                DrawModelViews(surface, behind: true);
                 surface?.DrawNow();
-                DrawModelViews(surface);
+                DrawModelViews(surface, behind: false);
                 // The note (the size while Ctrl and the wheel rescale the window) goes over its 3D views.
                 surface?.DrawNote();
                 if (_firstPostUiWindow)
@@ -1653,7 +1708,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!_failed) Guard(() =>
         {
             if (_splitTabSurface == null) return;
-            _splitTabSurface.Opacity = _toolbarSurface?.Opacity ?? 1;
+            _splitTabSurface.FillOpacity = _toolbarSurface?.FillOpacity ?? 1;
             _splitTabSurface.DrawNow();
         });
         try { _gameMessageSurface?.DrawNow(); }
@@ -1668,11 +1723,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// How opaque a window or the toolbar draws, from its Opacity setting: whole while it is moved or resized, so it can be found. Chat has
-    /// its own opacity, and Settings and toasts always draw whole. Vitals keeps one value for both its layouts.
+    /// How opaque a window's or the toolbar's background draws, from its Opacity setting; its frame, text and dolls stay solid. Whole while
+    /// it is moved or resized, so it can be found. Chat has its own opacity, and Settings and toasts always draw whole. Vitals keeps one value
+    /// for both its layouts.
     /// </summary>
-    private double DrawOpacity(string server, string character, string id, bool moving) =>
-        moving || id is SettingsWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
+    private double DrawOpacity(string server, string character, string id, bool changing) =>
+        changing || id is SettingsWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
             : _opacities.Of(server, character, id == DerethVitalsWindow.SideBySideId ? DerethVitalsWindow.StackedId : id) / 100.0;
 
     /// <summary>
@@ -1692,10 +1748,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Every 3D view in a window goes on top of that window's frame, before any window above it. A failure turns off
-    /// only that view, until its window closes.
+    /// The window's 3D views, before any window above it: <paramref name="behind"/>, those with a backdrop, on their backdrop before the window
+    /// draws, which leaves their area see-through for its text to lie over; otherwise the rest, on top of the window. A failure turns off only
+    /// that view's model, until its window closes.
     /// </summary>
-    private void DrawModelViews(ScreenSurface? surface)
+    private void DrawModelViews(ScreenSurface? surface, bool behind)
     {
         if (surface is not { Visible: true } || _device == IntPtr.Zero || surface.Panel.Content is not Avalonia.Visual window) return;
         // Walking each window's tree for its views every frame was most of the plugin's garbage; the views list themselves instead.
@@ -1703,9 +1760,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         for (var i = 0; i < views.Count; i++)
         {
             var view = views[i];
-            if (!Avalonia.VisualTree.VisualExtensions.IsVisualAncestorOf(window, view)) continue;
+            if (view.Backdrop.HasValue != behind || !Avalonia.VisualTree.VisualExtensions.IsVisualAncestorOf(window, view)) continue;
             _drawnModelViews.Add(view);
-            if (view.Model is not { } model || !view.IsEffectivelyVisible || _failedModelViews.Contains(view)) continue;
+            // A view behind its window keeps its backdrop without a model, or the window's see-through area would show the game.
+            if (!view.IsEffectivelyVisible || (!behind && (view.Model == null || _failedModelViews.Contains(view)))) continue;
             try
             {
                 var origin = Avalonia.VisualExtensions.TranslatePoint(view, default, window);
@@ -1714,12 +1772,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 var scale = surface.Panel.Scale;
                 var area = new Rectangle(surface.Location.X + (int)(origin.Value.X * scale), surface.Location.Y + (int)(origin.Value.Y * scale),
                     (int)(bounds.Width * scale), (int)(bounds.Height * scale));
+                // A pixel wider all round than the window's see-through area, whose edges its fill blends over.
+                if (view.Backdrop is { } backdrop)
+                {
+                    var fill = area;
+                    fill.Inflate(1, 1);
+                    ScreenSurface.DrawFill(_device, fill, System.Drawing.Color.FromArgb((int)Math.Round(255 * surface.FillOpacity), backdrop.R, backdrop.G, backdrop.B));
+                }
+                if (view.Model is not { } model || _failedModelViews.Contains(view)) continue;
                 if (!_modelRenderers.TryGetValue(view, out var renderer))
                 {
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
                     Log($"3D view first drawn: {model.TriangleCount} triangles, height {model.Top - model.Bottom:0.00} m, at {area} on a {D3D9.Viewport(_device)} viewport.");
                 }
-                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour, surface.Opacity);
+                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour);
             }
             catch (Exception exception)
             {
@@ -1870,7 +1936,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void TickRetailPanels(bool loggingIn = false)
     {
-        if (_retailPanels.Count == 0 && _examination == null && _character == null)
+        if (_retailPanels.Count == 0 && _examination == null && _character == null && _social == null && _map == null && _quests == null && _magic == null && _options == null)
         {
             // Nothing to hand over to: a switch made now must not fire later.
             _appraisalSwitched = false;
@@ -1884,6 +1950,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var appraisalOn = SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch);
         _examination?.Tick(canOpen && appraisalOn, canShow: !loggingIn);
         _character?.Tick(canOpen && SwitchOn(RetailCharacterSwitchFile, ref _lastCharacterSwitchCheck, ref _retailCharacterSwitch), canShow: !loggingIn);
+        _social?.Tick(canOpen && SwitchOn(RetailSocialSwitchFile, ref _lastSocialSwitchCheck, ref _retailSocialSwitch), canShow: !loggingIn);
+        _map?.Tick(canOpen && SwitchOn(RetailMapSwitchFile, ref _lastMapSwitchCheck, ref _retailMapSwitch), canShow: !loggingIn);
+        _quests?.Tick(canOpen && SwitchOn(RetailQuestsSwitchFile, ref _lastQuestsSwitchCheck, ref _retailQuestsSwitch), canShow: !loggingIn);
+        _magic?.Tick(canOpen && SwitchOn(RetailMagicSwitchFile, ref _lastMagicSwitchCheck, ref _retailMagicSwitch), canShow: !loggingIn);
+        _options?.Tick(canOpen && SwitchOn(RetailOptionsSwitchFile, ref _lastOptionsSwitchCheck, ref _retailOptionsSwitch), canShow: !loggingIn);
         // Turned to retail: the item in our window opens in retail's panel, now given back. The other way, the takeover already parks an
         // open retail panel and examines the selection in our window.
         if (_appraisalSwitched)
@@ -1904,6 +1975,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             takeover.EndSession();
         _examination?.EndSession();
         _character?.EndSession();
+        _social?.EndSession();
+        _map?.EndSession();
+        _quests?.EndSession();
+        _magic?.EndSession();
+        _options?.EndSession();
     }
 
     /// <summary>A LegACEy window's content by its id, for the drop routing that the window manager's hit test drives.</summary>
@@ -2107,6 +2183,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             // A LegACEy inventory window is the inventory, with or without the takeover.
             if (_owner._windows is { } windows && ItemDropRouting.InventoryAt(windows, _owner.ContentOf, _owner._pointer) is { } inventory) return inventory;
+            if (_owner.TopSurfaceAt(_owner._pointer) == ToolbarSurfaceId) return ItemDropTarget.Toolbar;
             // Any other LegACEy window (the Vault, which refused the item) covers the world: a release there drops nothing.
             if (_owner.TopSurfaceAt(_owner._pointer) is { } surface)
             {
@@ -3273,6 +3350,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
+        // The inventory shows each item's shortcut key, so a change of the shortcuts redraws it.
+        var shortcuts = _toolbarPort;
+        _inventory.Shortcuts = () => shortcuts.Shortcuts;
+        shortcuts.Changed += _inventory.MarkStale;
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
         _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort(NativeUi.ReadMemory, Log));
         var toolbar = new RetailToolbar(_toolbarPort, ToggleSettings, MoveToMainPack, BeginToolbarDrag, _portal);
@@ -3388,9 +3469,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Moves the items to the front of the main pack in order, as retail's backpack takes them. An item already in the main pack is
-    /// skipped, and the rest stop when the pack is full. True when one moved.
+    /// skipped, and the rest stop when the pack is full. A pack is never moved: the backpack only binds packs through the shortcut rows.
+    /// True when one moved.
     /// </summary>
-    private bool MoveToMainPack(IReadOnlyList<uint> itemIds) => _inventory.MoveToFront(itemIds, _inventory.Snapshot.MainPack) > 0;
+    private bool MoveToMainPack(IReadOnlyList<uint> itemIds)
+    {
+        var snapshot = _inventory.Snapshot;
+        var items = itemIds.Where(id => id != snapshot.MainPack.Id && snapshot.SidePacks.All(pack => pack.Id != id)).ToList();
+        return _inventory.MoveToFront(items, snapshot.MainPack) > 0;
+    }
 
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
     private void ReleaseRetailToolbar()
@@ -4007,6 +4094,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // ACE's Skill.Recklessness.
     private const uint RecklessnessSkill = 50;
 
+    /// <summary>The social window's Send Tell: the Dereth chat's next line goes to that player. Retail's chat has no way in, so it is only logged.</summary>
+    private void StartTell(string name, uint id)
+    {
+        if (_chatWindows?.Main is { } chat) chat.StartTell(name, id);
+        else Log($"Send Tell to {name} needs the Dereth chat window.");
+    }
+
+    /// <summary>Where the player stands, read from retail's physics as the radar reads it; null outside the world or when the HUD natives did not match.</summary>
+    private RadarPosition? PlayerPosition() =>
+        NativeUi.Ready ? (_radarPort ?? new NativeRadarPort(HudNatives(), ObjectName, Bridge.SelectItem)).Player?.Position : null;
+
     /// <summary>Whether the character has Recklessness trained or specialized, as the server described the character.</summary>
     private bool Reckless() => _character?.Sheet.Skills.TryGetValue(RecklessnessSkill, out var skill) == true && skill.Training >= SkillTraining.Trained;
 
@@ -4063,7 +4161,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _vitals.CloseWindow();
         }
         _vitals.Tick(switchOn, canDraw, _inGame, GameDevice.ViewportSize(_device), _vitalsClock.Elapsed);
-        if (_inGame && _vitals.Holds) LogVitae();
     }
 
     /// <summary>Retail's vitals windows, held, once the running client's addresses match. Null leaves retail's alone; the next frame asks again.</summary>
@@ -4207,29 +4304,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             Log($"Dereth HUD is off: its native addresses could not be checked: {exception.Message}");
             return new RetailHudNatives(false, false, false, false, false);
         }
-    }
-
-    /// <summary>
-    /// Logs the raw vitae value when it changes, so the play-test can settle its unit. The vitals draw no hatching from it until the unit is
-    /// known. It is read at most once a second, and only while retail's vitals are held.
-    /// </summary>
-    private void LogVitae()
-    {
-        var now = _vitalsClock.Elapsed;
-        if (now < _nextVitaeRead) return;
-        _nextVitaeRead = now + TimeSpan.FromSeconds(1);
-        int vitae;
-        try { vitae = Bridge.Fact(BridgeFact.Vitae); }
-        catch (Exception exception)
-        {
-            // Logged once, not every frame: the vitals keep drawing without the vitae value.
-            if (!_vitaeReadLogged) Log($"Could not read the vitae fact: {exception.Message}");
-            _vitaeReadLogged = true;
-            return;
-        }
-        if (vitae == _loggedVitae) return;
-        _loggedVitae = vitae;
-        Log($"Dereth vitals: CharacterFilter.Vitae is {vitae} (unit unconfirmed; no vitae hatching is drawn).");
     }
 
     private sealed class VitalsWindowHandle : IRetailVitalsWindow

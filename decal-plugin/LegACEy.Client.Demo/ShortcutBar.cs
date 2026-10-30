@@ -38,6 +38,9 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private const uint FirstKeyTab = 0x0600109E;
     private const uint RowTwoTab = 0x060074D3;
 
+    /// <summary>The key tab retail draws over the icon of an object in a shortcut slot: its number for row 1, blank for row 2.</summary>
+    public static uint TabOf(int index) => index < SlotCount ? FirstKeyTab + (uint)index : RowTwoTab;
+
     private readonly IRetailToolbarPort _port;
     private readonly Func<uint, ShortcutItem?> _itemOf;
     private readonly IGameArtSource? _art;
@@ -303,7 +306,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     {
         var bitmap = _art == null ? null
             : GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay,
-                _firstIndex == 0 ? FirstKeyTab + (uint)position : RowTwoTab, visual.UiEffects, visual.Plate));
+                TabOf(_firstIndex + position), visual.UiEffects, visual.Plate));
         if (bitmap == null)
             return new TextBlock { Text = "?", FontFamily = DerethPalette.Body, FontSize = 12, Foreground = DerethPalette.MutedBrush,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };

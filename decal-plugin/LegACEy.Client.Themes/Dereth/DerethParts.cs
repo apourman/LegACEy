@@ -112,6 +112,19 @@ public sealed class DerethFrame : Decorator
     private static readonly IBrush GripFill = DerethPalette.Brush(Color.FromArgb(0x80, DerethPalette.Cream.R, DerethPalette.Cream.G, DerethPalette.Cream.B));
     private static readonly IPen GripPen = new Pen(DerethPalette.CreamBrush, 1.2);
 
+    /// <summary>
+    /// How opaque a window's background draws, 0 to 1, from its Opacity setting. Set on the window's root and inherited: as in retail, only
+    /// the backgrounds fade (a window frame's fill, a plate's, the radar's ground); the frame art, text, icons and 3D dolls stay solid.
+    /// </summary>
+    public static readonly AttachedProperty<double> FillOpacityProperty =
+        AvaloniaProperty.RegisterAttached<DerethFrame, Visual, double>("FillOpacity", 1, inherits: true);
+
+    public static double GetFillOpacity(Visual visual) => visual.GetValue(FillOpacityProperty);
+
+    public static void SetFillOpacity(Visual visual, double value) => visual.SetValue(FillOpacityProperty, value);
+
+    static DerethFrame() => AffectsRender<DerethFrame>(FillOpacityProperty);
+
     private readonly DerethFrameArt _kind;
     private NineSlice _art;
     private DerethCorner _hoveredCorner;
@@ -138,6 +151,34 @@ public sealed class DerethFrame : Decorator
         }
     }
 
+    private Control? _seeThrough;
+    private Rect _hole;
+
+    /// <summary>
+    /// A control inside the frame whose area the fill leaves see-through, so a 3D view the host draws under the window shows there with the
+    /// window's text over it. Null for none.
+    /// </summary>
+    public Control? SeeThrough
+    {
+        get => _seeThrough;
+        set
+        {
+            if (_seeThrough == value) return;
+            if (_seeThrough != null) _seeThrough.LayoutUpdated -= HoleMoved;
+            _seeThrough = value;
+            if (value != null) value.LayoutUpdated += HoleMoved;
+            HoleMoved(null, EventArgs.Empty);
+        }
+    }
+
+    private void HoleMoved(object? sender, EventArgs e)
+    {
+        var hole = _seeThrough is { } area && area.TranslatePoint(default, this) is { } at ? new Rect(at, area.Bounds.Size) : default;
+        if (hole == _hole) return;
+        _hole = hole;
+        InvalidateVisual();
+    }
+
     /// <summary>Draws the frame in a state's art; a state without its own region draws the normal art.</summary>
     internal void Show(DerethState state)
     {
@@ -159,7 +200,14 @@ public sealed class DerethFrame : Decorator
         if (_kind == DerethFrameArt.Button)
             context.FillRectangle(_art.Fill, new Rect(Bounds.Size).Deflate(1), ButtonFillRadius);
         else
-            context.FillRectangle(_art.Fill, new Rect(Bounds.Size));
+        {
+            using var faded = context.PushOpacity(GetFillOpacity(this));
+            if (_hole.Width > 0 && _hole.Height > 0)
+                context.DrawGeometry(_art.Fill, null,
+                    new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(new Rect(Bounds.Size)), new RectangleGeometry(_hole)));
+            else
+                context.FillRectangle(_art.Fill, new Rect(Bounds.Size));
+        }
         DerethSheet.Draw(context, _art.TopSource, new Rect(corner, 0, width - 2 * corner, edge));
         DerethSheet.Draw(context, _art.TopSource, new Rect(corner, height - edge, width - 2 * corner, edge), flipY: true);
         DerethSheet.Draw(context, _art.LeftSource, new Rect(0, corner, edge, height - 2 * corner));
@@ -464,6 +512,9 @@ public sealed class DerethWindow : UserControl
     /// <summary>The gap between header buttons, and between the close box and a centred title.</summary>
     public const int ActionGap = 4;
 
+    /// <summary>The content's margin inside the frame's edge. A part that should reach the frame takes it off as a negative margin.</summary>
+    public const int Inset = 6;
+
     /// <summary>The side of every header button, the close box included: small, so the header's controls take little of the window.</summary>
     public const int HeaderButtonSize = 18;
 
@@ -472,10 +523,7 @@ public sealed class DerethWindow : UserControl
 
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
     /// <param name="stretchActions">The header actions take the header's free width, and the title only its own.</param>
-    /// <param name="centreTitle">
-    /// The title is centred across the header, as retail centres its panel titles, with the close box's width kept clear on both sides.
-    /// For a window without an icon or header actions.
-    /// </param>
+    /// <param name="centreTitle">Sets <see cref="CentreTitle"/>.</param>
     /// <param name="iconHeader">
     /// The header is <see cref="IconHeaderHeight"/> tall, for a window that shows an icon, or may show one later; otherwise
     /// <see cref="HeaderHeight"/>.
@@ -495,14 +543,12 @@ public sealed class DerethWindow : UserControl
         _name = new DerethTitleText
         {
             FullText = title, Foreground = DerethPalette.CreamBrush, FontFamily = DerethPalette.Title, VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = centreTitle ? TextAlignment.Center : TextAlignment.Left
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
-        if (centreTitle)
-        {
-            Grid.SetColumnSpan(_name, 3);
-            _name.Margin = new Thickness(HeaderButtonSize + ActionGap, 0);
-        }
-        else Grid.SetColumn(_name, 1);
+        _header = header;
+        // The header buttons' width on the right, kept clear on both sides of a centred title.
+        _titleClear = HeaderButtonSize + ActionGap + (headerActions != null && !stretchActions ? HeaderButtonSize + header.ColumnSpacing : 0);
+        CentreTitle = centreTitle;
         header.Children.Add(_name);
         // The X is smaller than the other glyphs: at their size its two strokes read heavier than their outlines.
         var close = new DerethHeaderButton(new DerethPathGlyph("M0,0 L8,8 M8,0 L0,8", 8) { Stroke = DerethPalette.CreamBrush, StrokeThickness = 1.5 });
@@ -521,18 +567,44 @@ public sealed class DerethWindow : UserControl
         Grid.SetColumn(close, headerActions == null ? 2 : 3);
         header.Children.Add(close);
 
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(Inset, 0, Inset, Inset) };
         body.Children.Add(header);
         // The rule runs nearly frame to frame, as in the concept.
-        var rule = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
+        var rule = new DerethRule { Margin = new Thickness(-Inset, 0, -Inset, 0) };
         Grid.SetRow(rule, 1);
         body.Children.Add(rule);
         Grid.SetRow(content, 2);
         body.Children.Add(content);
-        Content = new DerethFrame(DerethFrameArt.Window) { Child = body };
+        Content = _frame = new DerethFrame(DerethFrameArt.Window) { Child = body };
     }
 
+    private readonly DerethFrame _frame;
     private readonly Decorator _emblem;
+    private readonly Grid _header;
+    private readonly double _titleClear;
+
+    /// <summary>
+    /// The title is centred across the header, as retail centres its panel titles, with the header buttons' width kept clear on both
+    /// sides. For a window without an icon and with at most one header action beside the close box.
+    /// </summary>
+    public bool CentreTitle
+    {
+        get => _name.TextAlignment == TextAlignment.Center;
+        set
+        {
+            _name.TextAlignment = value ? TextAlignment.Center : TextAlignment.Left;
+            Grid.SetColumn(_name, value ? 0 : 1);
+            Grid.SetColumnSpan(_name, value ? _header.ColumnDefinitions.Count : 1);
+            _name.Margin = value ? new Thickness(_titleClear, 0) : default;
+        }
+    }
+
+    /// <summary>A control in the content whose area the window's fill leaves see-through (see <see cref="DerethFrame.SeeThrough"/>).</summary>
+    public Control? SeeThrough
+    {
+        get => _frame.SeeThrough;
+        set => _frame.SeeThrough = value;
+    }
     private readonly DerethTitleText _name;
 
     /// <summary>The title in the header.</summary>

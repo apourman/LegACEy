@@ -448,7 +448,7 @@ public sealed class SettingsPanel : UserControl
         return OptionRow("Size", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { smaller, readout, bigger } });
     }
 
-    /// <summary>"Opacity": how opaque a window draws, or every window but chat, for this character. A window being moved or resized shows whole.</summary>
+    /// <summary>"Opacity": how opaque a window's background draws (its frame, text and dolls stay solid), or every window but chat, for this character. A window being moved or resized shows whole.</summary>
     private Control OpacityRow(Func<int?> current, Action<int> commit) =>
         SliderRow("Opacity", WindowOpacities.Faintest, WindowOpacities.Opaque, WindowOpacities.Step, current, commit, thisCharacter: true);
 

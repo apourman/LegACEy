@@ -54,11 +54,19 @@ public sealed class DerethRadarScope : Control
     private static readonly Geometry ArrowUp = Geometry.Parse("M0,-2.6 L2.4,1.6 L-2.4,1.6 Z");
     private static readonly Geometry ArrowDown = Geometry.Parse("M0,2.6 L2.4,-1.6 L-2.4,-1.6 Z");
     private const double ArrowOpacity = 0.85;
+    // A portal's dot: a soft purple halo fading out from it, and a cream rim.
+    private static readonly IBrush PortalHalo = new RadialGradientBrush
+    {
+        GradientStops = { new GradientStop(Color.FromArgb(0xF0, 0xBF, 0x63, 0xFF), 0.35), new GradientStop(Color.FromArgb(0x60, 0xBF, 0x63, 0xFF), 0.65), new GradientStop(Color.FromArgb(0, 0xBF, 0x63, 0xFF), 1) }
+    };
+    private static readonly IPen PortalRim = new Pen(DerethPalette.Brush(Cream.WithAlpha(0xE6)), 1);
     // A ping: a diamond with a ring that swells from it once a pulse; one past the rim is an arrow on the rim pointing out. It fades over the
     // last fifth of its life.
     private static readonly Geometry PingDiamond = Geometry.Parse("M0,-3.6 L3.6,0 L0,3.6 L-3.6,0 Z");
     private static readonly Geometry PingArrow = Geometry.Parse("M0,-4.5 L3.8,2.5 L-3.8,2.5 Z");
     private const double PingPulseSeconds = 1.2, PingLifeSeconds = 15, PingRimInset = 5;
+
+    static DerethRadarScope() => AffectsRender<DerethRadarScope>(DerethFrame.FillOpacityProperty);
 
     private IReadOnlyList<(IImage Image, Rect Metres)> _tiles = Array.Empty<(IImage Image, Rect Metres)>();
     private IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)> _planLevels = Array.Empty<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)>();
@@ -66,8 +74,8 @@ public sealed class DerethRadarScope : Control
     private bool _planBuilding;
     private PlanPens? _pens;
     // ArrowDir is +1 for a dot on the level above, -1 for one below, and 0 for a dot on the player's level.
-    private IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)> _dots =
-        Array.Empty<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)>();
+    private IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered, bool Portal)> _dots =
+        Array.Empty<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered, bool Portal)>();
     // The dots' brushes by colour and alpha, made once each: a dot's alpha takes only a few values.
     private readonly Dictionary<(Color Colour, byte Alpha), IBrush> _dotBrushes = new();
     private (string Text, Point At)? _label;
@@ -109,11 +117,15 @@ public sealed class DerethRadarScope : Control
     /// <summary>Whether the plan is a building's, drawn over its town ground: its other levels are then darker.</summary>
     public bool PlanBuilding { get => _planBuilding; set { if (_planBuilding == value) return; _planBuilding = value; InvalidateVisual(); } }
 
-    public IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)> Dots
+    public IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered, bool Portal)> Dots
     {
         get => _dots;
         set { if (ReferenceEquals(_dots, value)) return; _dots = value; InvalidateVisual(); }
     }
+
+    /// <summary>How far through one breath portals' halos are, 0 to 1: the halo is smallest at 0, widest and faintest at 0.5, and small again at 1.</summary>
+    public double PortalPulse { get => _portalPulse; set { if (_portalPulse == value) return; _portalPulse = value; InvalidateVisual(); } }
+    private double _portalPulse;
 
     /// <summary>
     /// The pings: each one's point in DIPs from the scope's top-left, its colour, how far through its life it is (0 to 1), and for one past the
@@ -141,19 +153,24 @@ public sealed class DerethRadarScope : Control
         var centre = new Point(radius, radius);
         using (context.PushGeometryClip(new EllipseGeometry(new Rect(0, 0, size, size))))
         {
-            context.DrawEllipse(Disc, null, centre, radius, radius);
+            // The disc, the ground and the vignette are the radar's background, which its window's opacity fades.
+            var fill = DerethFrame.GetFillOpacity(this);
             // The world turned and scaled so the player is at the centre.
             var world = Matrix.CreateScale(PixelsPerMetre, PixelsPerMetre) * Matrix.CreateRotation(Turn * Math.PI / 180)
                 * Matrix.CreateTranslation(centre);
             // The ground: indoors it is a building's, at half brightness under the plan, else darkened a little to sit under the dots.
             var planned = _planLevels.Count > 0;
-            using (context.PushOpacity(planned ? 0.5 : 1))
-            using (context.PushTransform(world))
-                foreach (var tile in _tiles)
-                    context.DrawImage(tile.Image, new Rect(tile.Image.Size), tile.Metres);
-            if (_tiles.Count > 0 && !planned) context.DrawEllipse(Darken, null, centre, radius, radius);
+            using (context.PushOpacity(fill))
+            {
+                context.DrawEllipse(Disc, null, centre, radius, radius);
+                using (context.PushOpacity(planned ? 0.5 : 1))
+                using (context.PushTransform(world))
+                    foreach (var tile in _tiles)
+                        context.DrawImage(tile.Image, new Rect(tile.Image.Size), tile.Metres);
+                if (_tiles.Count > 0 && !planned) context.DrawEllipse(Darken, null, centre, radius, radius);
+            }
             if (planned) DrawPlan(context, world);
-            context.DrawEllipse(Vignette, null, centre, radius, radius);
+            using (context.PushOpacity(fill)) context.DrawEllipse(Vignette, null, centre, radius, radius);
             DrawCrosshair(context, centre, radius);
             if (Rings) DrawRings(context, centre, radius);
             foreach (var dot in _dots) DrawDot(context, dot);
@@ -208,13 +225,20 @@ public sealed class DerethRadarScope : Control
             context.DrawEllipse(null, RingPen, centre, radius * fraction, radius * fraction);
     }
 
-    private void DrawDot(DrawingContext context, (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered) dot)
+    private void DrawDot(DrawingContext context, (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered, bool Portal) dot)
     {
         // An arrow is drawn at its own alpha, a dot at its own.
         var alpha = (byte)Math.Round((dot.ArrowDir == 0 ? dot.Opacity : ArrowOpacity) * 255);
         var key = (dot.Colour, alpha);
         if (!_dotBrushes.TryGetValue(key, out var colour)) _dotBrushes[key] = colour = DerethPalette.Brush(dot.Colour.WithAlpha(alpha));
-        if (dot.ArrowDir == 0)
+        if (dot.ArrowDir == 0 && dot.Portal)
+        {
+            // A portal stands out from the crowd of dots: bigger, in a breathing purple halo, with a light rim (backlog 123).
+            var breath = (1 - Math.Cos(_portalPulse * 2 * Math.PI)) / 2;
+            using (context.PushOpacity(dot.Opacity * (1 - 0.6 * breath))) context.DrawEllipse(PortalHalo, null, dot.At, 5 + 6 * breath, 5 + 6 * breath);
+            context.DrawEllipse(colour, PortalRim, dot.At, 3, 3);
+        }
+        else if (dot.ArrowDir == 0)
         {
             context.DrawEllipse(colour, OutlinePen, dot.At, 1.9, 1.9);
         }

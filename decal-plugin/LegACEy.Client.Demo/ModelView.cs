@@ -86,6 +86,13 @@ public sealed class ModelView : Border
 
     private static float Clamp01(float value) => Math.Max(0, Math.Min(1, value));
 
+    /// <summary>
+    /// Null: the host draws the model over its window. Set: the host fills the view with this colour and draws the model before the window,
+    /// so the window's text lies over it, as retail draws its examination figure; the window must leave the view see-through
+    /// (<c>DerethWindow.SeeThrough</c>).
+    /// </summary>
+    public Color? Backdrop { get; set; }
+
     /// <summary>The model to draw, or null for none. Replaced as a whole, from the UI thread.</summary>
     public CharacterModel? Model { get; set; }
 

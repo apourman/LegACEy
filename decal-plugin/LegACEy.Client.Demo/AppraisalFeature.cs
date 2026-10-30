@@ -244,8 +244,41 @@ public sealed class AppraisalFeature
             ? AppraisalContent.From(response, _spells(), _game.CharacterName, carried: false, _names(), world: stored)
             : AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(id), _names(), _game.ValidLocationsOf(id),
                 _game.CoverageOf(id), _game.WorldObjectOf(id), _game.PluralNameOf(id), _game.DescriptionFlagsOf(id));
+        if (!Present(content)) return false;
+        _shownId = response.ObjectId;
+        _shownStored = stored != null;
+        _shownResponse = (response, stored);
+        return true;
+    }
+
+    /// <summary>
+    /// Shows a spell (content with a <see cref="AppraisalContent.Formula"/>), as a click in the magic window's spellbook does, opening the
+    /// window when it is not open. False when the window could not open; nothing thrown escapes.
+    /// </summary>
+    public bool ShowSpell(AppraisalContent content)
+    {
+        try
+        {
+            if (!Present(content)) return false;
+        }
+        catch (Exception exception)
+        {
+            _log($"Could not show the spell: {exception.Message}");
+            return false;
+        }
+        _requested = 0;
+        _shownId = 0;
+        _shownStored = false;
+        _shownResponse = null;
+        return true;
+    }
+
+    /// <summary>Draws the content in the window, opening it when it is not open. False when the window could not open.</summary>
+    private bool Present(AppraisalContent content)
+    {
+        var id = content.ObjectId;
         var art = _host.Art;
-        var inspect = _host.Looks.Knows(id) ? Inspect : (Action<AppraisalContent>?)null;
+        var inspect = content.Formula == null && _host.Looks.Knows(id) ? Inspect : (Action<AppraisalContent>?)null;
         var retail = _retailLayout();
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
@@ -290,9 +323,6 @@ public sealed class AppraisalFeature
             }
             _hidden = false;
         }
-        _shownId = response.ObjectId;
-        _shownStored = stored != null;
-        _shownResponse = (response, stored);
         Shown = content;
         return true;
     }
@@ -307,12 +337,17 @@ public sealed class AppraisalFeature
 
     /// <summary>
     /// The retail layout's figure, standing still behind the lines: always for a player, whose look the doll waits for when the game has not
-    /// sent it yet, and for another creature when the looks know it. No status line shows behind the text.
+    /// sent it yet, and for another creature when the looks know it. No status line shows behind the text. It draws under the window's
+    /// text, on the window's fill, as retail's does, and is framed as retail's: 84 % of the body's height, a little room over the head and
+    /// more under the feet (measured from retail's panel, 29 Oct 2026).
     /// </summary>
-    private Avalonia.Controls.Control? Figure(AppraisalContent content) =>
-        content.Creature is { Character: true } || _host.Looks.Knows(content.ObjectId)
-            ? new PaperdollView(_host.Looks, _host.PortalPath, content.ObjectId) { Still = true, StatusShown = false }
-            : null;
+    private Avalonia.Controls.Control? Figure(AppraisalContent content)
+    {
+        if (content.Formula != null || (content.Creature is not { Character: true } && !_host.Looks.Knows(content.ObjectId))) return null;
+        var doll = new PaperdollView(_host.Looks, _host.PortalPath, content.ObjectId) { Still = true, StatusShown = false, Backdrop = DerethPalette.Navy };
+        doll.Frame(zoom: 0.84f * ModelView.Framing, focus: 0.48f);
+        return doll;
+    }
 
     /// <summary>
     /// The switch turned to retail's examination window: closes the open window and returns the world object it showed, for retail to

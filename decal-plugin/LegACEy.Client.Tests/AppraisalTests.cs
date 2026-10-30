@@ -8,6 +8,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
+using Avalonia.VisualTree;
 using LegACEy.Client.DecalPlugin;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
@@ -349,11 +350,12 @@ public sealed class AppraisalTests
 
         var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
 
-        Assert.Equal("Staff · Heavy Weapons", content.TypeLine);
+        Assert.Equal("Staff", content.TypeLine);
         var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
         Assert.Equal(new[]
         {
-            ("Damage", "41.28 – 86 Bludgeoning", AppraisalTone.Raised),
+            ("Skill", "Heavy Weapons (Staff)", AppraisalTone.Normal),
+            ("Damage", "41.28 – 86, Bludgeoning", AppraisalTone.Raised),
             ("Speed", "Very Fast (0)", AppraisalTone.Raised),
             ("Attack", "+28.0%", AppraisalTone.Raised),
             ("Melee defense", "+21.0%", AppraisalTone.Normal),
@@ -404,6 +406,7 @@ public sealed class AppraisalTests
         var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
         Assert.Equal(new (string?, string, AppraisalTone)[]
         {
+            ("Skill", "Bow", AppraisalTone.Normal),
             ("Damage Bonus", "24 – 30", AppraisalTone.Normal),
             (null, "Elemental Damage Bonus: 3, Piercing.", AppraisalTone.Normal),
             ("Damage Modifier", "+20.0%", AppraisalTone.Raised),
@@ -624,6 +627,32 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void The_retail_layout_writes_a_weapon_s_combat_lines_in_retail_s_words_without_material_or_gems()
+    {
+        // The Ruby Claw from Backlog 132 (https://i.imgur.com/Gdfoatu.png): an unarmed Finesse Weapons claw, slashing and piercing, of ruby
+        // set with a sapphire.
+        var bytes = new ServerAppraisal(0x80000A08)
+        {
+            Strings = { [1] = "Claw" },
+            Ints = { [1] = 0x1, [353] = 1, [131] = 38, [177] = 1, [178] = 39 },
+            Floats = { [29] = 1.14 },
+            Weapon = new WeaponWrite(1 | 2, 17, 46, 43, 0.53, 1.0, 1.0, 1.0, 1.29, 0),
+        }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
+        Assert.Equal(new[] { "Material", "Gems" }, content.Sections.Single(section => section.Heading == "Properties").Rows.Select(row => row.Label).Take(2));
+        var lines = RetailAppraisalLayout.Groups(content).SelectMany(group => group.Lines).Select(line => line.Value).ToList();
+
+        Assert.Equal("Ruby Claw", content.Name);
+        Assert.Equal(new[]
+        {
+            "Skill: Finesse Weapons (Unarmed Weapon)", "Damage: 20.21 – 43, Slashing/Piercing", "Speed: Fast (17)",
+            "Bonus to Attack Skill: +29.0%", "Bonus to Melee Defense: +14.0%",
+        }, lines.SkipWhile(line => !line.StartsWith("Skill:", StringComparison.Ordinal)).Take(5));
+        Assert.DoesNotContain(lines, line => line.StartsWith("Material", StringComparison.Ordinal) || line.StartsWith("Gems", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void The_retail_layout_gathers_an_item_s_properties_on_one_line_and_says_what_it_covers_after_its_armor()
     {
         // A bonded, attuned, retained, dyeable breastplate with a Bludgeon Rending imbue, covering the chest and upper arms.
@@ -697,9 +726,10 @@ public sealed class AppraisalTests
     [Theory]
     [InlineData(260)]
     [InlineData(AppraisalWindow.Width)]
-    public void The_retail_figure_stands_between_the_labels_and_the_values_at_any_width(int width) => OnWindowThread(() =>
+    public void The_retail_figure_fills_the_body_under_the_words_at_any_width(int width) => OnWindowThread(() =>
     {
-        // The 3D view draws over text, so the figure's room must miss every word, however narrow the window: at the narrowest it has none.
+        // As retail's, the figure stands behind the lines from frame to frame: the window leaves it see-through for the host to draw it
+        // under the text, and the header box reaches the frame too.
         var bytes = new ServerAppraisal(0x50000C01)
         {
             Strings = { [1] = "Big Dog" }, Ints = { [25] = 126, [188] = 1, [261] = 5 },
@@ -714,15 +744,27 @@ public sealed class AppraisalTests
 
         Avalonia.Rect Bounds(Control control) => new(Avalonia.VisualExtensions.TranslatePoint(control, new Avalonia.Point(0, 0), view.Window)!.Value, control.Bounds.Size);
         var room = Bounds(figure);
-        if (width == AppraisalWindow.Width) Assert.True(room.Width > 30, $"The figure has {room.Width} pixels.");
-        var words = view.Window.GetLogicalDescendants().OfType<TextBlock>()
-            .Where(text => text.Text is "Head/Chest/Groin" or "Coordination" or "AL: 679/854/826" or "412/455 (91 %)").ToList();
-        Assert.Equal(4, words.Count);
-        if (room.Width > 0) Assert.All(words, text => Assert.False(Bounds(text).Intersects(room), $"\"{text.Text}\" is under the figure."));
+        var frame = view.Window.GetVisualDescendants().OfType<DerethFrame>().First();
+        var inside = Bounds(frame).Deflate(frame.Padding);
+        Assert.Equal(inside.Left, room.Left, 1);
+        Assert.Equal(inside.Right, room.Right, 1);
+        Assert.True(room.Height > 300, $"The figure is {room.Height} pixels tall.");
+        var box = Bounds(view.Window.GetVisualDescendants().OfType<Border>().First(border => border.BorderThickness == new Avalonia.Thickness(0, 1)));
+
+        // The header box is drawn out to the frame on both sides, not clipped to the body's margin.
+        string Pixel(double x, double y) => Convert.ToHexString(panel.Frame.Pixels, (int)y * panel.Frame.Stride + (int)x * 4, 4);
+        var boxFill = Pixel(box.Left + 20, box.Bottom - 3);
+        Assert.Equal(boxFill, Pixel(inside.Left + 1, box.Bottom - 3));
+        Assert.Equal(boxFill, Pixel(inside.Right - 2, box.Bottom - 3));
+        // A spot inside the figure's area with no word on it is drawn see-through, for the figure under it.
+        Assert.Equal("00000000", Pixel(room.Center.X, room.Bottom - 3));
+
         // Every value shows whole inside the body: a narrow window cuts the labels short instead.
+        var words = view.Window.GetLogicalDescendants().OfType<TextBlock>()
+            .Where(text => text.Text is "AL: 679/854/826" or "412/455 (91 %)").ToList();
+        Assert.Equal(2, words.Count);
         var scroll = view.Window.GetLogicalDescendants().OfType<ScrollViewer>().First();
-        Assert.All(words.Where(text => text.Text!.Contains('/') && char.IsDigit(text.Text[0]) || text.Text!.StartsWith("AL", StringComparison.Ordinal)),
-            text => Assert.True(Bounds(text).Right <= Bounds(scroll).Right, $"\"{text.Text}\" is cut off."));
+        Assert.All(words, text => Assert.True(Bounds(text).Right <= Bounds(scroll).Right, $"\"{text.Text}\" is cut off."));
     });
 
     [Fact]
@@ -783,7 +825,7 @@ public sealed class AppraisalTests
     }
 
     [Fact]
-    public void A_weapon_names_its_skill_in_the_type_line_and_its_workmanship_in_retail_words_and_a_potion_names_no_skill()
+    public void A_weapon_names_its_skill_first_in_combat_and_its_workmanship_in_retail_words_and_a_potion_names_no_skill()
     {
         // The skill comes in the weapon profile: the server never sends PropertyInt WeaponSkill as an assessment property.
         var weapon = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A04)
@@ -791,11 +833,12 @@ public sealed class AppraisalTests
             Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1, [105] = 6 },
             Weapon = new WeaponWrite(4, 0, 44, 6, 0, 1.0, 1.0, 1.0, 1.0, 0),
         }.Build()), NoSpells);
-        Assert.Equal("Melee weapon · Heavy Weapons", weapon.TypeLine);
+        Assert.Equal("Melee weapon", weapon.TypeLine);
+        Assert.Equal(("Skill", "Heavy Weapons"), weapon.Sections.Single(section => section.Heading == "Combat").Rows.Select(row => (row.Label, row.Text)).First());
         Assert.Equal(("Workmanship", "Nearly flawless (6)"), weapon.Figures.Select(figure => (figure.Label, figure.Value)).Single());
 
         var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells);
-        Assert.DoesNotContain("·", potion.TypeLine);
+        Assert.DoesNotContain(potion.Sections, section => section.Heading == "Combat");
     }
 
     [Fact]
