@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -228,6 +229,8 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         slot.PointerReleased += (_, e) =>
         {
             e.Handled = true;
+            // A right release while the left is held is not the left press ending.
+            if (e.InitialPressMouseButton != MouseButton.Left) return;
             var wasPressed = _pressed != null;
             _pressed = null;
             if (!wasPressed) return;
