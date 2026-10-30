@@ -472,7 +472,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 var examinationPort = new NativeExaminationPort();
                 _examination = new RetailExaminationTakeover(examinationPort, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
-                    _appraisal, Log, examinationPort.VerifyRoot);
+                    _appraisal, Log, examinationPort.VerifyRoot, () => examinationPort.ExaminedSpell(Log), spell => _magic?.Examine(spell) == true);
             }
             else Log("Retail's examination panel is left to retail: the native UI or its addresses are not ready.");
             // The sheet reads the server's messages from the start; retail's character panel is taken over only with its addresses checked.
@@ -495,7 +495,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.MagicPanel, NativeRetailPanelPort.MagicPanelId) : null,
                 () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), () => _portal?.ReadSpellComponents(Log) ?? SpellComponentTable.None,
                 () => _channelTransport, () => _inventory.Snapshot, content => _appraisal.ShowSpell(content),
-                () => _retailDrag?.IsPointerOver(RetailAttackCatalogue.CombatPanel) == true, DropOnDerethSpellBar, Log);
+                () => _retailDrag?.IsPointerOver(RetailAttackCatalogue.CombatPanel) == true, DropOnDerethSpellBar, HoverDerethSpellBar, Log);
             _inventory.Changed += () => _magic?.Refresh();
             _options = new OptionsFeature(this,
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.OptionsPanel, NativeRetailPanelPort.OptionsPanelId) : null,
@@ -1475,6 +1475,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
+            _magic?.TickDrag();
             _phaseTimes.Add("panels", start);
             start = PhaseTimes.Start();
             TickFeatureWindows();
@@ -4081,7 +4082,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IDisposable? OpenSpellBar(Point at)
     {
         if (!CanOpenWindows || _portal is not { } portal) return null;
-        var port = new NativeSpellBarPort(HudNatives().Lock, spell => ((IMagicGame?)_magic)?.Examine(spell));
+        var port = new NativeSpellBarPort(HudNatives().Lock, spell => _magic?.Examine(spell));
         var window = new DerethSpellBarWindow(port, () => portal.ReadSpells(Log), portal, new ItemDragHost(this),
             () => _windows?.BeginMove(DerethSpellBarWindow.WindowId, _pointer));
         var definition = DerethSpellBarWindow.Definition();
@@ -4099,11 +4100,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void SpellBarFailed(Exception exception) => _spellBar?.Fail(exception);
 
     /// <summary>A spell from the spellbook released over the Dereth spell bar's cells goes there. False when the bar is not under the pointer.</summary>
-    private bool DropOnDerethSpellBar(uint spell)
-    {
-        if (_spellBarWindow is not { } bar || _windows?.HitTest(_pointer) is not { Id: DerethSpellBarWindow.WindowId } window) return false;
-        return bar.DropAt(spell, ItemDropRouting.ContentPoint(window, _pointer));
-    }
+    private bool DropOnDerethSpellBar(uint spell) => SpellBarPoint() is { } at && _spellBarWindow!.DropAt(spell, at);
+
+    /// <summary>A spell dragged from the spellbook lights the Dereth spell bar's cell it would land in, while <paramref name="dragging"/>.</summary>
+    private void HoverDerethSpellBar(bool dragging) => _spellBarWindow?.HoverAt(dragging ? SpellBarPoint() : null);
+
+    /// <summary>The pointer in the Dereth spell bar's DIPs, while the bar is open and the window under the pointer; otherwise null.</summary>
+    private Avalonia.Point? SpellBarPoint() =>
+        _spellBarWindow != null && _windows?.HitTest(_pointer) is { Id: DerethSpellBarWindow.WindowId } window ? ItemDropRouting.ContentPoint(window, _pointer) : null;
 
     /// <summary>
     /// The attack bar's natives, checked once a session; null until the UI can be read. A check that cannot complete turns every feature off.

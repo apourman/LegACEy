@@ -202,6 +202,7 @@ public sealed class MagicWindowTests
         public bool SendDesired(uint wcid, int amount) { Desired.Add((wcid, amount)); return true; }
         public bool AddToSpellBar(uint spell) { AddedToBar.Add(spell); return true; }
         public bool DropOnSpellBar(uint spell) => AddToSpellBar(spell);
+        public void HoverSpellBar(bool dragging) { }
         public void Examine(uint spell) => Examined.Add(spell);
     }
 }

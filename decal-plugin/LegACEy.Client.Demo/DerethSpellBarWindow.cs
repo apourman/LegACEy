@@ -138,6 +138,13 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         return true;
     }
 
+    /// <summary>A spell dragged from another window is over <paramref name="at"/>, in window DIPs: lights the cell it would land in; null clears it.</summary>
+    public void HoverAt(Point? at)
+    {
+        var dropAt = at is { } point ? DropIndexAt(point) : null;
+        if (dropAt != _dropAt) Show(dropAt);
+    }
+
     private void OnPortChanged(object? sender, EventArgs e) => Sync();
 
     private void OnCellPressed(object? sender, PointerPressedEventArgs e)

@@ -35,14 +35,17 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     private readonly Func<AppraisalContent, bool> _examine;
     private readonly Func<bool> _overSpellBar;
     private readonly Func<uint, bool> _dropOnDerethBar;
+    private readonly Action<bool> _hoverDerethBar;
     private readonly Action<string> _log;
     private MagicWindow? _view;
     private Action? _hide;
     private bool _shown;
+    // A spell is being dragged out of our window.
+    private bool _dragging;
 
     public MagicFeature(ILegACEyPluginHost host, IRetailPanelPort? port, Func<IReadOnlyDictionary<uint, SpellInfo>> spells,
         Func<SpellComponentTable> components, Func<GameChannelTransport?> transport, Func<InventorySnapshot> inventory,
-        Func<AppraisalContent, bool> examine, Func<bool> overSpellBar, Func<uint, bool> dropOnDerethBar, Action<string> log)
+        Func<AppraisalContent, bool> examine, Func<bool> overSpellBar, Func<uint, bool> dropOnDerethBar, Action<bool> hoverDerethBar, Action<string> log)
     {
         _host = host;
         _spells = spells;
@@ -52,6 +55,7 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         _examine = examine;
         _overSpellBar = overSpellBar;
         _dropOnDerethBar = dropOnDerethBar;
+        _hoverDerethBar = hoverDerethBar;
         _log = log;
         if (port != null) _panel = new RetailPanelTakeover(port, OpenChanged, log);
         State.Changed += Refresh;
@@ -72,6 +76,8 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     public void EndSession()
     {
         _panel?.EndSession();
+        MagicNatives.EndSession();
+        _dragging = false;
         _view = null;
         _hide = null;
         _shown = false;
@@ -171,13 +177,33 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         return added;
     }
 
-    bool IMagicGame.DropOnSpellBar(uint spell) => _dropOnDerethBar(spell) || _overSpellBar() && ((IMagicGame)this).AddToSpellBar(spell);
-
-    void IMagicGame.Examine(uint spell)
+    // Off the current tab's list (its tab buttons, its margins), or with the natives off, a drop over the combat panel takes the double click's
+    // path to the current tab's end. The Dereth spell bar, open in magic in place of retail's, takes a drop over its cells first.
+    bool IMagicGame.DropOnSpellBar(uint spell)
     {
-        if (!_spells().TryGetValue(spell, out var info)) return;
-        _examine(Examination(info));
+        ((IMagicGame)this).HoverSpellBar(false);
+        return _dropOnDerethBar(spell) || MagicNatives.DropOnSpellBar(spell, _log) || _overSpellBar() && ((IMagicGame)this).AddToSpellBar(spell);
     }
+
+    void IMagicGame.HoverSpellBar(bool dragging)
+    {
+        _dragging = dragging;
+        MagicNatives.HoverSpellBar(dragging, _log);
+        _hoverDerethBar(dragging);
+    }
+
+    /// <summary>Once a frame: a spell dragged out of our window lights the spell bar cell under the pointer.</summary>
+    public void TickDrag()
+    {
+        if (!_dragging) return;
+        MagicNatives.HoverSpellBar(true, _log);
+        _hoverDerethBar(true);
+    }
+
+    void IMagicGame.Examine(uint spell) => Examine(spell);
+
+    /// <summary>Shows the spell in the appraisal window, as a click in the spellbook does. False for a spell the portal does not know.</summary>
+    public bool Examine(uint spell) => _spells().TryGetValue(spell, out var info) && _examine(Examination(info));
 
     /// <summary>
     /// The spell as the appraisal window shows it: its school and level, its mana and duration, its description, and the components the
