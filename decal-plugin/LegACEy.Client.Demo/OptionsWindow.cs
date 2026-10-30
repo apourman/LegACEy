@@ -379,8 +379,9 @@ public sealed partial class OptionsWindow
 
         public ArtButton(OptionsWindow window, string text, uint[] normal, uint[] pressed, uint[] disabled, Action click)
         {
-            IBrush?[] Brushes(uint[] ids) => ids.Select((id, i) => window.Art(id) is { } bitmap
-                ? (IBrush)new ImageBrush(bitmap) { Stretch = i == 1 ? Stretch.Fill : Stretch.None }
+            // Every piece fills its cell: in a scaled window, unstretched ends land a row off the stretched middle.
+            IBrush?[] Brushes(uint[] ids) => ids.Select(id => window.Art(id) is { } bitmap
+                ? (IBrush)new ImageBrush(bitmap) { Stretch = Stretch.Fill }
                 : null).ToArray();
             _normal = Brushes(normal);
             _pressed = Brushes(pressed);
