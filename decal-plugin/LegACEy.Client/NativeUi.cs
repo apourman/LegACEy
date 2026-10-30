@@ -37,6 +37,8 @@ internal static class NativeUi
     public const uint QuestsPanel = 0x10000559;
     /// <summary>The magic panel (Spellbook, Components), placed under PanelPages as panel 13.</summary>
     public const uint MagicPanel = 0x10000190;
+    /// <summary>The options panel (Gameplay Options, Character, Chat, Config), placed under PanelPages as panel 10.</summary>
+    public const uint OptionsPanel = 0x1000018D;
     /// <summary>
     /// Retail's toolbar window: the framed panel placed in LayoutDesc 0x21000005 as 0x10000603 (from 0x21000070/0x10000602), holding the
     /// toolbar. The takeover hides and moves this one. RootToolbar_Field (0x10000191) is only the base id and finds nothing.

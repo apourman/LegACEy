@@ -30,6 +30,9 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     private CharacterTables? _characterTables;
     private IReadOnlyDictionary<uint, ContractInfo>? _contracts;
     private SpellComponentTable? _components;
+    private IReadOnlyDictionary<uint, string>? _interfaceStrings;
+    // The language DAT's interface strings: option labels and tooltips among them.
+    private const uint InterfaceStringTable = 0x23000003;
 
     public PortalDat(string path)
     {
@@ -146,6 +149,30 @@ public sealed class PortalDat : IDisposable, IGameArtSource
                 _components = SpellComponentTable.None;
             }
             return _components;
+        }
+    }
+
+    /// <summary>
+    /// Retail's interface text (string table 0x23000003 in client_local_English.dat beside this portal) by string id, read once; the client
+    /// finds a text by the hash of its name (<see cref="CharacterNames.Hash"/>). Missing or unreadable gives none, logged once.
+    /// </summary>
+    public IReadOnlyDictionary<uint, string> ReadInterfaceStrings(Action<string>? log = null)
+    {
+        lock (_stream)
+        {
+            if (_interfaceStrings != null) return _interfaceStrings;
+            try
+            {
+                using var language = new PortalDat(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!, "client_local_English.dat"));
+                var table = language.ReadFile(InterfaceStringTable);
+                _interfaceStrings = table == null ? new Dictionary<uint, string>() : CharacterNames.ParseStringTable(table);
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"Retail's interface text could not be read from the English language DAT: {exception.Message}");
+                _interfaceStrings = new Dictionary<uint, string>();
+            }
+            return _interfaceStrings;
         }
     }
 
