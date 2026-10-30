@@ -139,6 +139,30 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void Windows_sharing_a_place_open_where_and_at_the_size_the_last_one_was_left()
+    {
+        var store = new MemoryWindowPositionStore();
+        var manager = new WindowManager(new Size(1600, 1200), store, "server", "character");
+        var sizing = new WindowResizing(new Size(100, 100));
+        WindowDefinition Panel(string id, int height) => new(id, id, 310, height, resizing: sizing, sharesPlaceWith: "panel");
+        // Each had its own place and size before they shared one.
+        store.Save("server", "character", "map", (new Point(900, 100), new Size(310, 400)));
+
+        var options = manager.Open(Panel("options", 600), new Point(1200, 300));
+        Assert.Equal(new Rectangle(1200, 300, 310, 600), options.Bounds);
+        manager.Close("options");
+
+        // The map opens in the options' place and size, not its own.
+        Assert.Equal(new Rectangle(1200, 300, 310, 600), manager.Open(Panel("map", 400), new Point(0, 0)).Bounds);
+        manager.Press(new Point(1250, 310));
+        manager.Move(new Point(1150, 260));
+        manager.Release();
+        manager.Close("map");
+
+        Assert.Equal(new Rectangle(1100, 250, 310, 600), manager.Open(Panel("options", 600), new Point(0, 0)).Bounds);
+    }
+
+    [Fact]
     public void A_locked_ui_does_not_rescale_windows()
     {
         var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", uiLocked: () => true);
@@ -289,6 +313,22 @@ public sealed class WindowManagerTests
         manager.Release();
         manager.ResizeScreen(new Size(1920, 1080));
         Assert.Equal(new Point(100, 100), manager.Get("one")!.Location);
+    }
+
+    [Fact]
+    public void A_press_on_the_title_bar_changes_the_window_only_once_the_drag_moves_it()
+    {
+        var manager = NewManager(1920, 1080);
+        var window = manager.Open(Resizable("vault"), new Point(100, 100));
+
+        // A click on a tab in the header: pressed and released where it was.
+        manager.Press(new Point(200, 110));
+        manager.Move(new Point(200, 110));
+        Assert.Null(manager.Changing);
+        manager.Move(new Point(230, 120));
+        Assert.Same(window, manager.Changing);
+        manager.Release();
+        Assert.Null(manager.Changing);
     }
 
     [Fact]

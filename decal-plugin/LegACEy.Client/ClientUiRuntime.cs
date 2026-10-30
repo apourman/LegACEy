@@ -1687,7 +1687,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             for (var i = order.Count - 1; i >= 0; i--)
             {
                 var surface = SurfaceById(order[i].Id);
-                if (surface != null) surface.FillOpacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Moving || order[i] == _windows.Resizing);
+                if (surface != null) surface.FillOpacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Changing);
                 DrawModelViews(surface, behind: true);
                 surface?.DrawNow();
                 DrawModelViews(surface, behind: false);
@@ -1727,8 +1727,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// it is moved or resized, so it can be found. Chat has its own opacity, and Settings and toasts always draw whole. Vitals keeps one value
     /// for both its layouts.
     /// </summary>
-    private double DrawOpacity(string server, string character, string id, bool moving) =>
-        moving || id is SettingsWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
+    private double DrawOpacity(string server, string character, string id, bool changing) =>
+        changing || id is SettingsWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
             : _opacities.Of(server, character, id == DerethVitalsWindow.SideBySideId ? DerethVitalsWindow.StackedId : id) / 100.0;
 
     /// <summary>

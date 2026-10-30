@@ -98,12 +98,16 @@ public sealed class WindowDefinition
     /// Another window this one stands in for, such as a compact view of it: this one opens where that one was last left, and
     /// where this one is left is where that one opens. Each keeps its own size.
     /// </param>
+    /// <param name="sharesPlaceWith">
+    /// A place several windows stand in one at a time, such as retail's panel frame: each opens where, and at the size, the last of them
+    /// was left. The first to open sets the place from its own.
+    /// </param>
     /// <param name="dragsFromContent">
     /// No title bar: a press does not start a move. The window's content starts one with <see cref="WindowManager.BeginMove"/>, on the presses
     /// that should drag it, so the rest of the window (its buttons and slots) stays a click.
     /// </param>
     public WindowDefinition(string id, string title, int width, int height, int titleBarHeight = 28, IClientTheme? theme = null, WindowResizing? resizing = null,
-        string? sharesLocationWith = null, bool dragsFromContent = false)
+        string? sharesLocationWith = null, bool dragsFromContent = false, string? sharesPlaceWith = null)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A window id is required.", nameof(id));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
@@ -117,6 +121,7 @@ public sealed class WindowDefinition
         Theme = theme;
         Resizing = resizing;
         SharesLocationWith = sharesLocationWith;
+        SharesPlaceWith = sharesPlaceWith;
         DragsFromContent = dragsFromContent;
     }
 
@@ -128,6 +133,7 @@ public sealed class WindowDefinition
     public IClientTheme? Theme { get; }
     public WindowResizing? Resizing { get; }
     public string? SharesLocationWith { get; }
+    public string? SharesPlaceWith { get; }
     public bool DragsFromContent { get; }
 }
 
@@ -423,6 +429,8 @@ public sealed class WindowManager
     public ManagedWindow? Resizing => _resizeEdges == WindowEdges.None ? null : _dragging;
     /// <summary>The window a title-bar drag is moving, or null.</summary>
     public ManagedWindow? Moving => _resizeEdges == WindowEdges.None ? _dragging : null;
+    /// <summary>The window a drag has moved or resized since the press, or null: a press on a title-bar tab alone changes nothing.</summary>
+    public ManagedWindow? Changing => _dragging != null && _dragging.Bounds != _pressBounds ? _dragging : null;
     /// <summary>Whether retail's UI is locked, so no window moves or resizes.</summary>
     public bool Locked => _uiLocked?.Invoke() == true;
 
@@ -435,7 +443,8 @@ public sealed class WindowManager
         var sizePercent = SavedSizePercent(definition.Id);
         var scale = ScaleFor(sizePercent);
         definition = Scaled(definition, scale);
-        var saved = _positions.Load(_server, _character, definition.Id);
+        var place = definition.SharesPlaceWith is { } placeId ? _positions.Load(_server, _character, placeId) : null;
+        var saved = place ?? _positions.Load(_server, _character, definition.Id);
         var shared = definition.SharesLocationWith is { } other ? _positions.Load(_server, _character, other)?.Location : null;
         var preferredSize = definition.Resizing != null && saved?.Size is { } savedSize ? Scaled(savedSize, scale) : DefaultSize(definition);
         var size = FitSize(definition, preferredSize, _screen);
@@ -448,6 +457,7 @@ public sealed class WindowManager
             DesignSize = definition.Resizing != null ? saved?.Size : null
         };
         _windows.Insert(0, window);
+        if (definition.SharesPlaceWith != null && place == null) Save(window);
         return window;
     }
 
@@ -551,6 +561,7 @@ public sealed class WindowManager
         {
             _dragging = window;
             _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
+            _pressBounds = window.Bounds;
         }
         return true;
     }
@@ -563,6 +574,7 @@ public sealed class WindowManager
         _resizeEdges = WindowEdges.None;
         _dragging = window;
         _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
+        _pressBounds = window.Bounds;
         return true;
     }
 
@@ -704,10 +716,15 @@ public sealed class WindowManager
     private static Size FitSize(WindowDefinition definition, Size wanted, Size screen) =>
         definition.Resizing is { } resizing ? resizing.Fit(wanted, screen) : DefaultSize(definition);
 
-    /// <summary>Saves where a window was left, and moves the window it shares a location with there too, keeping that one's size.</summary>
+    /// <summary>
+    /// Saves where a window was left, for it and the place it shares, and moves the window it shares a location with there too, keeping
+    /// that one's size.
+    /// </summary>
     private void Save(ManagedWindow window)
     {
-        _positions.Save(_server, _character, window.Id, Placement(window));
+        var placement = Placement(window);
+        _positions.Save(_server, _character, window.Id, placement);
+        if (window.Definition.SharesPlaceWith is { } place) _positions.Save(_server, _character, place, placement);
         if (window.Definition.SharesLocationWith is { } other)
             _positions.Save(_server, _character, other, (window.PreferredLocation, _positions.Load(_server, _character, other)?.Size));
     }
@@ -724,7 +741,7 @@ public sealed class WindowManager
             definition.Resizing is { } resizing
                 ? new WindowResizing(Scaled(resizing.Minimum, scale), resizing.Maximum is { } top ? Scaled(top, scale) : null, resizing.Locked, resizing.NoCorners, resizing.Shape)
                 : null,
-            definition.SharesLocationWith, definition.DragsFromContent);
+            definition.SharesLocationWith, definition.DragsFromContent, definition.SharesPlaceWith);
     }
 
     private static Size Scaled(Size size, double scale) => new(Scaled(size.Width, scale), Scaled(size.Height, scale));

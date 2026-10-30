@@ -35,6 +35,8 @@ internal abstract class NativePanelPort : IRetailPanelPort
 
     public IntPtr Identity => Element;
 
+    public virtual RetailPanelSlot? Slot => null;
+
     public bool IsOpen
     {
         get

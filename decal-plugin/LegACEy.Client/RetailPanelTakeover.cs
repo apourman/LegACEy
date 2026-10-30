@@ -21,6 +21,23 @@ internal interface IRetailPanelPort
     void MoveTo(Point location);
     /// <summary>Closes the panel through retail's own panel switch, or hides the element when that route is not available.</summary>
     void ClosePanel();
+    /// <summary>The panels that share this one's frame, of which retail shows one at a time; null when the panel has a frame of its own.</summary>
+    RetailPanelSlot? Slot => null;
+}
+
+/// <summary>
+/// Retail's panel frame, which holds every gmPanelUI panel and shows one at a time. Its takeovers hand the parked frame on and close
+/// each other's windows, so a switch from one panel to another never puts the frame back on screen or shows two windows.
+/// </summary>
+internal sealed class RetailPanelSlot
+{
+    /// <summary>The window place our windows for these panels share, as retail's panels share its frame.</summary>
+    internal const string WindowPlace = "retail-panel";
+
+    /// <summary>The takeover whose park the frame is in.</summary>
+    internal RetailPanelTakeover? Holder;
+    /// <summary>The takeover whose window is open.</summary>
+    internal RetailPanelTakeover? Shown;
 }
 
 /// <summary>
@@ -39,6 +56,7 @@ internal sealed class RetailPanelTakeover : IDisposable
     public const int TransitionFrames = 10;
 
     private readonly IRetailPanelPort _port;
+    private readonly RetailPanelSlot? _slot;
     private readonly Action<bool> _openChanged;
     private readonly Action<string> _log;
     // The panel we hold, and the layout's place and save-location for it: kept until the restore succeeds.
@@ -57,6 +75,7 @@ internal sealed class RetailPanelTakeover : IDisposable
     public RetailPanelTakeover(IRetailPanelPort port, Action<bool> openChanged, Action<string> log)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
+        _slot = port.Slot;
         _openChanged = openChanged ?? throw new ArgumentNullException(nameof(openChanged));
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
@@ -149,12 +168,32 @@ internal sealed class RetailPanelTakeover : IDisposable
     private void Park(IntPtr identity)
     {
         _identity = identity;
-        _original = _port.Location;
-        _originalSave = _port.SaveLocation;
+        if (_slot?.Holder is { } holder && holder != this && holder._parked && _port.Location == holder.ParkedAt)
+        {
+            // Retail switched panels inside the parked frame: the frame's place and save bit are the ones the last panel kept.
+            _original = holder._original;
+            _originalSave = holder._originalSave;
+            holder.HandOn();
+        }
+        else
+        {
+            _original = _port.Location;
+            _originalSave = _port.SaveLocation;
+        }
         _parked = true;
         _restoreFailed = false;
         Repark();
+        if (_slot != null) _slot.Holder = this;
         _log($"Parked the retail panel off-screen; its place is {_original}.");
+    }
+
+    /// <summary>A sibling panel took the parked frame over: the frame stays parked, and our window closes now.</summary>
+    private void HandOn()
+    {
+        _parked = false;
+        _identity = IntPtr.Zero;
+        _parkedAt = null;
+        Report(false);
     }
 
     /// <summary>Moves the panel to the parked place. A panel that does not land there (clamped by the client) fails the takeover.</summary>
@@ -177,6 +216,13 @@ internal sealed class RetailPanelTakeover : IDisposable
     {
         if (open == _reportedOpen) return;
         _reportedOpen = open;
+        if (_slot != null)
+        {
+            if (!open && _slot.Shown == this) _slot.Shown = null;
+            // Retail shows one panel of the frame at a time, so a window still waiting out its closed panel's gap closes now.
+            if (open && _slot.Shown is { } shown && shown != this && !shown._parked && !shown._disposed) shown.Report(false);
+            if (open) _slot.Shown = this;
+        }
         _openChanged(open);
     }
 
