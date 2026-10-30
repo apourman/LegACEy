@@ -113,7 +113,7 @@ public sealed class AppraisalWindow
         // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels.
         var height = measure == null
             ? layout.Height
-            : Math.Min(layout.MaxHeight, (int)Math.Ceiling(measure(window, new Size(Width, double.PositiveInfinity)).Height - 0.001));
+            : Math.Min(layout.MaxHeight, (int)Math.Ceiling(measure(window, new Size(Width, double.PositiveInfinity)).Height + Floor(layout.Top) - 0.001));
         if (behind.Content != null) window.SeeThrough = behind;
         var view = new AppraisalWindow(window, scroll, foot, top, behind, height, layout.Field, content.ObjectId, button, content, retail);
         view.SetInspect(inspect);
@@ -154,6 +154,10 @@ public sealed class AppraisalWindow
         _footObject = content.ObjectId;
     }
 
+    // A retail creature's window opens with room under its lines, below the body, so the figure stands taller than the words as in retail's
+    // panel without the body scrolling.
+    private static double Floor(Control? top) => top != null ? FloorRoom : 0;
+
     // The header box reaches the frame as the body does; a margin on the box itself would be clipped to its slot.
     private static Thickness Sides(Thickness middle) => new(middle.Left, 0, middle.Right, 0);
 
@@ -178,7 +182,7 @@ public sealed class AppraisalWindow
         InscriptionField? field = null;
         var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, retail, out field) : null;
         // A window measured before it is shown has no template yet, so the parts are measured and the chrome added to them.
-        var needed = Chrome + new[] { body, top, foot }.Sum(part =>
+        var needed = Chrome + (int)Floor(top) + new[] { body, top, foot }.Sum(part =>
         {
             if (part == null) return 0;
             part.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
@@ -245,8 +249,7 @@ public sealed class AppraisalWindow
     private static Control RetailBody(AppraisalContent content)
     {
         var creature = content.Creature != null;
-        // Under a creature's lines, room for its figure's feet to stand clear of the words, as in retail's taller panel.
-        var body = new StackPanel { Margin = new Thickness(BodySide, 4, BodySide, creature ? FloorRoom : 6) };
+        var body = new StackPanel { Margin = new Thickness(BodySide, 4, BodySide, 6) };
         if (creature) body.Effect = new DropShadowEffect { BlurRadius = 2, OffsetX = 0, OffsetY = 1, Color = Colors.Black, Opacity = 1 };
         var first = true;
         foreach (var group in RetailAppraisalLayout.Groups(content))
