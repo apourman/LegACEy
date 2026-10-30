@@ -39,6 +39,8 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     private MagicWindow? _view;
     private Action? _hide;
     private bool _shown;
+    // A spell is being dragged out of our window.
+    private bool _dragging;
 
     public MagicFeature(ILegACEyPluginHost host, IRetailPanelPort? port, Func<IReadOnlyDictionary<uint, SpellInfo>> spells,
         Func<SpellComponentTable> components, Func<GameChannelTransport?> transport, Func<InventorySnapshot> inventory,
@@ -171,7 +173,24 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         return added;
     }
 
-    bool IMagicGame.DropOnSpellBar(uint spell) => _overSpellBar() && ((IMagicGame)this).AddToSpellBar(spell);
+    // With the natives off, a drop over the combat panel takes the double click's path to the current tab's end.
+    bool IMagicGame.DropOnSpellBar(uint spell)
+    {
+        ((IMagicGame)this).HoverSpellBar(false);
+        return MagicNatives.DropOnSpellBar(spell, _log) ?? (_overSpellBar() && ((IMagicGame)this).AddToSpellBar(spell));
+    }
+
+    void IMagicGame.HoverSpellBar(bool dragging)
+    {
+        _dragging = dragging;
+        MagicNatives.HoverSpellBar(dragging, _log);
+    }
+
+    /// <summary>Once a frame: a spell dragged out of our window lights the spell bar cell under the pointer.</summary>
+    public void TickDrag()
+    {
+        if (_dragging) MagicNatives.HoverSpellBar(true, _log);
+    }
 
     void IMagicGame.Examine(uint spell)
     {

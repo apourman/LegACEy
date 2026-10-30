@@ -1464,6 +1464,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
+            _magic?.TickDrag();
             _phaseTimes.Add("panels", start);
             start = PhaseTimes.Start();
             TickFeatureWindows();
