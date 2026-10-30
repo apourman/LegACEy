@@ -257,7 +257,7 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
     {
         var owned = Encode(server) + "|" + Encode(character) + "|";
         var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
-        return Forget(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key));
+        return ForgetWhere(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key));
     }
 
     /// <summary>
@@ -265,16 +265,16 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
     /// sizes every window. Places and options stay. Returns false as <see cref="ForgetPlaces"/> does.
     /// </summary>
     public bool ForgetWindowSizes() =>
-        Forget(key => Decode(key.Substring(key.LastIndexOf('|') + 1))?.EndsWith(WindowManager.SizeKeySuffix, StringComparison.Ordinal) == true);
+        ForgetWhere(key => Decode(key.Substring(key.LastIndexOf('|') + 1))?.EndsWith(WindowManager.SizeKeySuffix, StringComparison.Ordinal) == true);
 
-    private bool Forget(Func<string, bool> forget)
+    private bool ForgetWhere(Func<string, bool> match)
     {
         lock (_sync)
         {
             var forgotten = new List<string>();
             if (Change(rows =>
                 {
-                    forgotten.AddRange(rows.Keys.Where(forget));
+                    forgotten.AddRange(rows.Keys.Where(match));
                     foreach (var key in forgotten) rows.Remove(key);
                 }))
                 return true;

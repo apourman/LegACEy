@@ -273,20 +273,20 @@ public sealed class SettingsPanel : UserControl
     }
 
     /// <summary>
-    /// "UI size": a slider from 60 to 150 in steps of 5, for all characters. The readout follows the thumb as it is dragged, and the size is set
-    /// when the pointer lets go.
+    /// "UI scale": a slider from 60 to 150 in steps of 5, for all characters. The readout follows the thumb as it is dragged, and the size is set
+    /// when the pointer lets go, even at the same value, since setting it also puts every window back to it.
     /// </summary>
-    private Control UiSizeRow() => SliderRow("UI size", UiSizeChoice.Smallest, UiSizeChoice.Largest, UiSizeChoice.Step,
-        () => _settings.UiSize?.Percent, percent => _settings.UiSize?.Set(percent));
+    private Control UiSizeRow() => SliderRow("UI scale", UiSizeChoice.Smallest, UiSizeChoice.Largest, UiSizeChoice.Step,
+        () => _settings.UiSize?.Percent, percent => _settings.UiSize?.Set(percent), commitUnchanged: true);
 
     /// <summary>
     /// A labelled slider for all characters, or for this one, with the percent beside it. The readout follows the thumb as it is dragged, and
     /// <paramref name="commit"/> gets the value when the pointer lets go. <paramref name="current"/> is the value to show, or null when the setting is gone.
     /// </summary>
     private Control SliderRow(string label, int smallest, int largest, int step, Func<int?> current, Action<int> commit, bool thisCharacter = false,
-        Action<int>? dragged = null)
+        Action<int>? dragged = null, bool commitUnchanged = false)
     {
-        var slider = new DerethSlider(smallest, largest, step);
+        var slider = new DerethSlider(smallest, largest, step) { CommitsUnchanged = commitUnchanged };
         var readout = new TextBlock { FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center };
         void ShowReadout(int percent)
         {

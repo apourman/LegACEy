@@ -1284,12 +1284,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>
     /// The UI size set from the Settings window, kept within the bounds and snapped to the step: saved now, and applied on the next frame,
     /// outside the window's own click, since applying it closes the window. It overrides every window's own size, for every character, so
-    /// every window shows at exactly the new size.
+    /// every window shows at exactly this size, the same size set again too.
     /// </summary>
     private void SetUiSize(int percent)
     {
         var size = Math.Clamp((int)Math.Round((double)percent / UiSizeChoice.Step) * UiSizeChoice.Step, UiSizeChoice.Smallest, UiSizeChoice.Largest);
-        if (size == _uiSize) return;
         _uiSize = size;
         _settingsStore.Save("", "", UiSizeKey, (new Point(size, 0), null));
         if (!_positionStore.ForgetWindowSizes())
@@ -1306,7 +1305,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _uiSizeChanged = false;
         if (!_inGame) return;
-        Log($"UI size {_uiSize}%: rebuilding the LegACEy UI.");
+        Log($"UI scale {_uiSize}%: rebuilding the LegACEy UI.");
         Rebuild(resetPositions: false);
     }
 
