@@ -1688,8 +1688,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 var surface = SurfaceById(order[i].Id);
                 if (surface != null) surface.Opacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Moving || order[i] == _windows.Resizing);
+                DrawModelViews(surface, behind: true);
                 surface?.DrawNow();
-                DrawModelViews(surface);
+                DrawModelViews(surface, behind: false);
                 // The note (the size while Ctrl and the wheel rescale the window) goes over its 3D views.
                 surface?.DrawNote();
                 if (_firstPostUiWindow)
@@ -1746,10 +1747,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Every 3D view in a window goes on top of that window's frame, before any window above it. A failure turns off
-    /// only that view, until its window closes.
+    /// The window's 3D views, before any window above it: <paramref name="behind"/>, those with a backdrop, on their backdrop before the window
+    /// draws, which leaves their area see-through for its text to lie over; otherwise the rest, on top of the window. A failure turns off only
+    /// that view's model, until its window closes.
     /// </summary>
-    private void DrawModelViews(ScreenSurface? surface)
+    private void DrawModelViews(ScreenSurface? surface, bool behind)
     {
         if (surface is not { Visible: true } || _device == IntPtr.Zero || surface.Panel.Content is not Avalonia.Visual window) return;
         // Walking each window's tree for its views every frame was most of the plugin's garbage; the views list themselves instead.
@@ -1757,9 +1759,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         for (var i = 0; i < views.Count; i++)
         {
             var view = views[i];
-            if (!Avalonia.VisualTree.VisualExtensions.IsVisualAncestorOf(window, view)) continue;
+            if (view.Backdrop.HasValue != behind || !Avalonia.VisualTree.VisualExtensions.IsVisualAncestorOf(window, view)) continue;
             _drawnModelViews.Add(view);
-            if (view.Model is not { } model || !view.IsEffectivelyVisible || _failedModelViews.Contains(view)) continue;
+            // A view behind its window keeps its backdrop without a model, or the window's see-through area would show the game.
+            if (!view.IsEffectivelyVisible || (!behind && (view.Model == null || _failedModelViews.Contains(view)))) continue;
             try
             {
                 var origin = Avalonia.VisualExtensions.TranslatePoint(view, default, window);
@@ -1768,6 +1771,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 var scale = surface.Panel.Scale;
                 var area = new Rectangle(surface.Location.X + (int)(origin.Value.X * scale), surface.Location.Y + (int)(origin.Value.Y * scale),
                     (int)(bounds.Width * scale), (int)(bounds.Height * scale));
+                // A pixel wider all round than the window's see-through area, whose edges its fill blends over.
+                if (view.Backdrop is { } backdrop)
+                {
+                    var fill = area;
+                    fill.Inflate(1, 1);
+                    ScreenSurface.DrawFill(_device, fill, System.Drawing.Color.FromArgb((int)Math.Round(255 * surface.Opacity), backdrop.R, backdrop.G, backdrop.B));
+                }
+                if (view.Model is not { } model || _failedModelViews.Contains(view)) continue;
                 if (!_modelRenderers.TryGetValue(view, out var renderer))
                 {
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);

@@ -337,11 +337,12 @@ public sealed class AppraisalFeature
 
     /// <summary>
     /// The retail layout's figure, standing still behind the lines: always for a player, whose look the doll waits for when the game has not
-    /// sent it yet, and for another creature when the looks know it. No status line shows behind the text.
+    /// sent it yet, and for another creature when the looks know it. No status line shows behind the text. It draws under the window's
+    /// text, on the window's fill, as retail's does.
     /// </summary>
     private Avalonia.Controls.Control? Figure(AppraisalContent content) =>
         content.Formula == null && (content.Creature is { Character: true } || _host.Looks.Knows(content.ObjectId))
-            ? new PaperdollView(_host.Looks, _host.PortalPath, content.ObjectId) { Still = true, StatusShown = false }
+            ? new PaperdollView(_host.Looks, _host.PortalPath, content.ObjectId) { Still = true, StatusShown = false, Backdrop = DerethPalette.Navy }
             : null;
 
     /// <summary>

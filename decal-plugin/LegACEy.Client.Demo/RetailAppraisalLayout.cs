@@ -8,8 +8,8 @@ namespace LegACEy.Client.Demo;
 /// <summary>A line of the retail layout: a label and its value, or text across the window when there is no label. The tone colours the value.</summary>
 public sealed record RetailAppraisalLine(string? Label, string Value, AppraisalTone Tone = AppraisalTone.Normal);
 
-/// <summary>A run of lines with the blank lines above it (none above the first group).</summary>
-public sealed record RetailAppraisalGroup(IReadOnlyList<RetailAppraisalLine> Lines, int BlankLinesBefore = 1);
+/// <summary>A run of lines with the blank lines above it (none above the first group), and whether retail rules a line under it.</summary>
+public sealed record RetailAppraisalGroup(IReadOnlyList<RetailAppraisalLine> Lines, int BlankLinesBefore = 1, bool Ruled = false);
 
 /// <summary>
 /// The retail layout of an appraisal (backlog 082): the same content as the sections layout, without headings, in groups split by blank
@@ -118,7 +118,8 @@ public static class RetailAppraisalLayout
         IEnumerable<AppraisalRow> Rows(string heading) => content.Sections.FirstOrDefault(section => section.Heading == heading)?.Rows ?? Array.Empty<AppraisalRow>();
         var groups = new[]
         {
-            new RetailAppraisalGroup(Rows(AppraisalHeading.Attributes).Concat(Rows(AppraisalHeading.Vitals)).Select(CreatureLine).ToList()),
+            // Retail rules a line under the attributes and vitals.
+            new RetailAppraisalGroup(Rows(AppraisalHeading.Attributes).Concat(Rows(AppraisalHeading.Vitals)).Select(CreatureLine).ToList(), Ruled: true),
             new RetailAppraisalGroup(Rows(AppraisalHeading.Armor).Select(CreatureLine).ToList(), BlankLinesBefore: 2),
             new RetailAppraisalGroup(Rows(AppraisalHeading.Ratings).Select(CreatureLine).ToList()),
             new RetailAppraisalGroup(Rows(AppraisalHeading.Allegiance).Select(CreatureLine).ToList()),

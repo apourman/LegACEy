@@ -45,6 +45,13 @@ public sealed class PaperdollView : Border
         DetachedFromVisualTree += (_, _) => Stop();
     }
 
+    /// <summary>The 3D view's <see cref="ModelView.Backdrop"/>: set, the doll draws under the window's text.</summary>
+    public Color? Backdrop
+    {
+        get => _view.Backdrop;
+        set => _view.Backdrop = value;
+    }
+
     /// <summary>Turns, zooms and moves the view back to its first one: facing the viewer, the whole character, centred.</summary>
     public void ResetView() => _view.ResetView();
 

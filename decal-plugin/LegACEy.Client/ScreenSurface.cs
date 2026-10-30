@@ -217,6 +217,40 @@ internal sealed unsafe class ScreenSurface : IDisposable
         }
     }
 
+    /// <summary>Fills the bounds with a colour, blended by its alpha, then puts every device state back.</summary>
+    public static void DrawFill(IntPtr device, Rectangle bounds, Color color)
+    {
+        var saved = SaveState(device);
+        try
+        {
+            SetOverlayStates(device, FvfXyzRhw | FvfDiffuse);
+            SetTexture(device, 0, IntPtr.Zero);
+            SetRenderState(device, RenderState.AlphaBlendEnable, 1);
+            SetRenderState(device, RenderState.SeparateAlphaBlendEnable, 0);
+            SetRenderState(device, RenderState.BlendOp, BlendOpAdd);
+            SetRenderState(device, RenderState.SrcBlend, BlendSrcAlpha);
+            SetRenderState(device, RenderState.DestBlend, BlendInvSrcAlpha);
+            SetStageState(device, 0, StageState.ColorOp, OpSelectArg1);
+            SetStageState(device, 0, StageState.ColorArg1, ArgDiffuse);
+            SetStageState(device, 0, StageState.AlphaOp, OpSelectArg1);
+            SetStageState(device, 0, StageState.AlphaArg1, ArgDiffuse);
+
+            var argb = (uint)color.ToArgb();
+            // Pixel centres sit at half-pixel offsets in Direct3D 9, so the quad's edges go on pixel edges.
+            float left = bounds.Left - 0.5f, top = bounds.Top - 0.5f, right = bounds.Right - 0.5f, bottom = bounds.Bottom - 0.5f;
+            var quad = stackalloc ColoredVertex[4];
+            quad[0] = new(left, top, argb);
+            quad[1] = new(right, top, argb);
+            quad[2] = new(left, bottom, argb);
+            quad[3] = new(right, bottom, argb);
+            DrawPrimitiveUP(device, TriangleStrip, 2, quad, sizeof(ColoredVertex));
+        }
+        finally
+        {
+            RestoreState(saved);
+        }
+    }
+
     /// <summary>Draw one textured quad of the frame's part with premultiplied alpha, then put every device state back.</summary>
     private void Draw(Rectangle part)
     {
