@@ -75,8 +75,8 @@ internal static unsafe class MagicNatives
 
     // Null until checked.
     private static bool? _ok;
-    // The spell bar cell lit for the drag, or zero.
-    private static IntPtr _lit;
+    // The spell bar cell lit for the drag and the list it was in, or zero.
+    private static IntPtr _lit, _litList;
 
     private static bool Ok(Action<string> log)
     {
@@ -101,32 +101,36 @@ internal static unsafe class MagicNatives
     /// </summary>
     public static void HoverSpellBar(bool dragging, Action<string> log)
     {
-        var cell = dragging && Ok(log) ? SpellBarTarget().Cell : IntPtr.Zero;
+        var (_, list, cell, _) = dragging && Ok(log) ? SpellBarTarget() : default;
         if (cell == _lit) return;
-        // The lit cell was under the pointer a moment ago; the spell bar's cells outlive a drag unless its tab changes.
-        if (_lit != IntPtr.Zero) ((delegate* unmanaged[Thiscall]<IntPtr, uint, void>)SetDragAcceptState)(_lit, DragAcceptNone);
-        _lit = cell;
+        // The tab lists live as long as the spell bar, but their cells can be rebuilt: the old cell is cleared only while its list still holds it.
+        if (_lit != IntPtr.Zero && ((delegate* unmanaged[Thiscall]<IntPtr, IntPtr, int>)IndexOfItem)(_litList, _lit) >= 0)
+            ((delegate* unmanaged[Thiscall]<IntPtr, uint, void>)SetDragAcceptState)(_lit, DragAcceptNone);
+        (_lit, _litList) = (cell, list);
         if (cell != IntPtr.Zero) ((delegate* unmanaged[Thiscall]<IntPtr, uint, void>)SetDragAcceptState)(cell, DragAcceptYes);
     }
 
+    /// <summary>Logoff or unload: forgets the lit cell, which goes with the spell bar.</summary>
+    public static void EndSession() => (_lit, _litList) = (IntPtr.Zero, IntPtr.Zero);
+
     /// <summary>
     /// Drops the spell on the spell bar as retail's drop does: into the cell under the pointer, or at the current tab's end over the bar's
-    /// empty slots. Null when the client does not match; false when the pointer is not over the spell bar's list.
+    /// empty slots. False when the client does not match or the pointer is not over the current tab's list.
     /// </summary>
-    public static bool? DropOnSpellBar(uint spell, Action<string> log)
+    public static bool DropOnSpellBar(uint spell, Action<string> log)
     {
-        if (!Ok(log)) return null;
-        var (ui, cell, index) = SpellBarTarget();
+        if (!Ok(log)) return false;
+        var (ui, _, cell, index) = SpellBarTarget();
         if (ui == IntPtr.Zero) return false;
         ((delegate* unmanaged[Thiscall]<IntPtr, uint, int, byte, void>)AddSpellShortcut)(ui, spell, cell == IntPtr.Zero ? -1 : index, 1);
         return true;
     }
 
     /// <summary>
-    /// The spell bar under the pointer: its gmSpellcastingUI, the cell (a UIItem in the current tab's list) under the pointer and its index.
+    /// The spell bar under the pointer: its gmSpellcastingUI, the current tab's list, the cell (a UIItem in it) under the pointer and its index.
     /// The cell is zero over the list's empty slots; all are zero when the pointer is not over the current tab's list.
     /// </summary>
-    private static (IntPtr Ui, IntPtr Cell, int Index) SpellBarTarget()
+    private static (IntPtr Ui, IntPtr List, IntPtr Cell, int Index) SpellBarTarget()
     {
         var manager = *(byte**)Manager;
         if (manager == null) return default;
@@ -142,8 +146,8 @@ internal static unsafe class MagicNatives
                 if (list == IntPtr.Zero || over != list && ((delegate* unmanaged[Thiscall]<IntPtr, IntPtr, byte>)IsAncestorOfMe)(over, list) == 0)
                     return default;
                 var cell = Cast(((delegate* unmanaged[Thiscall]<IntPtr, IntPtr>)ItemAtMouse)(list), ItemType);
-                if (cell == IntPtr.Zero) return (ui, IntPtr.Zero, -1);
-                return (ui, cell, ((delegate* unmanaged[Thiscall]<IntPtr, IntPtr, int>)IndexOfItem)(list, cell));
+                if (cell == IntPtr.Zero) return (ui, list, IntPtr.Zero, -1);
+                return (ui, list, cell, ((delegate* unmanaged[Thiscall]<IntPtr, IntPtr, int>)IndexOfItem)(list, cell));
             }
             element = NativeUi.Virtual<NativeUi.GetParentFn>(element, NativeUi.GetParentSlot)(element);
         }

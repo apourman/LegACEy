@@ -34,7 +34,6 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     private readonly Func<InventorySnapshot> _inventory;
     private readonly Func<AppraisalContent, bool> _examine;
     private readonly Func<bool> _overSpellBar;
-    private readonly Action _endTargetMode;
     private readonly Action<string> _log;
     private MagicWindow? _view;
     private Action? _hide;
@@ -44,9 +43,8 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
 
     public MagicFeature(ILegACEyPluginHost host, IRetailPanelPort? port, Func<IReadOnlyDictionary<uint, SpellInfo>> spells,
         Func<SpellComponentTable> components, Func<GameChannelTransport?> transport, Func<InventorySnapshot> inventory,
-        Func<AppraisalContent, bool> examine, Func<bool> overSpellBar, Action endTargetMode, Action<string> log)
+        Func<AppraisalContent, bool> examine, Func<bool> overSpellBar, Action<string> log)
     {
-        _endTargetMode = endTargetMode;
         _host = host;
         _spells = spells;
         _components = components;
@@ -74,6 +72,8 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     public void EndSession()
     {
         _panel?.EndSession();
+        MagicNatives.EndSession();
+        _dragging = false;
         _view = null;
         _hide = null;
         _shown = false;
@@ -173,11 +173,12 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         return added;
     }
 
-    // With the natives off, a drop over the combat panel takes the double click's path to the current tab's end.
+    // Off the current tab's list (its tab buttons, its margins), or with the natives off, a drop over the combat panel takes the double click's
+    // path to the current tab's end.
     bool IMagicGame.DropOnSpellBar(uint spell)
     {
         ((IMagicGame)this).HoverSpellBar(false);
-        return MagicNatives.DropOnSpellBar(spell, _log) ?? (_overSpellBar() && ((IMagicGame)this).AddToSpellBar(spell));
+        return MagicNatives.DropOnSpellBar(spell, _log) || _overSpellBar() && ((IMagicGame)this).AddToSpellBar(spell);
     }
 
     void IMagicGame.HoverSpellBar(bool dragging)
@@ -192,11 +193,7 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         if (_dragging) MagicNatives.HoverSpellBar(true, _log);
     }
 
-    void IMagicGame.Examine(uint spell)
-    {
-        _endTargetMode();
-        Examine(spell);
-    }
+    void IMagicGame.Examine(uint spell) => Examine(spell);
 
     /// <summary>Shows the spell in the appraisal window, as a click in the spellbook does. False for a spell the portal does not know.</summary>
     public bool Examine(uint spell) => _spells().TryGetValue(spell, out var info) && _examine(Examination(info));

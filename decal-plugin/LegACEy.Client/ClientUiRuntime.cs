@@ -486,7 +486,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.MagicPanel, NativeRetailPanelPort.MagicPanelId) : null,
                 () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), () => _portal?.ReadSpellComponents(Log) ?? SpellComponentTable.None,
                 () => _channelTransport, () => _inventory.Snapshot, content => _appraisal.ShowSpell(content),
-                () => _retailDrag?.IsPointerOver(RetailAttackCatalogue.CombatPanel) == true, () => _inventory.TargetMode?.EndForSpell(), Log);
+                () => _retailDrag?.IsPointerOver(RetailAttackCatalogue.CombatPanel) == true, Log);
             _inventory.Changed += () => _magic?.Refresh();
             _options = new OptionsFeature(this,
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.OptionsPanel, NativeRetailPanelPort.OptionsPanelId) : null,

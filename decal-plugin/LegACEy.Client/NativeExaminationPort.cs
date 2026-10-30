@@ -65,23 +65,17 @@ internal sealed class NativeExaminationPort : NativePanelPort
         _spellOk ??= NativeUiCatalogue.Validate(NativeUi.ReadMemory, log, SpellEntries,
             "A spell examined from retail's spell bar shows the selection instead: the running client does not match.");
         if (_spellOk != true) return 0;
-        var chain = new List<string>();
         var current = NativeUi.GetElement(NativeUi.ExaminationInscription);
         for (var depth = 0; depth < MaxDepth && current != IntPtr.Zero; depth++)
         {
             var panel = unchecked((uint)current.ToInt32());
-            chain.Add($"0x{panel:X8}:0x{Read(panel):X8}");
             var page = Read(panel + SpellPage);
             if (page != 0 && Read(page) == SpellPageVtable && Read(page + PagePanel) == panel)
-            {
-                var spell = Read(panel + ActivePage) == page ? Read(page + PageSpell) : 0;
-                log($"Retail's examination panel ({depth} up from its inscription) shows {(spell == 0 ? "an object" : $"spell {spell}")}.");
-                return spell;
-            }
+                return Read(panel + ActivePage) == page ? Read(page + PageSpell) : 0;
             current = NativeUi.Virtual<NativeUi.GetParentFn>(current, NativeUi.GetParentSlot)(current);
         }
         if (!_panelMissing)
-            log($"A spell examined from retail's spell bar shows the selection instead: retail's examination panel was not found (element:vtable up from the inscription: {string.Join(" ", chain)}; root 0x{unchecked((uint)Element.ToInt32()):X8}).");
+            log("A spell examined from retail's spell bar shows the selection instead: retail's examination panel was not found.");
         _panelMissing = true;
         return 0;
     }
