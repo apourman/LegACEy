@@ -370,7 +370,7 @@ public sealed partial class OptionsWindow
         }
     }
 
-    /// <summary>A retail button drawn from its three pieces of art (left, tiled middle, right), pressed while held and dark when disabled.</summary>
+    /// <summary>A retail button drawn from its three pieces of art (left, stretched middle, right), pressed while held and dark when disabled.</summary>
     private sealed class ArtButton : Border
     {
         private readonly Border _left = new() { Width = 32 }, _middle = new(), _right = new() { Width = 32 };
