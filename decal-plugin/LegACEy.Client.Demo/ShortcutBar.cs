@@ -19,8 +19,8 @@ public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 
 /// <summary>
 /// One shortcut row inside the toolbar: nine item slots at the icon size, touching, as retail's are. A slot
-/// shows its item's icon and stack count, under retail's key-number tab, or only its key number when empty. A click selects and uses
-/// the slot's item, and a slot whose item is selected is lit, so the slot last clicked stays marked. A press on a slot never moves the
+/// shows its item's icon and stack count, under retail's key-number tab, or only its key number when empty. A click selects the slot's
+/// item, a double click uses it, and a right click selects and examines it; a slot whose item is selected is lit, so the slot last clicked stays marked. A press on a slot never moves the
 /// toolbar. A drag from a slot moves the shortcut to the slot it is released on, or takes it off the bars when no LegACEy window takes it.
 /// A drop of an item from outside binds it to the slot it is released on.
 /// </summary>
@@ -50,6 +50,8 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     // The slot a press on a slot began at, and where, in the bar's coordinates. A drag starts once the pointer moves past the threshold.
     private int? _pressed;
     private Point _pressAt;
+    // The press's click count: 2 on the second press of a double click.
+    private int _pressClicks;
     // The drag of a shortcut from a slot: its icon while it is held.
     private IDisposable? _dragIcon;
     // One slot per shortcut.
@@ -197,9 +199,21 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         slot.PointerPressed += (_, e) =>
         {
             e.Handled = true;
-            if (!e.GetCurrentPoint(slot).Properties.IsLeftButtonPressed) return;
+            var button = e.GetCurrentPoint(slot).Properties;
+            // A right click selects and examines the item without using it, as retail's does.
+            if (button.IsRightButtonPressed && _pressed == null)
+            {
+                if (view.Item != null && ShortcutEdits.ObjectAt(_port.Shortcuts, view.Index) is var examined and not 0)
+                {
+                    _port.Select(examined);
+                    _port.ExamineSelected();
+                }
+                return;
+            }
+            if (!button.IsLeftButtonPressed) return;
             _pressed = view.Index;
             _pressAt = e.GetPosition(this);
+            _pressClicks = e.ClickCount;
             // The moves and the release come to this slot wherever the pointer goes, so a drag that leaves the slot still ends here.
             e.Pointer.Capture(slot);
         };
@@ -220,9 +234,9 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             if (_dragIcon != null) EndDrag();
             else if (view.Item != null && new Rect(slot.Bounds.Size).Contains(e.GetPosition(slot)))
             {
-                // A click selects the item too, as retail's slot click does, so it can be examined; the number key only uses it.
+                // A click only selects the item, as retail's slot click does; a double click uses it, as its number key does.
                 if (ShortcutEdits.ObjectAt(_port.Shortcuts, view.Index) is var objectId and not 0) _port.Select(objectId);
-                _port.UseShortcut(view.Index);
+                if (_pressClicks >= 2) _port.UseShortcut(view.Index);
             }
             if (_refreshPending) Refresh();
         };
