@@ -37,7 +37,9 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
         Entry("SpellCastSubMenu::SetSelected: the list at +4, the spell kept at +0xC", SetSelected, "56 8B F1 8B 46 04 8B 88 10 06 00 00 57 33 FF 85",
             "thiscall (uint spell)"),
         Entry("gmSpellcastingUI::UpdateEndowmentIcon", UpdateEndowmentIcon, "81 EC 30 01 00 00 55 56 8B F1 8B 86 08 06 00 00", "thiscall ()"),
-        Entry("gmSpellcastingUI::UpdateCastButtonTooltip", UpdateCastButtonTooltip, "81 EC A8 00 00 00 56 8B F1", "thiscall ()"),
+        // Decal patches this one's prologue and first call in the running client, so its body after them is checked.
+        Entry("gmSpellcastingUI::UpdateCastButtonTooltip body after its prologue and ClientMagicSystem lookup", UpdateCastButtonTooltip + 0xE,
+            "85 C0 89 44 24 14 0F 84 04 06 00 00 8B 96 8C 06 00 00", "thiscall ()"),
         Entry("gmSpellcastingUI::Cast: the open tab's selected spell at +0x634", CastSelected,
             "81 EC 94 00 00 00 56 E8 B4 F8 FF FF 6B C0 1C 8B B4 08 34 06 00 00", "thiscall ()"),
         Entry("UIElement_Field opens the page of a tab button", OpenTabButton, "53 57 8B 7C 24 0C 33 D2 8B C7 F7 B1 5C 06 00 00", "thiscall (uint button) -> bool"),
