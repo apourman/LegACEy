@@ -40,7 +40,7 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
-    public void A_click_selects_and_uses_the_slot_it_lands_on_and_an_empty_slot_does_nothing() => RenderThread.Run(() =>
+    public void A_click_selects_the_slot_it_lands_on_without_using_it_and_an_empty_slot_does_nothing() => RenderThread.Run(() =>
     {
         var held = new Dictionary<uint, ShortcutItem> { [0x200] = Swords };
         var port = new FakeShortcutPort(new[] { new RetailShortcut(4, 0x200) });
@@ -51,7 +51,36 @@ public sealed class ShortcutBarTests
         Click(panel, bar, bar.SlotAt(4));
 
         Assert.Equal(new[] { 0x200u }, port.Selected);
+        Assert.Empty(port.Used);
+    });
+
+    [Fact]
+    public void A_double_click_uses_the_slot() => RenderThread.Run(() =>
+    {
+        var held = new Dictionary<uint, ShortcutItem> { [0x200] = Swords };
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(4, 0x200) });
+        using var panel = Open(port, held, out var bar);
+        panel.Tick();
+
+        DoubleClick(panel, bar, bar.SlotAt(4));
+
         Assert.Equal(new[] { 4 }, port.Used);
+    });
+
+    [Fact]
+    public void A_right_click_selects_and_examines_the_slot_without_using_it_and_an_empty_slot_does_nothing() => RenderThread.Run(() =>
+    {
+        var held = new Dictionary<uint, ShortcutItem> { [0x200] = Swords };
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(4, 0x200) });
+        using var panel = Open(port, held, out var bar);
+        panel.Tick();
+
+        RightClick(panel, bar, bar.SlotAt(1));
+        RightClick(panel, bar, bar.SlotAt(4));
+
+        Assert.Equal(new[] { 0x200u }, port.Selected);
+        Assert.Equal(1, port.Examined);
+        Assert.Empty(port.Used);
     });
 
     [Fact]
@@ -80,8 +109,8 @@ public sealed class ShortcutBarTests
         panel.Tick();
 
         Assert.NotEqual(Render(Array.Empty<RetailShortcut>(), held, firstIndex: 9), panel.Frame.Pixels.ToArray());
-        Click(panel, bar, bar.SlotAt(0));
-        Click(panel, bar, bar.SlotAt(8));
+        DoubleClick(panel, bar, bar.SlotAt(0));
+        DoubleClick(panel, bar, bar.SlotAt(8));
 
         Assert.Equal(new[] { 9, 17 }, port.Used);
     });
@@ -255,6 +284,18 @@ public sealed class ShortcutBarTests
         panel.PointerLeave();
     }
 
+    private static void DoubleClick(AvaloniaPanel panel, ShortcutBar bar, Control control)
+    {
+        Press(panel, bar, control);
+        Click(panel, bar, control);
+    }
+
+    private static void RightClick(AvaloniaPanel panel, ShortcutBar bar, Control control)
+    {
+        var centre = Centre(bar, control);
+        panel.RightClick(centre.X, centre.Y);
+    }
+
     private static void Press(AvaloniaPanel panel, ShortcutBar bar, Control control)
     {
         var centre = control.TranslatePoint(new Avalonia.Point(control.Bounds.Width / 2, control.Bounds.Height / 2), bar)!.Value;
@@ -329,7 +370,8 @@ public sealed class ShortcutBarTests
         public RetailSelection? Selection => Selected.Count == 0 ? null : new RetailSelection(Selected[^1], "Item", default);
         public int SplitAmount { get; set; } = 1;
         public void UseSelected() { }
-        public void ExamineSelected() { }
+        public void ExamineSelected() => Examined++;
+        public int Examined { get; private set; }
 
         public event Action? Changed;
 

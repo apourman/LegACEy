@@ -41,7 +41,7 @@ public sealed class MapWindow
 {
     public const string WindowId = "map";
     public const int Width = 310, Height = 400;
-    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(Width, Height));
+    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(Width, Height), new System.Drawing.Size(Width, 10_000));
     /// <summary>Retail's map art: the parchment map of Dereth, 257 by 267, its towns drawn in.</summary>
     public const uint MapArt = 0x0600127D;
     private const double MapWidth = 257, MapHeight = 267, MarkerSize = 14;

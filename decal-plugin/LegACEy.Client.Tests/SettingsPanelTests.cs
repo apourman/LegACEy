@@ -32,6 +32,11 @@ public sealed class SettingsPanelTests
         Assert.Empty(sizes);
         panel.PointerUp(middle.X, middle.Y);
         Assert.Equal(new[] { 105 }, sizes);
+        // Let go where it was pressed, the size is set again: that is how every window goes back to the UI scale.
+        Assert.Equal(105, slider.Value);
+        panel.PointerDown(middle.X, middle.Y);
+        panel.PointerUp(middle.X, middle.Y);
+        Assert.Equal(new[] { 105, 105 }, sizes);
 
         PressCentre(panel, TextOf(panel, "World"));
         panel.Tick();

@@ -135,6 +135,12 @@ public sealed class WindowDefinition
     public string? SharesLocationWith { get; }
     public string? SharesPlaceWith { get; }
     public bool DragsFromContent { get; }
+
+    /// <summary>
+    /// Whether the top edge moves the window and the title bar does not: a window that drags from its content, or one with a fixed width,
+    /// which is retail's panel and moves only from its top border as retail's do.
+    /// </summary>
+    internal bool MovesFromTopEdge => DragsFromContent || Resizing?.FixedWidth == true;
 }
 
 /// <summary>The live state of one LegACEy window. The preferred location and size are where the window was last left.</summary>
@@ -255,14 +261,26 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
     /// </summary>
     public bool ForgetPlaces(string server, string character, IEnumerable<string> keep)
     {
+        var owned = Encode(server) + "|" + Encode(character) + "|";
+        var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
+        return ForgetWhere(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key));
+    }
+
+    /// <summary>
+    /// Forgets every window's own size (Ctrl+wheel, or Size in the Settings window) for every server and character, so the UI size alone
+    /// sizes every window. Places and options stay. Returns false as <see cref="ForgetPlaces"/> does.
+    /// </summary>
+    public bool ForgetWindowSizes() =>
+        ForgetWhere(key => Decode(key.Substring(key.LastIndexOf('|') + 1))?.EndsWith(WindowManager.SizeKeySuffix, StringComparison.Ordinal) == true);
+
+    private bool ForgetWhere(Func<string, bool> match)
+    {
         lock (_sync)
         {
-            var owned = Encode(server) + "|" + Encode(character) + "|";
-            var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
             var forgotten = new List<string>();
             if (Change(rows =>
                 {
-                    forgotten.AddRange(rows.Keys.Where(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key)));
+                    forgotten.AddRange(rows.Keys.Where(match));
                     foreach (var key in forgotten) rows.Remove(key);
                 }))
                 return true;
@@ -356,6 +374,12 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
         Encode(server) + "|" + Encode(character) + "|" + Encode(windowId);
 
     private static string Encode(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value ?? string.Empty));
+
+    private static string? Decode(string value)
+    {
+        try { return Encoding.UTF8.GetString(Convert.FromBase64String(value)); }
+        catch (FormatException) { return null; }
+    }
 }
 
 /// <summary>
@@ -363,7 +387,8 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 /// frontmost. Pointer coordinates are screen coordinates and all returned positions are clamped.
 /// A press in a resizable window's side or bottom band, its top band when it has a title bar, or in its corner square unless it has no
 /// corners, resizes it, within its <see cref="WindowResizing"/>: its minimum and maximum hold on every edge, a fixed height has no top or
-/// bottom edge, and a locked window does not resize. A press on any other window's top edge or in its title bar moves it. While retail's UI is locked no window moves or resizes.
+/// bottom edge, and a locked window does not resize. A press on any other window's top edge or in its title bar moves it; a window that
+/// moves from its top edge (<see cref="WindowDefinition.MovesFromTopEdge"/>) moves from there only. While retail's UI is locked no window moves or resizes.
 /// </summary>
 public sealed class WindowManager
 {
@@ -495,7 +520,8 @@ public sealed class WindowManager
     }
 
     // A window's own size is saved beside its place, under its id with this added, so a reset of the places resets it too.
-    private static string SizeKey(string id) => id + "\u001fsize";
+    internal const string SizeKeySuffix = "\u001fsize";
+    private static string SizeKey(string id) => id + SizeKeySuffix;
 
     private int SavedSizePercent(string id) =>
         _positions.Load(_server, _character, SizeKey(id))?.Location.X is int percent && percent >= SmallestSize && percent <= LargestSize ? percent : 100;
@@ -557,7 +583,7 @@ public sealed class WindowManager
             _pressPoint = point;
             _pressBounds = window.Bounds;
         }
-        else if (OnMoveEdge(window, point) || !window.Definition.DragsFromContent && point.Y - window.Location.Y < window.TitleBarHeight)
+        else if (OnMoveEdge(window, point) || !window.Definition.MovesFromTopEdge && point.Y - window.Location.Y < window.TitleBarHeight)
         {
             _dragging = window;
             _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
@@ -620,7 +646,8 @@ public sealed class WindowManager
     /// <summary>
     /// The edges a point is on: within <see cref="ResizeBand"/> of a side or the bottom, or inside a corner square of
     /// <see cref="CornerBand"/> pixels, unless the window has no corners. The top edge between the corners resizes a window with a title bar
-    /// (the bar moves it); a window that drags from its content has no title bar, so its top edge moves it instead.
+    /// (the bar moves it); a window that moves from its top edge does not resize there, except at a fixed-width window's top corners,
+    /// which resize its height as retail's panels do.
     /// </summary>
     private static WindowEdges EdgesAt(ManagedWindow window, Point point)
     {
@@ -639,7 +666,8 @@ public sealed class WindowManager
         if (!resizing.FixedWidth && left < ResizeBand) edges |= WindowEdges.Left;
         if (!resizing.FixedWidth && right < ResizeBand) edges |= WindowEdges.Right;
         if (!resizing.FixedHeight && bottom < ResizeBand) edges |= WindowEdges.Bottom;
-        if (!resizing.FixedHeight && !window.Definition.DragsFromContent && top < ResizeBand) edges |= WindowEdges.Top;
+        var topResizes = !window.Definition.MovesFromTopEdge || resizing.FixedWidth && !resizing.NoCorners && Math.Min(left, right) < CornerBand;
+        if (!resizing.FixedHeight && topResizes && top < ResizeBand) edges |= WindowEdges.Top;
         return edges;
     }
 

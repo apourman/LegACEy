@@ -217,7 +217,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 
     /// <summary>
     /// Uses a shortcut through retail's toolbar with fromKey true. Retail's notice that uses a shortcut (RecvNotice_UseShortcut) passes the
-    /// same true, as the number key does; the sender of that notice on a slot click is not traced. Nothing is used when the toolbar is not retail's.
+    /// same true, as the number key does; the sender of that notice on a slot double click is not traced. Nothing is used when the toolbar is not retail's.
     /// </summary>
     public void UseShortcut(int index)
     {

@@ -40,7 +40,7 @@ public sealed class CharacterWindow
 {
     public const string WindowId = "character";
     public const int Width = 310, Height = 640;
-    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(280, 360));
+    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(Width, 360), new System.Drawing.Size(Width, 10_000));
     private const double SkillRowHeight = 21, AttributeRowHeight = 27, BandHeight = 20;
     // Retail's raise arrows in the portal dat, lit and dim: the plain one (+1, or train) and the +10 one. Each is 30 × 26 with clear edges,
     // padded to a square because icons only scale square art.

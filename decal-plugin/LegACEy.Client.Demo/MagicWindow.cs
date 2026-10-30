@@ -29,6 +29,8 @@ public interface IMagicGame
     bool AddToSpellBar(uint spell);
     /// <summary>A spell dragged out of the window was released: true when it was over retail's spell bar, which then took it.</summary>
     bool DropOnSpellBar(uint spell);
+    /// <summary>A spell drag started (true) or ended (false): while it lasts, the spell bar lights the cell a drop would land in.</summary>
+    void HoverSpellBar(bool dragging);
     /// <summary>Shows the spell in the appraisal window, as retail's examination panel shows a spell.</summary>
     void Examine(uint spell);
 }
@@ -42,7 +44,7 @@ public sealed class MagicWindow
 {
     public const string WindowId = "magic";
     public const int Width = 310, Height = 600;
-    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(310, 320));
+    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(Width, 320), new System.Drawing.Size(Width, 10_000));
     private const double RowHeight = 32, DragThreshold = 4;
     private static readonly string[] TabNames = { "Spellbook", "Components" };
     // Retail's art: the list rows (and their selected edge), the filter block, the toggles' off, off-hover, on and on-hover lights, Delete.
@@ -267,6 +269,7 @@ public sealed class MagicWindow
             if (Math.Abs(point.X - press.At.X) < DragThreshold && Math.Abs(point.Y - press.At.Y) < DragThreshold) return;
             _dragSpell = press.Spell;
             _dragIcon = _drag.ShowDragIcon(_art == null ? null : SpellIcon.Draw(_art, spell), 1, retailDropIndicator: false);
+            _game.HoverSpellBar(true);
         };
         row.PointerReleased += (_, e) =>
         {
@@ -294,6 +297,7 @@ public sealed class MagicWindow
         _dragIcon.Dispose();
         _dragIcon = null;
         if (drop) _game.DropOnSpellBar(_dragSpell);
+        else _game.HoverSpellBar(false);
         _dragSpell = 0;
     }
 

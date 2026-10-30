@@ -488,14 +488,37 @@ public sealed class WindowManagerTests
     [InlineData(101, 300, WindowEdges.None)]
     [InlineData(443, 703, WindowEdges.Bottom)]
     [InlineData(200, 703, WindowEdges.Bottom)]
-    [InlineData(200, 101, WindowEdges.Top)]
-    public void A_fixed_width_window_resizes_only_from_its_top_and_bottom_edges(int x, int y, WindowEdges expected)
+    [InlineData(200, 101, WindowEdges.None)]
+    [InlineData(103, 101, WindowEdges.Top)]
+    [InlineData(440, 101, WindowEdges.Top)]
+    public void A_fixed_width_window_resizes_only_from_its_top_corners_and_bottom_edge(int x, int y, WindowEdges expected)
     {
         var manager = NewManager(1920, 1080);
         manager.Open(new WindowDefinition("inventory", "Inventory", 344, 606, resizing: new WindowResizing(new Size(344, 300), new Size(344, 10_000))),
             new Point(100, 100));
 
         Assert.Equal(expected, manager.HoverAt(new Point(x, y)).Edges);
+    }
+
+    [Fact]
+    public void A_fixed_width_window_moves_only_from_its_top_edge()
+    {
+        var manager = NewManager(1920, 1080);
+        manager.Open(new WindowDefinition("social", "Social", 310, 600, resizing: new WindowResizing(new Size(310, 400), new Size(310, 10_000))),
+            new Point(100, 100));
+
+        Assert.Equal("social", manager.MoveEdgeAt(new Point(250, 101)));
+        Assert.Null(manager.MoveEdgeAt(new Point(103, 101)));
+
+        // The title bar does not move it; the top corner makes it taller from the top.
+        manager.Press(new Point(250, 115));
+        manager.Move(new Point(300, 165));
+        manager.Release();
+        Assert.Equal(new Point(100, 100), manager.Get("social")!.Location);
+        manager.Press(new Point(103, 101));
+        manager.Move(new Point(80, 51));
+        manager.Release();
+        Assert.Equal(new Rectangle(100, 50, 310, 650), manager.Get("social")!.Bounds);
     }
 
     [Fact]
@@ -608,6 +631,32 @@ public sealed class WindowManagerTests
             Assert.Equal(30, reloaded.Load("server-a", "character-a", "dereth-chat-fade")!.Value.Location.X);
             Assert.Equal(new Point(30, 40), reloaded.Load("server-a", "character-b", "vault")!.Value.Location);
             Assert.Equal(new Point(50, 60), reloaded.Load("server-b", "character-a", "vault")!.Value.Location);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Forgetting_window_sizes_puts_every_characters_windows_back_at_the_ui_size_and_keeps_their_places()
+    {
+        var path = TempPath();
+        try
+        {
+            var store = new FileWindowPositionStore(path);
+            store.Save("server-a", "character-a", "vault", (new Point(10, 20), null));
+            Assert.True(new WindowManager(new Size(1920, 1080), store, "server-a", "character-a", 0.9).Rescale("vault", 2));
+            Assert.True(new WindowManager(new Size(1920, 1080), store, "server-b", "character-b", 0.9).Rescale("dereth-toolbar", -3));
+            store.Save("server-a", "character-a", "dereth-chat-text-size", (new Point(140, 0), null));
+
+            Assert.True(new FileWindowPositionStore(path).ForgetWindowSizes());
+
+            var reloaded = new FileWindowPositionStore(path);
+            Assert.Equal(0.9, new WindowManager(new Size(1920, 1080), reloaded, "server-a", "character-a", 0.9).ScaleOf("vault"));
+            Assert.Equal(0.9, new WindowManager(new Size(1920, 1080), reloaded, "server-b", "character-b", 0.9).ScaleOf("dereth-toolbar"));
+            Assert.Equal(new Point(10, 20), reloaded.Load("server-a", "character-a", "vault")!.Value.Location);
+            Assert.Equal(140, reloaded.Load("server-a", "character-a", "dereth-chat-text-size")!.Value.Location.X);
         }
         finally
         {

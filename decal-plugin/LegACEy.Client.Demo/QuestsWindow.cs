@@ -34,7 +34,7 @@ public sealed class QuestsWindow
 {
     public const string WindowId = "quests";
     public const int Width = 310, Height = 600;
-    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(290, 480));
+    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(Width, 480), new System.Drawing.Size(Width, 10_000));
     private const double RowHeight = 20;
     private static readonly string[] TabNames = { "Contracts", "Journal", "Page List" };
     // Retail's journal parchment: the top and bottom strips, the left and right edges and the middle, which tile down the page.

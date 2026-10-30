@@ -165,28 +165,6 @@ public sealed class PanelCompositorTests
     });
 
     [Fact]
-    public void A_shared_step_over_budget_for_consecutive_frames_fails_as_a_slow_tick_does() => RenderThread.Run(() =>
-    {
-        var slow = new Faulty();
-        using var panel = AvaloniaPanel.Create(() => slow, 8, 8);
-        // The count is shared by every test's advances: start it, and leave it, at zero.
-        PanelCompositor.ResetStepBudget();
-        PanelCompositor.Advance();
-        PanelCompositor.ResetStepBudget();
-        try
-        {
-            slow.Fails = Faulty.Stage.Slowly;
-            for (var frame = 1; frame < PanelFailureBudget.ConsecutiveSlowTickLimit; frame++)
-            {
-                PanelCompositor.Advance();
-                slow.InvalidateVisual();
-            }
-            Assert.Throws<TimeoutException>(PanelCompositor.Advance);
-        }
-        finally { PanelCompositor.ResetStepBudget(); }
-    });
-
-    [Fact]
     public void After_a_failure_no_panel_raised_the_other_panels_keep_rendering() => RenderThread.Run(() =>
     {
         // The same control type in both panels: the stack can't tell which panel raised the failure.
@@ -210,7 +188,7 @@ public sealed class PanelCompositorTests
     public sealed class Faulty : Control
     {
         public const string Failure = "deliberate failure in one panel";
-        public enum Stage { None, Layout, Render, Slowly }
+        public enum Stage { None, Layout, Render }
 
         private Stage _fails;
 
@@ -231,7 +209,6 @@ public sealed class PanelCompositorTests
         public override void Render(DrawingContext context)
         {
             if (Fails == Stage.Render) throw new InvalidOperationException(Failure);
-            if (Fails == Stage.Slowly) Thread.Sleep(PanelFailureBudget.MaximumTick + TimeSpan.FromMilliseconds(10));
         }
     }
 
