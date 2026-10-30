@@ -499,6 +499,31 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_retail_panel_window_moves_from_its_top_edge_and_resizes_its_height_from_the_top_corners_and_bottom()
+    {
+        var manager = NewManager(1920, 1080);
+        manager.Open(new WindowDefinition("social", "Social", 310, 600, resizing: new WindowResizing(new Size(310, 400), new Size(310, 10_000)),
+            dragsFromContent: true), new Point(100, 100));
+
+        Assert.Equal(WindowEdges.None, manager.HoverAt(new Point(101, 400)).Edges);
+        Assert.Equal(WindowEdges.Top, manager.HoverAt(new Point(103, 101)).Edges);
+        Assert.Equal(WindowEdges.Top, manager.HoverAt(new Point(406, 101)).Edges);
+        Assert.Equal(WindowEdges.Bottom, manager.HoverAt(new Point(103, 698)).Edges);
+        Assert.Equal("social", manager.MoveEdgeAt(new Point(250, 101)));
+        Assert.Null(manager.MoveEdgeAt(new Point(103, 101)));
+
+        // The title bar does not move it; the top corner makes it taller from the top.
+        manager.Press(new Point(250, 115));
+        manager.Move(new Point(300, 165));
+        manager.Release();
+        Assert.Equal(new Point(100, 100), manager.Get("social")!.Location);
+        manager.Press(new Point(103, 101));
+        manager.Move(new Point(80, 51));
+        manager.Release();
+        Assert.Equal(new Rectangle(100, 50, 310, 650), manager.Get("social")!.Bounds);
+    }
+
+    [Fact]
     public void A_press_on_the_top_edge_resizes_a_titled_window_and_moves_one_that_drags_from_its_content()
     {
         var manager = NewManager(1920, 1080);

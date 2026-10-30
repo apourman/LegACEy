@@ -621,7 +621,8 @@ public sealed class WindowManager
     /// <summary>
     /// The edges a point is on: within <see cref="ResizeBand"/> of a side or the bottom, or inside a corner square of
     /// <see cref="CornerBand"/> pixels, unless the window has no corners. The top edge between the corners resizes a window with a title bar
-    /// (the bar moves it); a window that drags from its content has no title bar, so its top edge moves it instead.
+    /// (the bar moves it); a window that drags from its content has no title bar, so its top edge moves it instead, except at a fixed-width
+    /// window's top corners, which resize its height.
     /// </summary>
     private static WindowEdges EdgesAt(ManagedWindow window, Point point)
     {
@@ -640,7 +641,9 @@ public sealed class WindowManager
         if (!resizing.FixedWidth && left < ResizeBand) edges |= WindowEdges.Left;
         if (!resizing.FixedWidth && right < ResizeBand) edges |= WindowEdges.Right;
         if (!resizing.FixedHeight && bottom < ResizeBand) edges |= WindowEdges.Bottom;
-        if (!resizing.FixedHeight && !window.Definition.DragsFromContent && top < ResizeBand) edges |= WindowEdges.Top;
+        // A fixed-width window whose top edge moves it, like retail's panels, keeps the ends of that edge to resize its height.
+        var topResizes = !window.Definition.DragsFromContent || resizing.FixedWidth && !resizing.NoCorners && Math.Min(left, right) < CornerBand;
+        if (!resizing.FixedHeight && topResizes && top < ResizeBand) edges |= WindowEdges.Top;
         return edges;
     }
 
