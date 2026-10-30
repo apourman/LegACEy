@@ -32,6 +32,7 @@ internal sealed class NativeExaminationPort : NativePanelPort
 
     // Null until checked.
     private bool? _spellOk;
+    private bool _panelMissing;
 
     protected override IntPtr Element => NativeUi.GetElement(NativeUi.Examination);
 
@@ -55,15 +56,29 @@ internal sealed class NativeExaminationPort : NativePanelPort
 
     /// <summary>
     /// The spell retail's panel is showing (a click on the spell bar examines one), or zero when it shows an object or the client does not
-    /// match. Retail sets the active page on every examination, so it is current whenever the panel opens.
+    /// match. Retail sets the active page on every examination, so it is current whenever the panel opens. The gmExaminationUI is the
+    /// root element or one of its ancestors: the element placed with the panel's id can be a part of it.
     /// </summary>
     public unsafe uint ExaminedSpell(Action<string> log)
     {
         _spellOk ??= NativeUiCatalogue.Validate(NativeUi.ReadMemory, log, SpellEntries,
             "A spell examined from retail's spell bar shows the selection instead: the running client does not match.");
-        var root = (byte*)Element;
-        if (_spellOk != true || root == null || *(uint*)root != ExaminationVtable) return 0;
-        var page = *(byte**)(root + SpellPage);
-        return page != null && *(byte**)(root + ActivePage) == page ? *(uint*)(page + PageSpell) : 0;
+        if (_spellOk != true) return 0;
+        var current = Element;
+        for (var depth = 0; depth < MaxDepth && current != IntPtr.Zero; depth++)
+        {
+            var panel = (byte*)current;
+            if (*(uint*)panel == ExaminationVtable)
+            {
+                var page = *(byte**)(panel + SpellPage);
+                var spell = page != null && *(byte**)(panel + ActivePage) == page ? *(uint*)(page + PageSpell) : 0;
+                log($"Retail's examination panel ({depth} up from its element) shows {(spell == 0 ? "an object" : $"spell {spell}")}.");
+                return spell;
+            }
+            current = NativeUi.Virtual<NativeUi.GetParentFn>(current, NativeUi.GetParentSlot)(current);
+        }
+        if (!_panelMissing) log("A spell examined from retail's spell bar shows the selection instead: retail's examination panel was not found.");
+        _panelMissing = true;
+        return 0;
     }
 }

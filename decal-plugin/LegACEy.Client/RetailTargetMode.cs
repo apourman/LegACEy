@@ -144,6 +144,17 @@ internal sealed class RetailTargetMode
         return true;
     }
 
+    /// <summary>
+    /// A spell clicked in a LegACEy window ends the wait, as a click on retail's spell bar does: in examine mode (E) the window shows the
+    /// spell itself, and no other mode targets a spell.
+    /// </summary>
+    public void EndForSpell()
+    {
+        if (!Waiting) return;
+        _setMode!(Marshal.ReadIntPtr(UiSystemInstance), 0);
+        Hover(0);
+    }
+
     /// <summary>When retail is waiting for a target, makes the object that target, as retail's item lists do; false when it is not waiting.</summary>
     public bool TryTarget(uint objectId)
     {

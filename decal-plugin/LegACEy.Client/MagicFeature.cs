@@ -34,6 +34,7 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     private readonly Func<InventorySnapshot> _inventory;
     private readonly Func<AppraisalContent, bool> _examine;
     private readonly Func<bool> _overSpellBar;
+    private readonly Action _endTargetMode;
     private readonly Action<string> _log;
     private MagicWindow? _view;
     private Action? _hide;
@@ -41,8 +42,9 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
 
     public MagicFeature(ILegACEyPluginHost host, IRetailPanelPort? port, Func<IReadOnlyDictionary<uint, SpellInfo>> spells,
         Func<SpellComponentTable> components, Func<GameChannelTransport?> transport, Func<InventorySnapshot> inventory,
-        Func<AppraisalContent, bool> examine, Func<bool> overSpellBar, Action<string> log)
+        Func<AppraisalContent, bool> examine, Func<bool> overSpellBar, Action endTargetMode, Action<string> log)
     {
+        _endTargetMode = endTargetMode;
         _host = host;
         _spells = spells;
         _components = components;
@@ -171,7 +173,11 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
 
     bool IMagicGame.DropOnSpellBar(uint spell) => _overSpellBar() && ((IMagicGame)this).AddToSpellBar(spell);
 
-    void IMagicGame.Examine(uint spell) => Examine(spell);
+    void IMagicGame.Examine(uint spell)
+    {
+        _endTargetMode();
+        Examine(spell);
+    }
 
     /// <summary>Shows the spell in the appraisal window, as a click in the spellbook does. False for a spell the portal does not know.</summary>
     public bool Examine(uint spell) => _spells().TryGetValue(spell, out var info) && _examine(Examination(info));
