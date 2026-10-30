@@ -82,8 +82,15 @@ internal sealed unsafe class ScreenSurface : IDisposable
 
     public Rectangle Bounds => new(Location, new Size(Panel.Frame.Width, Panel.Frame.Height));
 
-    /// <summary>How opaque the surface draws, 0 to 1: the whole frame is faded as it is drawn, so a change costs no new capture.</summary>
-    public double Opacity { get; set; } = 1;
+    /// <summary>
+    /// How opaque the window's background draws, 0 to 1 (<see cref="Themes.DerethFrame.FillOpacityProperty"/>): its frame, text and dolls
+    /// stay solid. A change redraws the backgrounds once.
+    /// </summary>
+    public double FillOpacity
+    {
+        get => Themes.DerethFrame.GetFillOpacity(Panel.Content);
+        set => Themes.DerethFrame.SetFillOpacity(Panel.Content, value);
+    }
 
     /// <summary>Upload the frame this game frame's compositor advance captured, without drawing it.</summary>
     public void Prepare()
@@ -267,16 +274,10 @@ internal sealed unsafe class ScreenSurface : IDisposable
             SetRenderState(_device, RenderState.SrcBlend, BlendOne);
             SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
 
-            // The texels are premultiplied, so a faded surface scales all four channels by the same factor.
-            var faded = Opacity < 1;
-            var factor = (uint)Math.Round(Math.Clamp(Opacity, 0, 1) * 255);
-            SetRenderState(_device, RenderState.TextureFactor, unchecked((int)(factor << 24 | factor << 16 | factor << 8 | factor)));
-            SetStageState(_device, 0, StageState.ColorOp, faded ? OpModulate : OpSelectArg1);
+            SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
             SetStageState(_device, 0, StageState.ColorArg1, ArgTexture);
-            SetStageState(_device, 0, StageState.ColorArg2, ArgFactor);
-            SetStageState(_device, 0, StageState.AlphaOp, faded ? OpModulate : OpSelectArg1);
+            SetStageState(_device, 0, StageState.AlphaOp, OpSelectArg1);
             SetStageState(_device, 0, StageState.AlphaArg1, ArgTexture);
-            SetStageState(_device, 0, StageState.AlphaArg2, ArgFactor);
             SetStageState(_device, 0, StageState.TexCoordIndex, 0);
             SetStageState(_device, 0, StageState.TextureTransformFlags, 0);
 

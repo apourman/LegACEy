@@ -19,6 +19,8 @@ public sealed class DerethRadarScope : Control
     private static readonly Color Cream = DerethPalette.Cream;
     private static readonly Color Gold = DerethPalette.Gold;
     private static readonly Color Navy = Color.Parse("#18160F");
+    static DerethRadarScope() => AffectsRender<DerethRadarScope>(DerethFrame.FillOpacityProperty);
+
     private static readonly IBrush Darken = DerethPalette.Brush(Color.FromArgb(0x40, 22, 20, 12));
     private static readonly IBrush Disc = new RadialGradientBrush
     {
@@ -151,19 +153,24 @@ public sealed class DerethRadarScope : Control
         var centre = new Point(radius, radius);
         using (context.PushGeometryClip(new EllipseGeometry(new Rect(0, 0, size, size))))
         {
-            context.DrawEllipse(Disc, null, centre, radius, radius);
+            // The disc, the ground and the vignette are the radar's background, which its window's opacity fades.
+            var fill = DerethFrame.GetFillOpacity(this);
             // The world turned and scaled so the player is at the centre.
             var world = Matrix.CreateScale(PixelsPerMetre, PixelsPerMetre) * Matrix.CreateRotation(Turn * Math.PI / 180)
                 * Matrix.CreateTranslation(centre);
             // The ground: indoors it is a building's, at half brightness under the plan, else darkened a little to sit under the dots.
             var planned = _planLevels.Count > 0;
-            using (context.PushOpacity(planned ? 0.5 : 1))
-            using (context.PushTransform(world))
-                foreach (var tile in _tiles)
-                    context.DrawImage(tile.Image, new Rect(tile.Image.Size), tile.Metres);
-            if (_tiles.Count > 0 && !planned) context.DrawEllipse(Darken, null, centre, radius, radius);
+            using (context.PushOpacity(fill))
+            {
+                context.DrawEllipse(Disc, null, centre, radius, radius);
+                using (context.PushOpacity(planned ? 0.5 : 1))
+                using (context.PushTransform(world))
+                    foreach (var tile in _tiles)
+                        context.DrawImage(tile.Image, new Rect(tile.Image.Size), tile.Metres);
+                if (_tiles.Count > 0 && !planned) context.DrawEllipse(Darken, null, centre, radius, radius);
+            }
             if (planned) DrawPlan(context, world);
-            context.DrawEllipse(Vignette, null, centre, radius, radius);
+            using (context.PushOpacity(fill)) context.DrawEllipse(Vignette, null, centre, radius, radius);
             DrawCrosshair(context, centre, radius);
             if (Rings) DrawRings(context, centre, radius);
             foreach (var dot in _dots) DrawDot(context, dot);

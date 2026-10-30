@@ -1676,7 +1676,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() =>
         {
             if (_toolbarSurface == null) return;
-            _toolbarSurface.Opacity = DrawOpacity(server, character, ToolbarSurfaceId, _toolbarDragOffset != null || _toolbarRowDragY != null);
+            _toolbarSurface.FillOpacity = DrawOpacity(server, character, ToolbarSurfaceId, _toolbarDragOffset != null || _toolbarRowDragY != null);
             _toolbarSurface.DrawNow();
         });
         var windows = !_failed && _windowsEnabled && _windows != null;
@@ -1687,7 +1687,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             for (var i = order.Count - 1; i >= 0; i--)
             {
                 var surface = SurfaceById(order[i].Id);
-                if (surface != null) surface.Opacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Moving || order[i] == _windows.Resizing);
+                if (surface != null) surface.FillOpacity = DrawOpacity(server, character, order[i].Id, order[i] == _windows.Moving || order[i] == _windows.Resizing);
                 DrawModelViews(surface, behind: true);
                 surface?.DrawNow();
                 DrawModelViews(surface, behind: false);
@@ -1708,7 +1708,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!_failed) Guard(() =>
         {
             if (_splitTabSurface == null) return;
-            _splitTabSurface.Opacity = _toolbarSurface?.Opacity ?? 1;
+            _splitTabSurface.FillOpacity = _toolbarSurface?.FillOpacity ?? 1;
             _splitTabSurface.DrawNow();
         });
         try { _gameMessageSurface?.DrawNow(); }
@@ -1723,8 +1723,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// How opaque a window or the toolbar draws, from its Opacity setting: whole while it is moved or resized, so it can be found. Chat has
-    /// its own opacity, and Settings and toasts always draw whole. Vitals keeps one value for both its layouts.
+    /// How opaque a window's or the toolbar's background draws, from its Opacity setting; its frame, text and dolls stay solid. Whole while
+    /// it is moved or resized, so it can be found. Chat has its own opacity, and Settings and toasts always draw whole. Vitals keeps one value
+    /// for both its layouts.
     /// </summary>
     private double DrawOpacity(string server, string character, string id, bool moving) =>
         moving || id is SettingsWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
@@ -1776,7 +1777,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 {
                     var fill = area;
                     fill.Inflate(1, 1);
-                    ScreenSurface.DrawFill(_device, fill, System.Drawing.Color.FromArgb((int)Math.Round(255 * surface.Opacity), backdrop.R, backdrop.G, backdrop.B));
+                    ScreenSurface.DrawFill(_device, fill, System.Drawing.Color.FromArgb((int)Math.Round(255 * surface.FillOpacity), backdrop.R, backdrop.G, backdrop.B));
                 }
                 if (view.Model is not { } model || _failedModelViews.Contains(view)) continue;
                 if (!_modelRenderers.TryGetValue(view, out var renderer))
@@ -1784,7 +1785,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
                     Log($"3D view first drawn: {model.TriangleCount} triangles, height {model.Top - model.Bottom:0.00} m, at {area} on a {D3D9.Viewport(_device)} viewport.");
                 }
-                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour, surface.Opacity);
+                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus, view.Outlined, view.OutlineColour);
             }
             catch (Exception exception)
             {
