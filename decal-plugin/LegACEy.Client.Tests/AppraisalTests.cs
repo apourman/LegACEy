@@ -8,6 +8,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
+using Avalonia.VisualTree;
 using LegACEy.Client.DecalPlugin;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
@@ -697,9 +698,10 @@ public sealed class AppraisalTests
     [Theory]
     [InlineData(260)]
     [InlineData(AppraisalWindow.Width)]
-    public void The_retail_figure_stands_between_the_labels_and_the_values_at_any_width(int width) => OnWindowThread(() =>
+    public void The_retail_figure_fills_the_body_under_the_words_at_any_width(int width) => OnWindowThread(() =>
     {
-        // The 3D view draws over text, so the figure's room must miss every word, however narrow the window: at the narrowest it has none.
+        // As retail's, the figure stands behind the lines from frame to frame: the window leaves it see-through for the host to draw it
+        // under the text, and the header box reaches the frame too.
         var bytes = new ServerAppraisal(0x50000C01)
         {
             Strings = { [1] = "Big Dog" }, Ints = { [25] = 126, [188] = 1, [261] = 5 },
@@ -714,15 +716,27 @@ public sealed class AppraisalTests
 
         Avalonia.Rect Bounds(Control control) => new(Avalonia.VisualExtensions.TranslatePoint(control, new Avalonia.Point(0, 0), view.Window)!.Value, control.Bounds.Size);
         var room = Bounds(figure);
-        if (width == AppraisalWindow.Width) Assert.True(room.Width > 30, $"The figure has {room.Width} pixels.");
-        var words = view.Window.GetLogicalDescendants().OfType<TextBlock>()
-            .Where(text => text.Text is "Head/Chest/Groin" or "Coordination" or "AL: 679/854/826" or "412/455 (91 %)").ToList();
-        Assert.Equal(4, words.Count);
-        if (room.Width > 0) Assert.All(words, text => Assert.False(Bounds(text).Intersects(room), $"\"{text.Text}\" is under the figure."));
+        var frame = view.Window.GetVisualDescendants().OfType<DerethFrame>().First();
+        var inside = Bounds(frame).Deflate(frame.Padding);
+        Assert.Equal(inside.Left, room.Left, 1);
+        Assert.Equal(inside.Right, room.Right, 1);
+        Assert.True(room.Height > 300, $"The figure is {room.Height} pixels tall.");
+        var box = Bounds(view.Window.GetVisualDescendants().OfType<Border>().First(border => border.BorderThickness == new Avalonia.Thickness(0, 1)));
+
+        // The header box is drawn out to the frame on both sides, not clipped to the body's margin.
+        string Pixel(double x, double y) => Convert.ToHexString(panel.Frame.Pixels, (int)y * panel.Frame.Stride + (int)x * 4, 4);
+        var boxFill = Pixel(box.Left + 20, box.Bottom - 3);
+        Assert.Equal(boxFill, Pixel(inside.Left + 1, box.Bottom - 3));
+        Assert.Equal(boxFill, Pixel(inside.Right - 2, box.Bottom - 3));
+        // A spot inside the figure's area with no word on it is drawn see-through, for the figure under it.
+        Assert.Equal("00000000", Pixel(room.Center.X, room.Bottom - 3));
+
         // Every value shows whole inside the body: a narrow window cuts the labels short instead.
+        var words = view.Window.GetLogicalDescendants().OfType<TextBlock>()
+            .Where(text => text.Text is "AL: 679/854/826" or "412/455 (91 %)").ToList();
+        Assert.Equal(2, words.Count);
         var scroll = view.Window.GetLogicalDescendants().OfType<ScrollViewer>().First();
-        Assert.All(words.Where(text => text.Text!.Contains('/') && char.IsDigit(text.Text[0]) || text.Text!.StartsWith("AL", StringComparison.Ordinal)),
-            text => Assert.True(Bounds(text).Right <= Bounds(scroll).Right, $"\"{text.Text}\" is cut off."));
+        Assert.All(words, text => Assert.True(Bounds(text).Right <= Bounds(scroll).Right, $"\"{text.Text}\" is cut off."));
     });
 
     [Fact]

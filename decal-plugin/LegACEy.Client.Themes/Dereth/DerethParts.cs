@@ -138,6 +138,34 @@ public sealed class DerethFrame : Decorator
         }
     }
 
+    private Control? _seeThrough;
+    private Rect _hole;
+
+    /// <summary>
+    /// A control inside the frame whose area the fill leaves see-through, so a 3D view the host draws under the window shows there with the
+    /// window's text over it. Null for none.
+    /// </summary>
+    public Control? SeeThrough
+    {
+        get => _seeThrough;
+        set
+        {
+            if (_seeThrough == value) return;
+            if (_seeThrough != null) _seeThrough.LayoutUpdated -= HoleMoved;
+            _seeThrough = value;
+            if (value != null) value.LayoutUpdated += HoleMoved;
+            HoleMoved(null, EventArgs.Empty);
+        }
+    }
+
+    private void HoleMoved(object? sender, EventArgs e)
+    {
+        var hole = _seeThrough is { } area && area.TranslatePoint(default, this) is { } at ? new Rect(at, area.Bounds.Size) : default;
+        if (hole == _hole) return;
+        _hole = hole;
+        InvalidateVisual();
+    }
+
     /// <summary>Draws the frame in a state's art; a state without its own region draws the normal art.</summary>
     internal void Show(DerethState state)
     {
@@ -158,6 +186,9 @@ public sealed class DerethFrame : Decorator
         // through at the corners.
         if (_kind == DerethFrameArt.Button)
             context.FillRectangle(_art.Fill, new Rect(Bounds.Size).Deflate(1), ButtonFillRadius);
+        else if (_hole.Width > 0 && _hole.Height > 0)
+            context.DrawGeometry(_art.Fill, null,
+                new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(new Rect(Bounds.Size)), new RectangleGeometry(_hole)));
         else
             context.FillRectangle(_art.Fill, new Rect(Bounds.Size));
         DerethSheet.Draw(context, _art.TopSource, new Rect(corner, 0, width - 2 * corner, edge));
@@ -464,6 +495,9 @@ public sealed class DerethWindow : UserControl
     /// <summary>The gap between header buttons, and between the close box and a centred title.</summary>
     public const int ActionGap = 4;
 
+    /// <summary>The content's margin inside the frame's edge. A part that should reach the frame takes it off as a negative margin.</summary>
+    public const int Inset = 6;
+
     /// <summary>The side of every header button, the close box included: small, so the header's controls take little of the window.</summary>
     public const int HeaderButtonSize = 18;
 
@@ -521,18 +555,26 @@ public sealed class DerethWindow : UserControl
         Grid.SetColumn(close, headerActions == null ? 2 : 3);
         header.Children.Add(close);
 
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(Inset, 0, Inset, Inset) };
         body.Children.Add(header);
         // The rule runs nearly frame to frame, as in the concept.
-        var rule = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
+        var rule = new DerethRule { Margin = new Thickness(-Inset, 0, -Inset, 0) };
         Grid.SetRow(rule, 1);
         body.Children.Add(rule);
         Grid.SetRow(content, 2);
         body.Children.Add(content);
-        Content = new DerethFrame(DerethFrameArt.Window) { Child = body };
+        Content = _frame = new DerethFrame(DerethFrameArt.Window) { Child = body };
     }
 
+    private readonly DerethFrame _frame;
     private readonly Decorator _emblem;
+
+    /// <summary>A control in the content whose area the window's fill leaves see-through (see <see cref="DerethFrame.SeeThrough"/>).</summary>
+    public Control? SeeThrough
+    {
+        get => _frame.SeeThrough;
+        set => _frame.SeeThrough = value;
+    }
     private readonly DerethTitleText _name;
 
     /// <summary>The title in the header.</summary>
