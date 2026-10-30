@@ -350,11 +350,12 @@ public sealed class AppraisalTests
 
         var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
 
-        Assert.Equal("Staff · Heavy Weapons", content.TypeLine);
+        Assert.Equal("Staff", content.TypeLine);
         var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
         Assert.Equal(new[]
         {
-            ("Damage", "41.28 – 86 Bludgeoning", AppraisalTone.Raised),
+            ("Skill", "Heavy Weapons (Staff)", AppraisalTone.Normal),
+            ("Damage", "41.28 – 86, Bludgeoning", AppraisalTone.Raised),
             ("Speed", "Very Fast (0)", AppraisalTone.Raised),
             ("Attack", "+28.0%", AppraisalTone.Raised),
             ("Melee defense", "+21.0%", AppraisalTone.Normal),
@@ -405,6 +406,7 @@ public sealed class AppraisalTests
         var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
         Assert.Equal(new (string?, string, AppraisalTone)[]
         {
+            ("Skill", "Bow", AppraisalTone.Normal),
             ("Damage Bonus", "24 – 30", AppraisalTone.Normal),
             (null, "Elemental Damage Bonus: 3, Piercing.", AppraisalTone.Normal),
             ("Damage Modifier", "+20.0%", AppraisalTone.Raised),
@@ -625,6 +627,31 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void The_retail_layout_writes_a_weapon_s_combat_lines_in_retail_s_words_without_material_or_gems()
+    {
+        // The Ruby Claw from Backlog 132 (https://i.imgur.com/Gdfoatu.png): an unarmed Finesse Weapons claw, slashing and piercing, of ruby
+        // set with a sapphire.
+        var bytes = new ServerAppraisal(0x80000A08)
+        {
+            Strings = { [1] = "Claw" },
+            Ints = { [1] = 0x1, [353] = 1, [131] = 38, [177] = 1, [178] = 39 },
+            Floats = { [29] = 1.14 },
+            Weapon = new WeaponWrite(1 | 2, 17, 46, 43, 0.53, 1.0, 1.0, 1.0, 1.29, 0),
+        }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
+        var lines = RetailAppraisalLayout.Groups(content).SelectMany(group => group.Lines).Select(line => line.Value).ToList();
+
+        Assert.Equal("Ruby Claw", content.Name);
+        Assert.Equal(new[]
+        {
+            "Skill: Finesse Weapons (Unarmed Weapon)", "Damage: 20.21 – 43, Slashing/Piercing", "Speed: Fast (17)",
+            "Bonus to Attack Skill: +29.0%", "Bonus to Melee Defense: +14.0%",
+        }, lines.SkipWhile(line => !line.StartsWith("Skill:", StringComparison.Ordinal)).Take(5));
+        Assert.DoesNotContain(lines, line => line.StartsWith("Material", StringComparison.Ordinal) || line.StartsWith("Gems", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void The_retail_layout_gathers_an_item_s_properties_on_one_line_and_says_what_it_covers_after_its_armor()
     {
         // A bonded, attuned, retained, dyeable breastplate with a Bludgeon Rending imbue, covering the chest and upper arms.
@@ -797,7 +824,7 @@ public sealed class AppraisalTests
     }
 
     [Fact]
-    public void A_weapon_names_its_skill_in_the_type_line_and_its_workmanship_in_retail_words_and_a_potion_names_no_skill()
+    public void A_weapon_names_its_skill_first_in_combat_and_its_workmanship_in_retail_words_and_a_potion_names_no_skill()
     {
         // The skill comes in the weapon profile: the server never sends PropertyInt WeaponSkill as an assessment property.
         var weapon = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A04)
@@ -805,11 +832,12 @@ public sealed class AppraisalTests
             Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1, [105] = 6 },
             Weapon = new WeaponWrite(4, 0, 44, 6, 0, 1.0, 1.0, 1.0, 1.0, 0),
         }.Build()), NoSpells);
-        Assert.Equal("Melee weapon · Heavy Weapons", weapon.TypeLine);
+        Assert.Equal("Melee weapon", weapon.TypeLine);
+        Assert.Equal(("Skill", "Heavy Weapons"), weapon.Sections.Single(section => section.Heading == "Combat").Rows.Select(row => (row.Label, row.Text)).First());
         Assert.Equal(("Workmanship", "Nearly flawless (6)"), weapon.Figures.Select(figure => (figure.Label, figure.Value)).Single());
 
         var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells);
-        Assert.DoesNotContain("·", potion.TypeLine);
+        Assert.DoesNotContain(potion.Sections, section => section.Heading == "Combat");
     }
 
     [Fact]

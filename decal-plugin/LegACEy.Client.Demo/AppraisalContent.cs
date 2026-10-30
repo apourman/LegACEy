@@ -266,19 +266,28 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
-    /// The type line: the weapon's type word when the server sends one, else the item's type, then the weapon skill when it has one
-    /// ("Staff · Heavy Weapons"), then what a piece of clothing or armour covers ("Armor · Covers Chest, Upper Arms").
-    /// Skill names are ACE's Skill.ToSentence (ACE.Entity/Enum/Skill.cs), indexed by the skill's id.
+    /// The type line: the weapon's type word when the server sends one, else the item's type, then what a piece of clothing or armour
+    /// covers ("Armor · Covers Chest, Upper Arms"). A weapon's skill is the Combat section's first row, as retail writes it.
     /// </summary>
     private static string TypeLineOf(AppraisalResponse response, string covered)
     {
         var weaponType = response.Ints.TryGetValue(WeaponTypeInt, out var kind) && kind > 0 && kind < WeaponTypeNames.Length ? WeaponTypeNames[kind] : null;
         var type = weaponType ?? (response.Ints.TryGetValue(ItemTypeInt, out var bits) ? ItemTypeNames.FirstOrDefault(item => (bits & item.Bit) != 0).Name : null);
-        // The weapon's skill comes from its profile: PropertyInt WeaponSkill is not an assessment property, so the server never sends it as one.
-        var skill = response.Weapon is { } weapon && weapon.WeaponSkill > 0 && weapon.WeaponSkill < SkillNames.Length
-            ? SkillNames[weapon.WeaponSkill]
-            : null;
-        return string.Join(" · ", new[] { type, skill, covered.Length == 0 ? null : "Covers " + covered }.Where(part => !string.IsNullOrEmpty(part)));
+        return string.Join(" · ", new[] { type, covered.Length == 0 ? null : "Covers " + covered }.Where(part => !string.IsNullOrEmpty(part)));
+    }
+
+    /// <summary>
+    /// The weapon's skill and type as retail's Skill line has them: "Finesse Weapons (Unarmed Weapon)", or the skill alone when the type has
+    /// no word. Null when the skill is unknown. Skill names are ACE's Skill.ToSentence (ACE.Entity/Enum/Skill.cs), indexed by the skill's id.
+    /// </summary>
+    private static string? SkillText(AppraisalResponse response, WeaponProfile weapon)
+    {
+        // The skill comes from the weapon profile: PropertyInt WeaponSkill is not an assessment property, so the server never sends it as one.
+        if (weapon.WeaponSkill == 0 || weapon.WeaponSkill >= SkillNames.Length) return null;
+        var kind = response.Ints.TryGetValue(WeaponTypeInt, out var type) && type > 0 && type < WeaponTypeNames.Length ? WeaponTypeNames[type] : null;
+        // Retail's one subtype that is not the type word (OpenAC's WeaponSubtype, MIT).
+        if (kind == "Unarmed") kind = "Unarmed Weapon";
+        return kind == null ? SkillNames[weapon.WeaponSkill] : $"{SkillNames[weapon.WeaponSkill]} ({kind})";
     }
 
     // The clothing slots (0x0800_7FFF) and the weapon and shield slots (0x03F0_0000), as OpenAC's formatter tests them.
@@ -322,7 +331,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
-    /// The Combat rows, as OpenAC's formatter orders them (MIT): a weapon's damage (a launcher's damage bonus), its elemental bonus, a
+    /// The Combat rows, as OpenAC's formatter orders them (MIT): a weapon's skill, its damage (a launcher's damage bonus), its elemental bonus, a
     /// launcher's damage modifier, speed, a launcher's range or a melee weapon's attack; then the melee, missile and magic defence bonuses,
     /// and a caster's mana conversion and elemental damage. Values are coloured from the masks the server sent, and the client does not work
     /// out a buff itself.
@@ -332,6 +341,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         if (response.Weapon is { } weapon)
         {
             var launcher = IsLauncher(weapon);
+            if (SkillText(response, weapon) is { } skill) yield return new AppraisalRow("Skill", skill);
             yield return launcher
                 ? new AppraisalRow("Damage Bonus", DamageText(weapon, withType: false), DamageTone(response.WeaponMask))
                 : new AppraisalRow("Damage", DamageText(weapon, withType: true), DamageTone(response.WeaponMask));
@@ -372,14 +382,15 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// <summary>A signed percentage with one decimal, as the approved render shows a bonus: "+21.0%", "-5.0%", "0.0%".</summary>
     private static string SignedPercent(double fraction) => fraction.ToString("+0.0%;-0.0%;0.0%", CultureInfo.InvariantCulture);
 
-    /// <summary>The damage range, "41.28 – 86", or one figure when the variance leaves no range; with the damage type when asked.</summary>
+    /// <summary>The damage range, "41.28 – 86", or one figure when the variance leaves no range; with the damage type when asked, as retail
+    /// writes it: "20.21 – 43, Slashing/Piercing".</summary>
     private static string DamageText(WeaponProfile weapon, bool withType)
     {
         var high = FormatDamage(weapon.Damage);
         var low = (1 - weapon.DamageVariance) * weapon.Damage;
         var range = weapon.Damage - low > Epsilon ? $"{FormatDamage(low)} – {high}" : high;
         var type = DamageTypeName(weapon.DamageType);
-        return withType && type.Length > 0 ? $"{range} {type}" : range;
+        return withType && type.Length > 0 ? $"{range}, {type}" : range;
     }
 
     /// <summary>The damage type's name as OpenAC names it, or "type N" for one it does not know. Used where a line names a type.</summary>
@@ -401,18 +412,15 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     // Two decimals at most, never an exponent: 41.28 and 86.
     private static string FormatDamage(double damage) => damage.ToString("0.##", CultureInfo.InvariantCulture);
 
-    /// <summary>The damage type's name, by ACE's DamageType bit (Slash 1 to Nether 1024), named as retail's armour rows name it. Empty when unknown.</summary>
-    private static string DamageTypeName(uint type) => type switch
+    /// <summary>
+    /// The damage types' names, by ACE's DamageType bits (Slash 1 to Nether 1024), named as retail's armour rows name them and joined as
+    /// retail joins a weapon's two types: "Slashing/Piercing". Empty when it names none it knows.
+    /// </summary>
+    private static string DamageTypeName(uint type) => string.Join("/", DamageTypeNames.Where(name => (type & name.Bit) != 0).Select(name => name.Name));
+
+    private static readonly (uint Bit, string Name)[] DamageTypeNames =
     {
-        1 => "Slashing",
-        2 => "Piercing",
-        4 => "Bludgeoning",
-        8 => "Cold",
-        16 => "Fire",
-        32 => "Acid",
-        64 => "Lightning",
-        1024 => "Nether",
-        _ => string.Empty,
+        (1, "Slashing"), (2, "Piercing"), (4, "Bludgeoning"), (8, "Cold"), (16, "Fire"), (32, "Acid"), (64, "Lightning"), (1024, "Nether")
     };
 
     /// <summary>The damage line takes the damage bit, and failing that the variance bit, as retail's damage line does.</summary>
