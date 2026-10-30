@@ -19,8 +19,6 @@ public sealed class DerethRadarScope : Control
     private static readonly Color Cream = DerethPalette.Cream;
     private static readonly Color Gold = DerethPalette.Gold;
     private static readonly Color Navy = Color.Parse("#18160F");
-    static DerethRadarScope() => AffectsRender<DerethRadarScope>(DerethFrame.FillOpacityProperty);
-
     private static readonly IBrush Darken = DerethPalette.Brush(Color.FromArgb(0x40, 22, 20, 12));
     private static readonly IBrush Disc = new RadialGradientBrush
     {
@@ -67,6 +65,8 @@ public sealed class DerethRadarScope : Control
     private static readonly Geometry PingDiamond = Geometry.Parse("M0,-3.6 L3.6,0 L0,3.6 L-3.6,0 Z");
     private static readonly Geometry PingArrow = Geometry.Parse("M0,-4.5 L3.8,2.5 L-3.8,2.5 Z");
     private const double PingPulseSeconds = 1.2, PingLifeSeconds = 15, PingRimInset = 5;
+
+    static DerethRadarScope() => AffectsRender<DerethRadarScope>(DerethFrame.FillOpacityProperty);
 
     private IReadOnlyList<(IImage Image, Rect Metres)> _tiles = Array.Empty<(IImage Image, Rect Metres)>();
     private IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)> _planLevels = Array.Empty<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)>();

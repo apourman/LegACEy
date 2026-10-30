@@ -1,4 +1,3 @@
-using System.Linq;
 using Avalonia.Controls;
 using LegACEy.Client.Demo;
 using LegACEy.Client.PanelHost;
