@@ -5,6 +5,7 @@ using System.Linq;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
+using Avalonia;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -97,6 +98,23 @@ public sealed class OptionsWindowTests
     });
 
     [Fact]
+    public void An_open_drop_down_lies_over_the_rows_below_it() => RenderThread.Run(() =>
+    {
+        OptionsWindow view = null!;
+        using var panel = AvaloniaPanel.Create(() => (view = new OptionsWindow(new FakeGame(), art: null)).Window, OptionsWindow.Width, OptionsWindow.Height);
+        view.ShowTab(2);
+        panel.Tick();
+        var before = view.MenuBox(FontSize).TranslatePoint(default, view.Window);
+        Assert.NotNull(before);
+
+        Assert.True(view.OpenMenu(FontFace));
+        panel.Tick();
+        Assert.Equal(before, view.MenuBox(FontSize).TranslatePoint(default, view.Window));
+        // A second click on the same box closes it.
+        Assert.False(view.OpenMenu(FontFace));
+    });
+
+    [Fact]
     public void The_character_tab_lists_each_retail_option_once() =>
         Assert.Equal(OptionsWindow.CharacterRows.Count(row => !row.IsHeading),
             OptionsWindow.CharacterRows.Where(row => !row.IsHeading).Select(row => row.Option).Distinct().Count());
@@ -117,12 +135,13 @@ public sealed class OptionsWindowTests
             view.ShowTab(tab);
             view.Toggle(ToggleRun);
             panel.Tick();
+            if (tab == 2) view.OpenMenu("Sound.SoundFeatures");
             panel.Tick();
             PanelPng.Save(panel, Path.Combine(folder, name + ".png"));
         }
     });
 
-    private const string FullScreen = "Display.FullScreen", Stiffness = "Camera.Stiffness", FontSize = "UI.ChatFontSize";
+    private const string FullScreen = "Display.FullScreen", Stiffness = "Camera.Stiffness", FontSize = "UI.ChatFontSize", FontFace = "UI.ChatFontFace";
 
     private sealed class FakeGame : IOptionsGame
     {

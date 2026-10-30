@@ -6,7 +6,9 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
@@ -81,6 +83,22 @@ public sealed partial class OptionsWindow
     private readonly List<Action> _configRefresh = new();
     private readonly Dictionary<string, IReadOnlyList<MenuChoice>> _choices = new();
     private ArtButton? _configApply, _configReset;
+    // The open drop-down's list, drawn over the rows below its box as retail's is, and the preference it is for.
+    private readonly Canvas _menuLayer = new();
+    private readonly StackPanel _menuItems = new();
+    private Border? _menuList;
+    private string? _openMenu;
+    private readonly Dictionary<string, Control> _menuBoxes = new();
+
+    /// <summary>Opens a drop-down as a click on its box does, for tests; true when its list shows.</summary>
+    internal bool OpenMenu(string name)
+    {
+        OpenMenu(name, ConfigRows.First(row => row.Name == name).Listed, _menuBoxes[name]);
+        return _openMenu == name;
+    }
+
+    /// <summary>A drop-down's box, for tests.</summary>
+    internal Control MenuBox(string name) => _menuBoxes[name];
 
     /// <summary>The Config changes held for Apply, for tests.</summary>
     public IReadOnlyDictionary<string, double> HeldConfig => _heldConfig;
@@ -170,7 +188,70 @@ public sealed partial class OptionsWindow
                 _ => MenuRow(row)
             });
         }
-        return PageWithButtons(rows, ApplyConfig, ResetConfig, DefaultsConfig, out _configApply, out _configReset);
+        _menuList = new Border
+        {
+            IsVisible = false, Width = ControlWidth, Background = MenuBrush, BorderBrush = MenuEdgeBrush, BorderThickness = new Thickness(1),
+            Child = new ScrollViewer { Content = _menuItems, MaxHeight = 200, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }
+        };
+        _menuLayer.Children.Add(_menuList);
+        var content = new Panel();
+        content.Children.Add(rows);
+        content.Children.Add(_menuLayer);
+        // A press anywhere but on a drop-down or its list closes the list.
+        content.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
+        {
+            if (!(e.Source as Visual)?.GetSelfAndVisualAncestors().Any(visual => visual == _menuList || visual is Border { Tag: MenuTag }) ?? true)
+                CloseMenu();
+        }, RoutingStrategies.Tunnel);
+        return PageWithButtons(content, ApplyConfig, ResetConfig, DefaultsConfig, out _configApply, out _configReset);
+    }
+
+    private const string MenuTag = "menu";
+
+    private void CloseMenu()
+    {
+        _openMenu = null;
+        if (_menuList != null) _menuList.IsVisible = false;
+    }
+
+    /// <summary>Lists a drop-down's choices over the rows just below its box, or above it when the list would run past the page.</summary>
+    private void OpenMenu(string name, bool listed, Control box)
+    {
+        if (_openMenu == name || _menuList == null)
+        {
+            CloseMenu();
+            return;
+        }
+        _menuItems.Children.Clear();
+        foreach (var choice in Choices(name, listed))
+        {
+            var item = new Border
+            {
+                Background = MenuBrush, Padding = new Thickness(4, 1), Cursor = new Cursor(StandardCursorType.Hand),
+                Child = Label(choice.Label, 11.5, DerethPalette.CreamBrush)
+            };
+            item.PointerEntered += (_, _) => item.Background = MenuEdgeBrush;
+            item.PointerExited += (_, _) => item.Background = MenuBrush;
+            item.PointerPressed += (_, pressed) =>
+            {
+                pressed.Handled = true;
+                CloseMenu();
+                HoldConfig(name, choice.Value);
+            };
+            _menuItems.Children.Add(item);
+        }
+        if (_menuItems.Children.Count == 0 || box.TranslatePoint(new Point(0, box.Bounds.Height), _menuLayer) is not { } below)
+        {
+            CloseMenu();
+            return;
+        }
+        _menuList.Measure(Size.Infinity);
+        var height = _menuList.DesiredSize.Height;
+        var top = below.Y + height > _menuLayer.Bounds.Height ? below.Y - box.Bounds.Height - height : below.Y;
+        Canvas.SetLeft(_menuList, below.X);
+        Canvas.SetTop(_menuList, Math.Max(0, top));
+        _openMenu = name;
+        _menuList.IsVisible = true;
     }
 
     private Light ConfigLight(string label, string name)
@@ -236,7 +317,7 @@ public sealed partial class OptionsWindow
         return slider;
     }
 
-    /// <summary>Retail's drop-down: the chosen value in a green box; a click lists the choices below it, and a choice is held until Apply.</summary>
+    /// <summary>Retail's drop-down: the chosen value in a green box; a click lists the choices over the rows below, and a choice is held until Apply.</summary>
     private Control MenuRow(ConfigRow row)
     {
         var name = row.Name!;
@@ -253,9 +334,9 @@ public sealed partial class OptionsWindow
         var box = new Border
         {
             Width = ControlWidth, Height = 18, Background = MenuBrush, BorderBrush = MenuEdgeBrush, BorderThickness = new Thickness(1),
-            Child = face, Cursor = new Cursor(StandardCursorType.Hand)
+            Child = face, Cursor = new Cursor(StandardCursorType.Hand), Tag = MenuTag
         };
-        var list = new StackPanel { IsVisible = false, Margin = new Thickness(ControlLeft, 0, 0, 2), Width = ControlWidth, HorizontalAlignment = HorizontalAlignment.Left };
+        _menuBoxes[name] = box;
         var line = new Canvas { Height = RowHeight };
         line.Children.Add(Place(label, 0, 2));
         line.Children.Add(Place(box, ControlLeft, 1));
@@ -265,25 +346,7 @@ public sealed partial class OptionsWindow
         {
             if (!box.IsEnabled || !e.GetCurrentPoint(box).Properties.IsLeftButtonPressed) return;
             e.Handled = true;
-            list.Children.Clear();
-            foreach (var choice in Choices(name, row.Listed))
-            {
-                var item = new Border
-                {
-                    Background = MenuBrush, Padding = new Thickness(4, 1), Cursor = new Cursor(StandardCursorType.Hand),
-                    Child = Label(choice.Label, 11.5, DerethPalette.CreamBrush)
-                };
-                item.PointerEntered += (_, _) => item.Background = MenuEdgeBrush;
-                item.PointerExited += (_, _) => item.Background = MenuBrush;
-                item.PointerPressed += (_, pressed) =>
-                {
-                    pressed.Handled = true;
-                    list.IsVisible = false;
-                    HoldConfig(name, choice.Value);
-                };
-                list.Children.Add(item);
-            }
-            list.IsVisible = !list.IsVisible && list.Children.Count > 0;
+            OpenMenu(name, row.Listed, box);
         };
         _configRefresh.Add(() =>
         {
@@ -291,10 +354,7 @@ public sealed partial class OptionsWindow
             box.IsEnabled = value != null;
             chosen.Text = value is { } v ? Choices(name, row.Listed).FirstOrDefault(choice => choice.Value == (uint)v)?.Label ?? ((uint)v).ToString() : string.Empty;
         });
-        var stack = new StackPanel();
-        stack.Children.Add(line);
-        stack.Children.Add(list);
-        return stack;
+        return line;
     }
 
     // Retail's menu lists rarely change (a new display mode), so each is read once per window.

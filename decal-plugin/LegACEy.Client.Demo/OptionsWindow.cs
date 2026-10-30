@@ -226,6 +226,7 @@ public sealed partial class OptionsWindow
     {
         _tab = tab;
         _tabs.Selected = tab;
+        CloseMenu();
         _page.Content = _pages[tab];
         Refresh();
     }
@@ -279,6 +280,7 @@ public sealed partial class OptionsWindow
     {
         _held.Clear();
         _heldConfig.Clear();
+        CloseMenu();
     }
 
     /// <summary>A settings page as retail lays it out: its rows in a scrolling list, and Apply, Reset and Defaults below at x 16, 106 and 196.</summary>
