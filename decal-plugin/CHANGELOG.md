@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.22.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.21.0...decal-plugin-v0.22.0) (2026-10-30)
+
+
+### Features
+
+* Config tab in the Dereth options window ([#234](https://github.com/apourman/LegACEy/issues/234)) ([c01ecef](https://github.com/apourman/LegACEy/commit/c01ecef5757c9405d69ece6b0786ce91cff99044))
+* Dereth magic window ([#231](https://github.com/apourman/LegACEy/issues/231)) ([c2a170e](https://github.com/apourman/LegACEy/commit/c2a170ebeccebc88beb2b195c76430586ab271c3))
+* Dereth map window ([#229](https://github.com/apourman/LegACEy/issues/229)) ([60a664c](https://github.com/apourman/LegACEy/commit/60a664c839c998fe9c80c9bdc428b75e0833ea83))
+* Dereth options window ([#232](https://github.com/apourman/LegACEy/issues/232)) ([acc0f1f](https://github.com/apourman/LegACEy/commit/acc0f1f76ceab7e8b25f87536bc46670a74fc920))
+* Dereth quests window ([#230](https://github.com/apourman/LegACEy/issues/230)) ([879c9cf](https://github.com/apourman/LegACEy/commit/879c9cffda937d38a7cf36132d46b2ed293ce2c0))
+* Dereth social window ([#225](https://github.com/apourman/LegACEy/issues/225)) ([6324702](https://github.com/apourman/LegACEy/commit/6324702183e83625cfe39235375d9ecb691fa896))
+
+
+### Bug Fixes
+
+* item appraisal reads like retail's ([#235](https://github.com/apourman/LegACEy/issues/235)) ([6da396b](https://github.com/apourman/LegACEy/commit/6da396b1c33b871a63e751cdd0e16ba8107e984d))
+* packs on hotkeys and hotkey numbers on inventory icons ([#226](https://github.com/apourman/LegACEy/issues/226)) ([cceffee](https://github.com/apourman/LegACEy/commit/cceffee7d706e93a20ad85cb655270a15df57569))
+* panel windows swap in place ([#237](https://github.com/apourman/LegACEy/issues/237)) ([e6e49c7](https://github.com/apourman/LegACEy/commit/e6e49c785fc900dc93d5e94a88db3e9ab789575a))
+* portals stand out on the radar ([#227](https://github.com/apourman/LegACEy/issues/227)) ([35eb369](https://github.com/apourman/LegACEy/commit/35eb36988f4c8efb550fd8689166ac2856b1d267))
+* retail appraisal figure stands behind the text ([#233](https://github.com/apourman/LegACEy/issues/233)) ([1121b60](https://github.com/apourman/LegACEy/commit/1121b6051a15868657d40c5e741c36be12191589))
+* vitals numbers centred in retail-style bars ([#224](https://github.com/apourman/LegACEy/issues/224)) ([5610c60](https://github.com/apourman/LegACEy/commit/5610c60f8ebfe26d7b45bedd01b7d8dffb511e1a))
+* vitals read from the client ([#228](https://github.com/apourman/LegACEy/issues/228)) ([82283d8](https://github.com/apourman/LegACEy/commit/82283d8d13edf2907baf8044ce3899be875dbb04))
+* window opacity fades only the background ([#236](https://github.com/apourman/LegACEy/issues/236)) ([f8f8497](https://github.com/apourman/LegACEy/commit/f8f8497e4d5d409d3ac4a7c0ff5a71b826422646))
+
 ## [0.21.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.20.0...decal-plugin-v0.21.0) (2026-10-29)
 
 
