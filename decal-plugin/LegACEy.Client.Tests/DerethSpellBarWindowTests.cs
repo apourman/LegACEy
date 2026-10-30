@@ -75,6 +75,20 @@ public sealed class DerethSpellBarWindowTests
     });
 
     [Fact]
+    public void A_spell_dragged_over_a_tab_opens_it_and_a_drop_there_goes_at_its_end() => RenderThread.Run(() =>
+    {
+        var port = new FakeSpellBarPort(3, 1, 2);
+        var (panel, view) = Open(port);
+        using var _ = panel;
+
+        view.HoverAt(new Avalonia.Point(TabX(4), TabY));
+        Assert.Equal(4, port.Tab);
+        Assert.True(view.DropAt(7, new Avalonia.Point(TabX(4), TabY)));
+        Assert.Equal(7u, port.Spells[^1]);
+        view.HoverAt(null);
+    });
+
+    [Fact]
     public void A_tab_longer_than_the_cells_scrolls_with_its_arrows() => RenderThread.Run(() =>
     {
         var port = new FakeSpellBarPort(Enumerable.Range(1, 16).Select(i => (uint)i).ToArray());
