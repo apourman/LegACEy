@@ -29,7 +29,7 @@ public sealed class AppraisalWindow
     private static readonly Color HealthFill = Color.Parse("#B8453A");
     /// <summary>The tallest the window opens at before its body scrolls; the player can resize it from there.</summary>
     public const int MaxHeight = 520;
-    // A retail creature's window opens taller, with room under its lines for the figure's feet, as retail's panel has.
+    // A window with a retail figure opens taller, with room under its lines for the figure's feet, as retail's panel has.
     private const int RetailFigureMaxHeight = 720;
     private const double FloorRoom = 7 * RetailLineHeight;
     /// <summary>The smallest the player can resize the window to: the header, the summary and a few rows.</summary>
@@ -43,8 +43,6 @@ public sealed class AppraisalWindow
     private const int ParchmentHeight = 78;
     // The retail body's side margins.
     private const double BodySide = 6;
-    // DerethWindow's margin inside its frame, which retail's header box, figure and rule reach past to the frame.
-    private const double FrameInset = 6;
     private static readonly IBrush ParchmentInkBrush = DerethPalette.Brush(Color.Parse("#2A2014"));
 
     // The inventory's figure glyph, for the Inspect button.
@@ -103,18 +101,21 @@ public sealed class AppraisalWindow
         var layout = Layout(content, inscribe, retail, art);
         var scroll = Scroll(layout.Body);
         var foot = new ContentControl { Content = layout.Foot };
-        var top = new ContentControl { Content = layout.Top, Margin = Sides(layout.Middle) };
-        var behind = new ContentControl { Content = Figure(content, retail, figure), IsHitTestVisible = false, Margin = layout.Middle };
-        scroll.Margin = layout.Middle;
+        var shown = Figure(content, retail, figure);
+        var top = new ContentControl { Content = layout.Top, Margin = HeaderMargin(layout.MiddleMargin) };
+        var behind = new ContentControl { Content = shown, IsHitTestVisible = false, Margin = layout.MiddleMargin };
+        scroll.Margin = layout.MiddleMargin;
         var glyph = new DerethPathGlyph(FigureGlyph) { Stroke = DerethPalette.MutedBrush };
         var button = new DerethHeaderButton(glyph) { Name = "InspectButton" };
         ToolTip.SetTip(button, "Inspect");
         var window = new DerethWindow(content.Name, retail ? null : Icon(content.Visual, art), Frame(top, behind, scroll, foot), button, iconHeader: true);
-        // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels.
-        var height = measure == null
-            ? layout.Height
-            : Math.Min(layout.MaxHeight, (int)Math.Ceiling(measure(window, new Size(Width, double.PositiveInfinity)).Height + Floor(layout.Top) - 0.001));
-        if (behind.Content != null) window.SeeThrough = behind;
+        // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels. A
+        // figure gets room under the lines for its feet, below the body so the body never scrolls for it.
+        var needed = measure == null ? layout.Needed : measure(window, new Size(Width, double.PositiveInfinity)).Height;
+        var height = shown != null
+            ? Math.Min(RetailFigureMaxHeight, (int)Math.Ceiling(needed + FloorRoom - 0.001))
+            : Math.Min(MaxHeight, (int)Math.Ceiling(needed - 0.001));
+        if (shown != null) window.SeeThrough = behind;
         var view = new AppraisalWindow(window, scroll, foot, top, behind, height, layout.Field, content.ObjectId, button, content, retail);
         view.SetInspect(inspect);
         window.CloseRequested += (_, _) => view.Close?.Invoke();
@@ -139,10 +140,10 @@ public sealed class AppraisalWindow
         _window.Title = content.Name;
         _window.SetIcon(retail ? null : Icon(content.Visual, art));
         _scroll.Content = layout.Body;
-        _behind.Margin = _scroll.Margin = layout.Middle;
+        _behind.Margin = _scroll.Margin = layout.MiddleMargin;
         _window.SeeThrough = _behind.Content != null ? _behind : null;
         _top.Content = layout.Top;
-        _top.Margin = Sides(layout.Middle);
+        _top.Margin = HeaderMargin(layout.MiddleMargin);
         if (_field is { Unsaved: true } kept && layout.Field != null && content.ObjectId == _footObject && sameLayout)
         {
             kept.Rebase(content.Inscription?.Text ?? string.Empty);
@@ -154,12 +155,8 @@ public sealed class AppraisalWindow
         _footObject = content.ObjectId;
     }
 
-    // A retail creature's window opens with room under its lines, below the body, so the figure stands taller than the words as in retail's
-    // panel without the body scrolling.
-    private static double Floor(Control? top) => top != null ? FloorRoom : 0;
-
     // The header box reaches the frame as the body does; a margin on the box itself would be clipped to its slot.
-    private static Thickness Sides(Thickness middle) => new(middle.Left, 0, middle.Right, 0);
+    private static Thickness HeaderMargin(Thickness middle) => new(middle.Left, 0, middle.Right, 0);
 
     private void SetInspect(Action<AppraisalContent>? inspect)
     {
@@ -174,7 +171,7 @@ public sealed class AppraisalWindow
     /// The body, the header box and the inscription for the content, the height the window needs to show all of it, and the margin of the
     /// body and the figure behind it: a retail creature's reach the frame, as retail's do.
     /// </summary>
-    private static (Control Body, Control? Top, Control? Foot, int Height, int MaxHeight, InscriptionField? Field, Thickness Middle) Layout(AppraisalContent content,
+    private static (Control Body, Control? Top, Control? Foot, int Needed, InscriptionField? Field, Thickness MiddleMargin) Layout(AppraisalContent content,
         Func<uint, string, bool> inscribe, bool retail, IGameArtSource? art)
     {
         var body = content.Formula != null ? SpellBody(content, content.Formula, art) : retail ? RetailBody(content) : SectionsBody(content);
@@ -182,15 +179,14 @@ public sealed class AppraisalWindow
         InscriptionField? field = null;
         var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, retail, out field) : null;
         // A window measured before it is shown has no template yet, so the parts are measured and the chrome added to them.
-        var needed = Chrome + (int)Floor(top) + new[] { body, top, foot }.Sum(part =>
+        var needed = Chrome + new[] { body, top, foot }.Sum(part =>
         {
             if (part == null) return 0;
             part.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
             return (int)Math.Ceiling(part.DesiredSize.Height);
         });
-        var middle = top != null ? new Thickness(-FrameInset, 0, -FrameInset, -FrameInset) : default;
-        var most = top != null ? RetailFigureMaxHeight : MaxHeight;
-        return (body, top, foot, Math.Min(most, needed), most, field, middle);
+        var middle = top != null ? new Thickness(-DerethWindow.Inset, 0, -DerethWindow.Inset, -DerethWindow.Inset) : default;
+        return (body, top, foot, needed, field, middle);
     }
 
     /// <summary>

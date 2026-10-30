@@ -495,6 +495,9 @@ public sealed class DerethWindow : UserControl
     /// <summary>The gap between header buttons, and between the close box and a centred title.</summary>
     public const int ActionGap = 4;
 
+    /// <summary>The content's margin inside the frame's edge. A part that should reach the frame takes it off as a negative margin.</summary>
+    public const int Inset = 6;
+
     /// <summary>The side of every header button, the close box included: small, so the header's controls take little of the window.</summary>
     public const int HeaderButtonSize = 18;
 
@@ -552,10 +555,10 @@ public sealed class DerethWindow : UserControl
         Grid.SetColumn(close, headerActions == null ? 2 : 3);
         header.Children.Add(close);
 
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(Inset, 0, Inset, Inset) };
         body.Children.Add(header);
         // The rule runs nearly frame to frame, as in the concept.
-        var rule = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
+        var rule = new DerethRule { Margin = new Thickness(-Inset, 0, -Inset, 0) };
         Grid.SetRow(rule, 1);
         body.Children.Add(rule);
         Grid.SetRow(content, 2);
