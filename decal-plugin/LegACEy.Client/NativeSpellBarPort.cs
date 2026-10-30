@@ -51,7 +51,7 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
 
     private readonly bool _lockAvailable;
     private readonly Action<uint> _examine;
-    private string? _last;
+    private (int Tab, uint Selected, int Spells)? _last;
 
     /// <param name="lockAvailable">Whether retail's Lock UI natives matched; the window does not move while the UI is locked.</param>
     /// <param name="examine">Shows a spell in the appraisal window.</param>
@@ -91,17 +91,13 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
     {
         get
         {
-            var menu = SubMenu(out _);
-            if (menu == null) return Array.Empty<uint>();
-            var list = *(byte**)(menu + SubMenuList);
-            if (list == null) return Array.Empty<uint>();
-            var count = *(int*)(list + ListCount);
+            var list = List(SubMenu(out _));
+            var count = list == null ? 0 : *(int*)(list + ListCount);
             var spells = new List<uint>(count);
             for (var i = 0; i < count; i++)
             {
-                var item = Cast(((delegate* unmanaged[Thiscall]<byte*, int, byte*>)ItemAt)(list, i), ItemType);
                 // Retail's list keeps its empty cells as items too, holding no spell.
-                var spell = item == null ? 0 : *(uint*)(item + ItemSpell);
+                var spell = SpellAt(list, i);
                 if (spell != 0) spells.Add(spell);
             }
             return spells;
@@ -150,10 +146,18 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
 
     public bool UiLocked => _lockAvailable && NativeUi.IsUiLocked;
 
-    /// <summary>Raises <see cref="Changed"/> when the open tab, its spells or its selection moved since the last call.</summary>
+    /// <summary>
+    /// Raises <see cref="Changed"/> when the open tab, its spells or its selection moved since the last call. Called every frame, so it reads
+    /// retail's list in place and allocates nothing.
+    /// </summary>
     public void Poll()
     {
-        var now = $"{Tab}|{Selected}|{string.Join(",", Spells)}";
+        var menu = SubMenu(out var ui);
+        var list = List(menu);
+        var count = list == null ? 0 : *(int*)(list + ListCount);
+        var spells = count;
+        for (var i = 0; i < count; i++) spells = spells * 31 + (int)SpellAt(list, i);
+        (int, uint, int)? now = menu == null ? null : (((delegate* unmanaged[Thiscall]<byte*, int>)CurrentTab)(ui), *(uint*)(menu + SubMenuSelected), spells);
         if (now == _last) return;
         _last = now;
         Changed?.Invoke(this, EventArgs.Empty);
@@ -169,6 +173,16 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
         if (ui == null) return null;
         var tab = ((delegate* unmanaged[Thiscall]<byte*, int>)CurrentTab)(ui);
         return tab < 0 || tab >= TabButtons.Length ? null : ui + SubMenus + tab * SubMenuStride;
+    }
+
+    /// <summary>A tab's item list, or null.</summary>
+    private static byte* List(byte* menu) => menu == null ? null : *(byte**)(menu + SubMenuList);
+
+    /// <summary>The spell in the list's item at an index; zero for an empty cell.</summary>
+    private static uint SpellAt(byte* list, int index)
+    {
+        var item = Cast(((delegate* unmanaged[Thiscall]<byte*, int, byte*>)ItemAt)(list, index), ItemType);
+        return item == null ? 0 : *(uint*)(item + ItemSpell);
     }
 
     private static void Refresh(byte* ui)

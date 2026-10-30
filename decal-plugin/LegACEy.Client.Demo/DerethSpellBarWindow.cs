@@ -65,10 +65,12 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     private string _drawn = string.Empty;
     // The first spell shown, while a tab holds more than the cells show.
     private int _first;
-    // A pressed spell and where, until a release or a drag; the spell a drag carries, and the cell it would land before (-1 the end).
+    // A pressed spell and where, until a release or a drag; the spell a drag carries and the tab and index it left, and the cell it would
+    // land before (-1 the end).
     private (uint Spell, Point At)? _pressed;
     private IDisposable? _dragIcon;
     private uint _dragSpell;
+    private (int Tab, int Index) _dragFrom;
     private int? _dropAt;
 
     /// <param name="port">The game's spell bar and its controls.</param>
@@ -156,7 +158,12 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     /// <summary>The selected spell's name, as retail writes it under the cells; empty with none selected.</summary>
     public string SelectedName => _name.Text ?? string.Empty;
 
-    public void Dispose() => _port.Changed -= OnPortChanged;
+    /// <summary>Closes the bar; a drag still under way is cancelled, and its spell goes back where it was.</summary>
+    public void Dispose()
+    {
+        EndDrag(null);
+        _port.Changed -= OnPortChanged;
+    }
 
     /// <summary>
     /// A spell dragged from another window was released at <paramref name="at"/>, in window DIPs: over the cells it goes before the spell
@@ -218,6 +225,7 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         // Retail takes a spell off its bar as the drag starts; a release over the cells puts it back.
         var number = Index(press.Spell);
         _dragSpell = press.Spell;
+        _dragFrom = (_port.Tab, number);
         _port.Remove(press.Spell);
         _dragIcon = _drag.ShowDragIcon(IconImage(press.Spell, number), 1, retailDropIndicator: false);
         HoverAt(point);
@@ -239,7 +247,10 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         Sync();
     }
 
-    /// <summary>Ends a drag of a spell off the bar: released at <paramref name="at"/> over the cells, it goes back there.</summary>
+    /// <summary>
+    /// Ends a drag of a spell off the bar: released at <paramref name="at"/> over the cells or a tab, it goes there; released anywhere else it
+    /// stays off the bar, as retail's does. A drag cancelled without a release (null) puts it back where it was.
+    /// </summary>
     private void EndDrag(Point? at)
     {
         if (_dragIcon == null) return;
@@ -248,8 +259,14 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         _dropAt = null;
         var spell = _dragSpell;
         _dragSpell = 0;
-        if (at is { } point) DropAt(spell, point);
-        else Sync();
+        if (at is { } point)
+        {
+            DropAt(spell, point);
+            return;
+        }
+        _port.Tab = _dragFrom.Tab;
+        _port.Insert(spell, _dragFrom.Index);
+        Sync();
     }
 
     /// <summary>Where a spell released at a window point goes: the index it goes before, -1 for the end, or null away from the cells.</summary>
