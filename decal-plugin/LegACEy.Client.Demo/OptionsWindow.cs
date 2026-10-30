@@ -370,7 +370,7 @@ public sealed partial class OptionsWindow
         }
     }
 
-    /// <summary>A retail button drawn from its three pieces of art (left, tiled middle, right), pressed while held and dark when disabled.</summary>
+    /// <summary>A retail button drawn from its three pieces of art (left, stretched middle, right), pressed while held and dark when disabled.</summary>
     private sealed class ArtButton : Border
     {
         private readonly Border _left = new() { Width = 32 }, _middle = new(), _right = new() { Width = 32 };
@@ -379,8 +379,9 @@ public sealed partial class OptionsWindow
 
         public ArtButton(OptionsWindow window, string text, uint[] normal, uint[] pressed, uint[] disabled, Action click)
         {
-            IBrush?[] Brushes(uint[] ids) => ids.Select((id, i) => window.Art(id) is { } bitmap
-                ? (IBrush)new ImageBrush(bitmap) { Stretch = i == 1 ? Stretch.Fill : Stretch.None }
+            // Every piece fills its cell: in a scaled window, unstretched ends land a row off the stretched middle.
+            IBrush?[] Brushes(uint[] ids) => ids.Select(id => window.Art(id) is { } bitmap
+                ? (IBrush)new ImageBrush(bitmap) { Stretch = Stretch.Fill }
                 : null).ToArray();
             _normal = Brushes(normal);
             _pressed = Brushes(pressed);
