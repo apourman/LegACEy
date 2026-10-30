@@ -103,7 +103,8 @@ internal sealed class CharacterFeature : ICharacterGame, IDisposable
         var view = _view;
         var place = _panel?.HeldPlace ?? new Point(1500, 150);
         var definition = new WindowDefinition(CharacterWindow.WindowId, "Character", CharacterWindow.Width, CharacterWindow.Height,
-            DerethWindow.TitleBarHeight, new DerethClientTheme(), CharacterWindow.Sizing);
+            DerethWindow.TitleBarHeight, new DerethClientTheme(), CharacterWindow.Sizing,
+            sharesPlaceWith: RetailPanelSlot.WindowPlace);
         var opened = _host.OpenWindow(definition, place, close =>
         {
             _hide = close;

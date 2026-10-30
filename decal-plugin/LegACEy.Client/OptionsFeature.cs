@@ -194,7 +194,8 @@ internal sealed unsafe class OptionsFeature : IOptionsGame, IDisposable
         var view = _view;
         var place = _panel?.HeldPlace ?? new Point(200, 150);
         var definition = new WindowDefinition(OptionsWindow.WindowId, "Options", OptionsWindow.Width, OptionsWindow.Height,
-            DerethWindow.TitleBarHeight, new DerethClientTheme(), OptionsWindow.Sizing);
+            DerethWindow.TitleBarHeight, new DerethClientTheme(), OptionsWindow.Sizing,
+            sharesPlaceWith: RetailPanelSlot.WindowPlace);
         var opened = _host.OpenWindow(definition, place, close =>
         {
             _hide = close;

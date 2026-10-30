@@ -139,6 +139,30 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void Windows_sharing_a_place_open_where_and_at_the_size_the_last_one_was_left()
+    {
+        var store = new MemoryWindowPositionStore();
+        var manager = new WindowManager(new Size(1600, 1200), store, "server", "character");
+        var sizing = new WindowResizing(new Size(100, 100));
+        WindowDefinition Panel(string id, int height) => new(id, id, 310, height, resizing: sizing, sharesPlaceWith: "panel");
+        // Each had its own place and size before they shared one.
+        store.Save("server", "character", "map", (new Point(900, 100), new Size(310, 400)));
+
+        var options = manager.Open(Panel("options", 600), new Point(1200, 300));
+        Assert.Equal(new Rectangle(1200, 300, 310, 600), options.Bounds);
+        manager.Close("options");
+
+        // The map opens in the options' place and size, not its own.
+        Assert.Equal(new Rectangle(1200, 300, 310, 600), manager.Open(Panel("map", 400), new Point(0, 0)).Bounds);
+        manager.Press(new Point(1250, 310));
+        manager.Move(new Point(1150, 260));
+        manager.Release();
+        manager.Close("map");
+
+        Assert.Equal(new Rectangle(1100, 250, 310, 600), manager.Open(Panel("options", 600), new Point(0, 0)).Bounds);
+    }
+
+    [Fact]
     public void A_locked_ui_does_not_rescale_windows()
     {
         var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", uiLocked: () => true);

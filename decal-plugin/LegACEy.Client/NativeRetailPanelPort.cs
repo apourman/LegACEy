@@ -43,7 +43,12 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
     private static readonly RecvNoticeFn RecvNotice = (RecvNoticeFn)Marshal.GetDelegateForFunctionPointer(
         new IntPtr(RetailPanelCatalogue.RecvNoticeSetPanelVisibility), typeof(RecvNoticeFn));
 
+    /// <summary>Every gmPanelUI panel sits in the one panel frame.</summary>
+    internal static readonly RetailPanelSlot PanelFrame = new();
+
     protected override IntPtr Element => NativeUi.GetElement(_elementId);
+
+    public override RetailPanelSlot Slot => PanelFrame;
 
     // The place, save bit and move are the panel frame's, which draws the frame the inventory sits in: moving only the inventory element
     // left that frame on screen, empty. Places are relative to the parent, so the frame's is its place on screen.

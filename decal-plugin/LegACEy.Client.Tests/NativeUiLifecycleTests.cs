@@ -533,6 +533,61 @@ public sealed class NativeUiLifecycleTests
     }
 
     [Fact]
+    public void Retail_switching_panels_in_its_frame_keeps_the_frame_parked_and_swaps_our_windows_in_one_frame()
+    {
+        // The map's takeover runs before the options', as the runtime ticks them: the new panel is seen before the old one closes.
+        var frame = new FakePanelFrame();
+        var slot = new RetailPanelSlot();
+        var map = new FakeRetailPanelPort { Frame = frame, Slot = slot, Panel = new IntPtr(2) };
+        var options = new FakeRetailPanelPort { Frame = frame, Slot = slot, Panel = new IntPtr(3), Open = true, Location = new Point(500, 300) };
+        var events = new List<string>();
+        using var mapTakeover = new RetailPanelTakeover(map, open => events.Add($"map {open}"), _ => { });
+        using var optionsTakeover = new RetailPanelTakeover(options, open => events.Add($"options {open}"), _ => { });
+        mapTakeover.Tick(enabled: true);
+        optionsTakeover.Tick(enabled: true);
+
+        options.Open = false;
+        map.Open = true;
+        mapTakeover.Tick(enabled: true);
+        Assert.Equal(new[] { "options True", "options False", "map True" }, events);
+        optionsTakeover.Tick(enabled: true);
+
+        // Retail's map panel never reaches the screen, and our map window opens where retail keeps the frame.
+        Assert.Equal(RetailPanelTakeover.Parked, frame.Location);
+        Assert.Equal(new Point(500, 300), mapTakeover.HeldPlace);
+        Assert.Equal(new[] { "options True", "options False", "map True" }, events);
+
+        // Closing the map gives the frame its place and save bit back.
+        map.Open = false;
+        mapTakeover.Tick(enabled: true);
+        Assert.Equal(new Point(500, 300), frame.Location);
+        Assert.True(frame.Save);
+    }
+
+    [Fact]
+    public void Retail_switching_to_a_panel_ticked_later_closes_the_old_window_as_the_new_one_opens()
+    {
+        var frame = new FakePanelFrame();
+        var slot = new RetailPanelSlot();
+        var map = new FakeRetailPanelPort { Frame = frame, Slot = slot, Panel = new IntPtr(2), Open = true, Location = new Point(500, 300) };
+        var quests = new FakeRetailPanelPort { Frame = frame, Slot = slot, Panel = new IntPtr(3) };
+        var events = new List<string>();
+        using var mapTakeover = new RetailPanelTakeover(map, open => events.Add($"map {open}"), _ => { });
+        using var questsTakeover = new RetailPanelTakeover(quests, open => events.Add($"quests {open}"), _ => { });
+        mapTakeover.Tick(enabled: true);
+        questsTakeover.Tick(enabled: true);
+
+        map.Open = false;
+        quests.Open = true;
+        mapTakeover.Tick(enabled: true);
+        questsTakeover.Tick(enabled: true);
+
+        Assert.Equal(new[] { "map True", "map False", "quests True" }, events);
+        Assert.Equal(RetailPanelTakeover.Parked, frame.Location);
+        Assert.Equal(new Point(500, 300), questsTakeover.HeldPlace);
+    }
+
+    [Fact]
     public void A_failed_move_gives_retail_its_position_back_keeps_its_panel_open_and_stops_the_takeover()
     {
         var port = new FakeRetailPanelPort { Open = true, Location = new Point(500, 300) };
@@ -654,11 +709,18 @@ public sealed class NativeUiLifecycleTests
         Assert.Equal(new[] { true, false }, events);
     }
 
+    /// <summary>The element a fake panel moves: its own, or one frame that several panels share, as gmPanelUI's panels do.</summary>
+    internal sealed class FakePanelFrame
+    {
+        public Point Location;
+        public bool Save = true;
+        public Point SavedLocation;
+    }
+
     internal sealed class FakeRetailPanelPort : IRetailPanelPort
     {
-        private Point _location;
-        private bool _save = true;
-
+        public FakePanelFrame Frame { get; init; } = new();
+        public RetailPanelSlot? Slot { get; init; }
         public List<string> Calls { get; } = new();
         public IntPtr Panel { get; set; } = new IntPtr(1);
         public bool Open { get; set; }
@@ -666,22 +728,22 @@ public sealed class NativeUiLifecycleTests
         public bool FailAllMoves { get; set; }
         public int CloseCalls { get; private set; }
         /// <summary>The position retail saved in its layout: moved only while save-location is on.</summary>
-        public Point SavedLocation { get; private set; }
+        public Point SavedLocation => Frame.SavedLocation;
 
         public Point Location
         {
-            get => _location;
-            set { _location = value; SavedLocation = value; }
+            get => Frame.Location;
+            set { Frame.Location = value; Frame.SavedLocation = value; }
         }
 
         public IntPtr Identity { get { Calls.Add("identity"); return Panel; } }
         public bool IsOpen { get { Calls.Add("open"); return Open; } }
-        public bool SaveLocation { get { Calls.Add("save?"); return _save; } }
+        public bool SaveLocation { get { Calls.Add("save?"); return Frame.Save; } }
 
         public void SetSaveLocation(bool save)
         {
             Calls.Add($"save {save}");
-            _save = save;
+            Frame.Save = save;
         }
 
         public void MoveTo(Point location)
@@ -692,8 +754,8 @@ public sealed class NativeUiLifecycleTests
                 FailNextMove = false;
                 throw new InvalidOperationException("Native move failed.");
             }
-            _location = location;
-            if (_save) SavedLocation = location;
+            Frame.Location = location;
+            if (Frame.Save) Frame.SavedLocation = location;
         }
 
         public void ClosePanel()
@@ -704,7 +766,7 @@ public sealed class NativeUiLifecycleTests
         }
 
         /// <summary>Retail lays the panel out again from its saved position, as a resize or a portal transition does.</summary>
-        public void RetailLaysOut() => _location = SavedLocation;
+        public void RetailLaysOut() => Frame.Location = Frame.SavedLocation;
     }
 
     private sealed class FakeNativeLayout

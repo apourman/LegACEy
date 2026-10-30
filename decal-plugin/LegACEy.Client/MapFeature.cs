@@ -128,7 +128,8 @@ internal sealed unsafe class MapFeature : IRetailMap
         var view = _view;
         var place = _panel?.HeldPlace ?? new Point(1500, 150);
         var definition = new WindowDefinition(MapWindow.WindowId, "Map", MapWindow.Width, MapWindow.Height,
-            DerethWindow.TitleBarHeight, new DerethClientTheme(), MapWindow.Sizing);
+            DerethWindow.TitleBarHeight, new DerethClientTheme(), MapWindow.Sizing,
+            sharesPlaceWith: RetailPanelSlot.WindowPlace);
         var opened = _host.OpenWindow(definition, place, close =>
         {
             _hide = close;

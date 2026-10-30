@@ -104,7 +104,8 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         var view = _view;
         var place = _panel?.HeldPlace ?? new Point(200, 150);
         var definition = new WindowDefinition(MagicWindow.WindowId, "Magic", MagicWindow.Width, MagicWindow.Height,
-            DerethWindow.TitleBarHeight, new DerethClientTheme(), MagicWindow.Sizing);
+            DerethWindow.TitleBarHeight, new DerethClientTheme(), MagicWindow.Sizing,
+            sharesPlaceWith: RetailPanelSlot.WindowPlace);
         var opened = _host.OpenWindow(definition, place, close =>
         {
             _hide = close;
