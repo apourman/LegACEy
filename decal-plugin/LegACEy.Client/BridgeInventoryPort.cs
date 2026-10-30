@@ -47,7 +47,10 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     {
         if (!inGame) return;
         // A buff or debuff on Strength moves the burden limit without any inventory event, so the meter follows it here.
-        var strength = Bridge.Fact(BridgeFact.Strength);
+        // While the character leaves the world (logout, closing the game) Decal has no attributes: skip the frame.
+        int strength;
+        try { strength = Bridge.Fact(BridgeFact.Strength); }
+        catch (COMException) { return; }
         if (strength != _strength)
         {
             _strength = strength;

@@ -17,7 +17,6 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed unsafe class ScreenSurface : IDisposable
 {
     private readonly IntPtr _device;
-    private readonly PanelFailureBudget _failureBudget = new();
     private IntPtr _texture;
     private bool _uploaded;
     private bool _visible;
@@ -98,8 +97,7 @@ internal sealed unsafe class ScreenSurface : IDisposable
         if (!Visible || Held)
             return;
         var changed = Panel.Changed;
-        var elapsed = Panel.CaptureTime;
-        TickTimes.Add(elapsed.TotalMilliseconds);
+        TickTimes.Add(Panel.CaptureTime.TotalMilliseconds);
         if (changed) ChangedFrames++;
         DirtyRectangles += Panel.Frame.DirtyRectangles.Count;
         LayoutPasses += Panel.LayoutPasses;
@@ -107,8 +105,6 @@ internal sealed unsafe class ScreenSurface : IDisposable
         StepPixels += PanelCompositor.PaintedArea;
         if (Panel.LastError != null)
             return;
-        if (_failureBudget.Record(elapsed))
-            throw new TimeoutException($"Panel capture exceeded 50 ms for {_failureBudget.ConsecutiveSlowTicks} consecutive frames ({elapsed.TotalMilliseconds:F1} ms).");
         // _uploaded is true only while a texture holds a complete frame.
         if (changed || !_uploaded)
             Upload(Panel.Frame);

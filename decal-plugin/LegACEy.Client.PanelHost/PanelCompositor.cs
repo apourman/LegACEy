@@ -22,8 +22,6 @@ public static class PanelCompositor
     private static readonly List<AvaloniaPanel> Panels = new();
     // Advance walks a copy, reused frame to frame: a panel's error handler may dispose panels mid-walk.
     private static readonly List<AvaloniaPanel> Capturing = new();
-    private static readonly PanelFailureBudget StepBudget = new();
-    private static readonly Stopwatch StepClock = new();
     private static bool _stalled;
 
     /// <summary>The pixels every panel painted in the last advance: the sum of their <see cref="AvaloniaPanel.PaintedArea"/>.</summary>
@@ -40,8 +38,7 @@ public static class PanelCompositor
     /// </summary>
     /// <remarks>
     /// A failure goes to the error handler of the panel that raised it (see <see cref="Step"/>), as a capture's does. A failure in the
-    /// shared work that no one panel raised is thrown, and so is a shared step over the tick budget: more than 50 ms for three frames
-    /// in a row.
+    /// shared work that no one panel raised is thrown. A slow step is not a failure.
     /// </remarks>
     public static void Advance()
     {
@@ -49,11 +46,7 @@ public static class PanelCompositor
         // Nothing to run, and before the first panel Avalonia may not be initialized: touching its dispatcher would bind it here.
         if (Panels.Count == 0) return;
         Dispatcher.UIThread.VerifyAccess();
-        StepClock.Restart();
         Step();
-        StepClock.Stop();
-        if (StepBudget.Record(StepClock.Elapsed))
-            throw new TimeoutException($"Avalonia's shared step exceeded 50 ms for {StepBudget.ConsecutiveSlowTicks} consecutive frames ({StepClock.Elapsed.TotalMilliseconds:F1} ms).");
         Capturing.AddRange(Panels);
         try
         {
@@ -107,9 +100,6 @@ public static class PanelCompositor
             }
         }
     }
-
-    /// <summary>Start the shared step's slow-frame count over, as after a fast step.</summary>
-    internal static void ResetStepBudget() => StepBudget.Record(TimeSpan.Zero);
 
     private static void StepCore()
     {

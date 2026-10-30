@@ -101,6 +101,8 @@ public sealed unsafe class BridgeTests : IDisposable
         // game-state poller rides out while stats are unreadable.
         _failFacts = true;
         Assert.Equal(EFail, Assert.Throws<COMException>(Bridge.ReadGameState).HResult);
+        // So does the inventory's per-frame Strength read while the character leaves the world.
+        inventory.Flush(inGame: true);
         _failFacts = false;
 
         // A failure inside the client, in any event, switches its UI off and returns to the stub normally.
