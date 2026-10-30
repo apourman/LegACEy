@@ -94,7 +94,7 @@ public sealed class SocialWindow
 {
     public const string WindowId = "social";
     public const int Width = 310, Height = 600;
-    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(290, 460));
+    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(Width, 460), new System.Drawing.Size(Width, 10_000));
     private const double RowHeight = 19, ButtonWidth = 86, ButtonHeight = 27;
     private const long ConfirmMs = 4000;
     private static long NowMs => System.Diagnostics.Stopwatch.GetTimestamp() * 1000 / System.Diagnostics.Stopwatch.Frequency;

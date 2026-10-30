@@ -488,14 +488,37 @@ public sealed class WindowManagerTests
     [InlineData(101, 300, WindowEdges.None)]
     [InlineData(443, 703, WindowEdges.Bottom)]
     [InlineData(200, 703, WindowEdges.Bottom)]
-    [InlineData(200, 101, WindowEdges.Top)]
-    public void A_fixed_width_window_resizes_only_from_its_top_and_bottom_edges(int x, int y, WindowEdges expected)
+    [InlineData(200, 101, WindowEdges.None)]
+    [InlineData(103, 101, WindowEdges.Top)]
+    [InlineData(440, 101, WindowEdges.Top)]
+    public void A_fixed_width_window_resizes_only_from_its_top_corners_and_bottom_edge(int x, int y, WindowEdges expected)
     {
         var manager = NewManager(1920, 1080);
         manager.Open(new WindowDefinition("inventory", "Inventory", 344, 606, resizing: new WindowResizing(new Size(344, 300), new Size(344, 10_000))),
             new Point(100, 100));
 
         Assert.Equal(expected, manager.HoverAt(new Point(x, y)).Edges);
+    }
+
+    [Fact]
+    public void A_fixed_width_window_moves_only_from_its_top_edge()
+    {
+        var manager = NewManager(1920, 1080);
+        manager.Open(new WindowDefinition("social", "Social", 310, 600, resizing: new WindowResizing(new Size(310, 400), new Size(310, 10_000))),
+            new Point(100, 100));
+
+        Assert.Equal("social", manager.MoveEdgeAt(new Point(250, 101)));
+        Assert.Null(manager.MoveEdgeAt(new Point(103, 101)));
+
+        // The title bar does not move it; the top corner makes it taller from the top.
+        manager.Press(new Point(250, 115));
+        manager.Move(new Point(300, 165));
+        manager.Release();
+        Assert.Equal(new Point(100, 100), manager.Get("social")!.Location);
+        manager.Press(new Point(103, 101));
+        manager.Move(new Point(80, 51));
+        manager.Release();
+        Assert.Equal(new Rectangle(100, 50, 310, 650), manager.Get("social")!.Bounds);
     }
 
     [Fact]
