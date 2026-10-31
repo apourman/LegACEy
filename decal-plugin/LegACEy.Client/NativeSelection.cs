@@ -14,6 +14,8 @@ internal static class NativeSelection
     private const string Source = "our disassembly of the installed end-of-retail acclient.exe";
     /// <summary>ACCWeenieObject::SetSelectedObject (uint id, int force), cdecl; PDB 0x0058C2E0 +0xE30 as SetSelectedObjectID beside it.</summary>
     private const uint SetSelectedObject = 0x0058D110;
+    /// <summary>SetSelectedObject's second argument: select (and tell the UI) even when the object is already selected.</summary>
+    private const int Force = 1;
 
     // The prologue is left out: Decal patches prologues in the running client. The stores to the selected and previous ids
     // (0x00871E54 / 0x00871E58) and the object's selected flag tie the address to the function.
@@ -49,7 +51,7 @@ internal static class NativeSelection
             catch (Exception exception) { log($"Native selection is off: its address could not be checked: {exception.Message}"); }
         }
         if (_select == null) return false;
-        _select(id, 1);
+        _select(id, Force);
         return true;
     }
 }
