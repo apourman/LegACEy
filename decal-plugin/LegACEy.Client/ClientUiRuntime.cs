@@ -143,6 +143,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailQuestsSwitchFile = "retail-quests-native";
     private const string RetailMagicSwitchFile = "retail-magic-native";
     private const string RetailOptionsSwitchFile = "retail-options-native";
+    // Present: retail's container view (an opened chest or corpse) stays retail's; absent: the Dereth container window shows it.
+    private const string RetailContainerSwitchFile = "retail-container-native";
     // Present: retail's yellow game messages stay retail's; absent: LegACEy's bands show them.
     private const string RetailGameMessagesSwitchFile = "retail-game-messages-native";
     // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
@@ -364,6 +366,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private DateTime _lastMagicSwitchCheck;
     // The Dereth options window: retail's Gameplay Options buttons and Character switches.
     private OptionsFeature? _options;
+    // The Dereth container window for an opened chest or corpse.
+    private ContainerFeature? _container;
+    private bool _retailContainerSwitch;
+    private DateTime _lastContainerSwitchCheck;
     private bool _retailOptionsSwitch;
     private DateTime _lastOptionsSwitchCheck;
     // The Appraisal card was switched: once the switch is read, a turn to retail hands the open appraisal over to retail's panel.
@@ -517,6 +523,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _options = new OptionsFeature(this,
                 NativeUi.Ready && RetailPanelCatalogueValid() ? new NativeRetailPanelPort(NativeUi.OptionsPanel, NativeRetailPanelPort.OptionsPanelId) : null,
                 () => _portal?.ReadInterfaceStrings(Log) ?? new Dictionary<uint, string>(), Log);
+            _container = new ContainerFeature(this,
+                NativeUi.Ready && RetailPanelCatalogueValid() && RetailContainerCatalogueValid() ? new NativeRetailContainerPort() : null,
+                _settingsStore, () => (SessionServer(), SessionCharacter()), id => _windows?.BeginMove(id, _pointer), Log);
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
@@ -705,7 +714,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         RetailPanelSwitchFile, RetailAppraisalSwitchFile, RetailToolbarSwitchFile, RetailChatSwitchFile, RetailVitalsSwitchFile,
         RetailRadarSwitchFile, RetailAttackSwitchFile, RetailSpellBarSwitchFile, RetailCharacterSwitchFile, RetailSocialSwitchFile,
-        RetailMapSwitchFile, RetailQuestsSwitchFile, RetailMagicSwitchFile, RetailOptionsSwitchFile, RetailGameMessagesSwitchFile,
+        RetailMapSwitchFile, RetailQuestsSwitchFile, RetailMagicSwitchFile, RetailOptionsSwitchFile, RetailContainerSwitchFile, RetailGameMessagesSwitchFile,
     };
 
     /// <summary>
@@ -891,6 +900,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not read the contracts from the server: {exception}"); }
         try { _magic?.State.Receive(type, raw); }
         catch (Exception exception) { Log($"Could not read the spellbook from the server: {exception}"); }
+        try { _container?.State.Receive(type, raw); }
+        catch (Exception exception) { Log($"Could not read the container from the server: {exception}"); }
         // The selection plaque's health and mana, which retail asks the server for itself when the selection changes.
         _selectionMeters.Receive(type, raw);
         try { _lookCache.Receive(type, raw); }
@@ -1163,6 +1174,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() => _social?.State.Clear());
         Guard(() => _quests?.State.Clear());
         Guard(() => _magic?.State.Clear());
+        Guard(() => _container?.State.Clear());
         Guard(() => _busyCursor?.Show(false));
         if (_worldEffects != null)
         {
@@ -1371,6 +1383,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Choice("Quests", RetailQuestsSwitchFile, () => _lastQuestsSwitchCheck = default, QuestsWindow.WindowId),
         Choice("Magic", RetailMagicSwitchFile, () => _lastMagicSwitchCheck = default, MagicWindow.WindowId),
         Choice("Options", RetailOptionsSwitchFile, () => _lastOptionsSwitchCheck = default, OptionsWindow.WindowId),
+        Choice("Container", RetailContainerSwitchFile, () => _lastContainerSwitchCheck = default, ContainerWindow.StripId, ContainerWindow.GridId),
         Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default, ToolbarSurfaceId),
         Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default, ChatWindowId),
         Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default, DerethVitalsWindow.StackedId, DerethVitalsWindow.SideBySideId),
@@ -1926,7 +1939,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private double DrawOpacity(string server, string character, string id, bool changing) =>
         changing || id is SettingsWindowId or ToastWindowId || RetailChatWindows.IsChat(id) ? 1
-            : _opacities.Of(server, character, id == DerethVitalsWindow.SideBySideId ? DerethVitalsWindow.StackedId : id) / 100.0;
+            : _opacities.Of(server, character, id == DerethVitalsWindow.SideBySideId ? DerethVitalsWindow.StackedId
+                : id == ContainerWindow.GridId ? ContainerWindow.StripId : id) / 100.0;
 
     /// <summary>
     /// A tester creates a file named fail-post-ui-draw beside the DLL to make the next post-UI draw fail in game,
@@ -2133,7 +2147,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void TickRetailPanels(bool loggingIn = false)
     {
-        if (_retailPanels.Count == 0 && _examination == null && _character == null && _social == null && _map == null && _quests == null && _magic == null && _options == null)
+        if (_retailPanels.Count == 0 && _examination == null && _character == null && _social == null && _map == null && _quests == null && _magic == null && _options == null && _container == null)
         {
             // Nothing to hand over to: a switch made now must not fire later.
             _appraisalSwitched = false;
@@ -2152,6 +2166,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _quests?.Tick(canOpen && SwitchOn(RetailQuestsSwitchFile, ref _lastQuestsSwitchCheck, ref _retailQuestsSwitch), canShow: !loggingIn);
         _magic?.Tick(canOpen && SwitchOn(RetailMagicSwitchFile, ref _lastMagicSwitchCheck, ref _retailMagicSwitch), canShow: !loggingIn);
         _options?.Tick(canOpen && SwitchOn(RetailOptionsSwitchFile, ref _lastOptionsSwitchCheck, ref _retailOptionsSwitch), canShow: !loggingIn);
+        _container?.Tick(canOpen && SwitchOn(RetailContainerSwitchFile, ref _lastContainerSwitchCheck, ref _retailContainerSwitch), canShow: !loggingIn);
         // Turned to retail: the item in our window opens in retail's panel, now given back. The other way, the takeover already parks an
         // open retail panel and examines the selection in our window.
         if (_appraisalSwitched)
@@ -2177,6 +2192,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _quests?.EndSession();
         _magic?.EndSession();
         _options?.EndSession();
+        _container?.EndSession();
     }
 
     /// <summary>A LegACEy window's content by its id, for the drop routing that the window manager's hit test drives.</summary>
@@ -2548,6 +2564,24 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// The panel takeover's own addresses. A mismatch, or a check that throws, turns only the takeover off; the bar and the Vault drag keep
     /// their gates.
     /// </summary>
+    /// <summary>Retail's container view's own addresses: a mismatch leaves that view retail's, and nothing else.</summary>
+    private bool RetailContainerCatalogueValid()
+    {
+        if (_retailContainerValid is { } known) return known;
+        try
+        {
+            return (_retailContainerValid = NativeUiCatalogue.Validate(NativeUi.ReadMemory, Log, NativeRetailContainerPort.Entries,
+                "Retail's container view is left to retail: the running client does not match the container window's entries.")).Value;
+        }
+        catch (Exception exception)
+        {
+            Log($"Retail's container view is left to retail: its addresses could not be checked: {exception.Message}");
+            return (_retailContainerValid = false).Value;
+        }
+    }
+
+    private bool? _retailContainerValid;
+
     private bool RetailPanelCatalogueValid()
     {
         if (_retailPanelsValid is { } known) return known;

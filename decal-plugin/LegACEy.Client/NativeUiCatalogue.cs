@@ -60,7 +60,8 @@ internal static class NativeUiCatalogue
         Root("Examination", NativeUi.Examination, "installed client_local_English.dat, LayoutDesc 0x21000005 (placed from 0x2100006B/0x100005F2)"),
         Root("ExaminationInscription", NativeUi.ExaminationInscription, "installed client_local_English.dat, LayoutDesc 0x2100006B (inscription field)"),
         Root("ToolbarWindow", NativeUi.ToolbarWindow, "installed client_local_English.dat, LayoutDesc 0x21000005 (placed from 0x21000070/0x10000602)"),
-        Root("Toolbar", NativeUi.Toolbar, "installed client_local_English.dat, LayoutDesc 0x21000070 (placed from 0x21000016/0x10000191)")
+        Root("Toolbar", NativeUi.Toolbar, "installed client_local_English.dat, LayoutDesc 0x21000070 (placed from 0x21000016/0x10000191)"),
+        Root("ExternalContainer", NativeUi.ExternalContainer, "installed client_local_English.dat, LayoutDesc 0x2100006D and 0x21000035 (placed from 0x21000008/0x10000063)")
     };
 
     internal static bool Validate(Func<uint, int, byte[]> read, Action<string> log, IEnumerable<NativeUiEntry>? entries = null, string? failureSummary = null)

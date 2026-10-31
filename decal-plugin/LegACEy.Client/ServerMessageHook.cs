@@ -67,10 +67,11 @@ internal sealed unsafe class ServerMessageHook : IDisposable
     /// The messages the client reads: game events (0xF7B0) carry the server channel; DDD_EndDDD (0xF7EA) ends character select's DDD
     /// exchange, after any world note; Login_WorldInfo (0xF7E1) names the server, Login_CreatePlayer (0xF746) is the character entering the
     /// world and Login_LogOffCharacter (0xF653) the server letting it go (SessionIdentity); 0xF625 to 0xF7DB are objects' looks,
-    /// for the paperdoll (LookCache); 0x02CD to 0x02E7 are the private int, int64, skill, attribute and vital updates (CharacterSheet).
+    /// for the paperdoll (LookCache); 0x02CD to 0x02E7 are the private int, int64, skill, attribute and vital updates (CharacterSheet); 0x0024
+    /// (an item leaves a container) and 0x02CE (a stack's size changes) are what the container window follows besides the objects.
     /// </summary>
     private static bool Reads(uint type) => type is 0xF7B0 or 0xF7EA or 0xF7E1 or 0xF746 or 0xF653 or 0xF625 or 0xF745 or 0xF747 or 0xF749 or 0xF74A or 0xF7DB
-        or 0x02CD or 0x02CF or 0x02DD or 0x02E3 or 0x02E7;
+        or 0x02CD or 0x02CF or 0x02DD or 0x02E3 or 0x02E7 or 0x0024 or 0x02CE;
 
     private int OnAddReceivedBlob(IntPtr controller, IntPtr blob)
     {

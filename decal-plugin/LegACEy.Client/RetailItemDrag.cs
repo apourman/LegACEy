@@ -74,6 +74,8 @@ internal sealed class RetailItemDrag
     private const string HandOffSource = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build) for names; our objdump read of installed acclient.exe";
     // The inventory panel's item lists: gm3DItemsUI's pack contents, then gmBackpackUI's two (gm*UI::PostInit).
     private static readonly uint[] InventoryLists = { 0x100001C6, 0x100001C9, 0x100001CA };
+    // The container view's lists (gmExternalContainerUI): its items' list, then its packs'. Both stand under the view's element.
+    private static readonly uint[] ContainerLists = { 0x1000006A, 0x10000067 };
     private const uint ItemListType = 0x10000031;
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
@@ -215,20 +217,24 @@ internal sealed class RetailItemDrag
     }
 
     /// <summary>
-    /// The retail inventory's list and item element for an object, or zeros when no list there shows it (an item in a pack the
-    /// retail panel is not showing, or an equipped one). The panel need not be visible: a parked one keeps its lists.
+    /// The retail inventory's or container view's list and item element for an object, or zeros when no list there shows it (an item in a
+    /// pack the retail panel is not showing, or an equipped one). The panels need not be visible: a parked one keeps its lists.
     /// </summary>
     public (IntPtr List, IntPtr Item) FindItem(uint objectId)
     {
-        var panel = Available ? NativeUi.GetElement(NativeUi.InventoryPanel) : IntPtr.Zero;
-        if (panel == IntPtr.Zero) return default;
-        foreach (var id in InventoryLists)
+        if (!Available) return default;
+        foreach (var (panelId, lists) in new[] { (NativeUi.InventoryPanel, InventoryLists), (NativeUi.ExternalContainer, ContainerLists) })
         {
-            var element = NativeUi.GetElement(id);
-            if (element == IntPtr.Zero || _isAncestorOfMe!(element, panel) == 0) continue;
-            var list = NativeUi.Virtual<DynamicCastFn>(element, DynamicCastSlot)(element, ItemListType);
-            var item = list == IntPtr.Zero ? IntPtr.Zero : _getItem!(list, objectId);
-            if (item != IntPtr.Zero) return (list, item);
+            var panel = NativeUi.GetElement(panelId);
+            if (panel == IntPtr.Zero) continue;
+            foreach (var id in lists)
+            {
+                var element = NativeUi.GetElement(id);
+                if (element == IntPtr.Zero || _isAncestorOfMe!(element, panel) == 0) continue;
+                var list = NativeUi.Virtual<DynamicCastFn>(element, DynamicCastSlot)(element, ItemListType);
+                var item = list == IntPtr.Zero ? IntPtr.Zero : _getItem!(list, objectId);
+                if (item != IntPtr.Zero) return (list, item);
+            }
         }
         return default;
     }
