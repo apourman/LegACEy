@@ -15,7 +15,7 @@ public sealed class DerethSpellBarWindowTests
         .ToDictionary(i => (uint)i, i => new SpellInfo($"Spell {i}", string.Empty) { School = 1, Formula = new[] { 1u } });
 
     // Retail's places in window DIPs: the tabs along the top, the first cell, the cell pitch, Cast, and the arrows.
-    private const double TabY = 15, CellY = 45, CastX = 567;
+    private const double TabY = 15, CellY = 45, CastX = 567, EndowmentX = 5 + 4 + 16;
     private static double TabX(int tab) => 5 + 47 * tab + 23;
     private static double CellX(int position) => 68 + 32 * position + 16;
 
@@ -138,6 +138,42 @@ public sealed class DerethSpellBarWindowTests
     });
 
     [Fact]
+    public void Its_height_scales_the_bar_and_clicks_still_land_on_their_cells() => RenderThread.Run(() =>
+    {
+        var port = new FakeSpellBarPort(3, 1, 2);
+        DerethSpellBarWindow view = null!;
+        // Two thirds of retail's height and (nearly) of its width: the same 13 cells, smaller.
+        using var panel = AvaloniaPanel.Create(() => view = new DerethSpellBarWindow(port, () => Spells, null, null, () => { }), 407, 60);
+        panel.Tick();
+
+        Assert.Equal(13, view.VisibleCells);
+        Click(panel, CellX(2) * 2 / 3, CellY * 2 / 3);
+        Assert.Equal(2u, port.Selected);
+        Assert.True(view.DropAt(7, new Avalonia.Point(CellX(0) * 2 / 3, CellY * 2 / 3)));
+        Assert.Equal(new uint[] { 7, 3, 1, 2 }, port.Spells);
+    });
+
+    [Fact]
+    public void The_held_item_shows_at_the_left_a_click_selects_it_and_a_double_click_uses_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeSpellBarPort(3, 1, 2)
+        {
+            Endowment = new SpellBarEndowment(new ItemVisual(0x06001234, 0, 0, 0), "White Sapphire Orb (Might of the 5 Mules)", false)
+        };
+        port.Select(1);
+        var (panel, view) = Open(port);
+        using var _ = panel;
+        Assert.Equal("Spell 1", view.SelectedName);
+
+        Click(panel, EndowmentX, CellY);
+        Assert.Equal("White Sapphire Orb (Might of the 5 Mules)", view.SelectedName);
+        Assert.Equal(0u, port.Selected);
+        Assert.Empty(port.Cast);
+        Click(panel, EndowmentX, CellY);
+        Assert.Single(port.Cast);
+    });
+
+    [Fact]
     public void The_spell_bar_renders_to_a_png_when_asked() => RenderThread.Run(() =>
     {
         // Looked at by a person, not asserted: LEGACEY_SPELLBAR_RENDER names the folder, LEGACEY_PORTAL_DAT the portal for retail's art.
@@ -152,14 +188,28 @@ public sealed class DerethSpellBarWindowTests
         var ids = names.Select(n => spells.Where(s => s.Value.Name == n).Select(s => s.Key).DefaultIfEmpty(0u).Min()).Where(id => id != 0).ToArray();
         var port = new FakeSpellBarPort(ids);
         port.Select(ids.Skip(1).FirstOrDefault());
-        foreach (var width in new[] { DerethSpellBarWindow.DesignWidth, 900 })
+        // LEGACEY_SPELLBAR_ENDOWMENT names a 32 by 32 BGRA icon for the item at the left, selected, under retail's name for it.
+        var endowmentIcon = Environment.GetEnvironmentVariable("LEGACEY_SPELLBAR_ENDOWMENT");
+        IGameArtSource? art = portal;
+        if (endowmentIcon != null)
         {
-            using var panel = AvaloniaPanel.Create(() => new DerethSpellBarWindow(port, () => spells, portal, null, () => { }), width, 90);
+            art = new WithIcon(portal, 0x0600FFFF, new GameImage(32, 32, File.ReadAllBytes(endowmentIcon)));
+            port.Endowment = new SpellBarEndowment(new ItemVisual(0x0600FFFF, 0, 0, 0), "White Sapphire Orb (Might of the 5 Mules)", false);
+            port.SelectEndowment();
+        }
+        foreach (var (width, height) in new[] { (DerethSpellBarWindow.DesignWidth, 90), (900, 90), (457, 67), (813, 120) })
+        {
+            using var panel = AvaloniaPanel.Create(() => new DerethSpellBarWindow(port, () => spells, art, null, () => { }), width, height);
             panel.Tick();
             panel.Tick();
-            PanelPng.Save(panel, Path.Combine(folder, $"spellbar-{width}.png"));
+            PanelPng.Save(panel, Path.Combine(folder, $"spellbar-{width}x{height}.png"));
         }
     });
+
+    private sealed class WithIcon(IGameArtSource? inner, uint id, GameImage image) : IGameArtSource
+    {
+        public GameImage? ReadImage(uint wanted) => wanted == id ? image : inner?.ReadImage(wanted);
+    }
 
     private sealed class FakeSpellBarPort : ISpellBarPort
     {
@@ -179,6 +229,12 @@ public sealed class DerethSpellBarWindowTests
             Selected = spell;
         }
         public void Examine(uint spell) => Examined.Add(spell);
+        public SpellBarEndowment? Endowment { get; set; }
+        public void SelectEndowment()
+        {
+            if (Endowment != null) Endowment = Endowment with { Selected = true };
+            Selected = 0;
+        }
         public bool UiLocked => false;
         public event EventHandler? Changed { add { } remove { } }
     }
