@@ -135,6 +135,7 @@ internal sealed class ContainerFeature : IDisposable
         }, ownChrome: true);
         if (!opened)
         {
+            view.Suspend();
             _panel?.Close();
             return;
         }

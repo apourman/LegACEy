@@ -46,7 +46,7 @@ public sealed class ContainerState
 
     /// <summary>One object the state knows: what a cell shows and where the object sits.</summary>
     private sealed record Known(uint Id, string Name, ItemVisual Visual, int StackCount, int StackMax, int Wcid, uint ValidLocations,
-        double? PartFull, uint Container, int ItemSlots, int PackSlots);
+        double? PartFull, uint Container, int ItemSlots);
 
     private readonly Dictionary<uint, Known> _known = new();
     // Each viewed container's items and packs, in the server's order: an item's index here is its cell.
@@ -148,9 +148,11 @@ public sealed class ContainerState
         var container = reader.UInt32();
         var view = new List<(uint, uint)>();
         for (int i = 0, count = (int)reader.UInt32(); i < count; i++) view.Add((reader.UInt32(), reader.UInt32()));
-        // A pack of the container being viewed is a view of its own; any other view is a container the player opened.
+        // A pack of the container being viewed is a view of its own. A pack the player carries is sent too, at login and on a pickup, and
+        // is not opened. Any other view is a container the player opened.
         if (!_views.Values.Any(other => other.Any(entry => entry.Id == container)))
         {
+            if (_known.TryGetValue(container, out var known) && known.Container != 0) return false;
             if (_opened != container) Forget(_opened);
             _opened = container;
         }
@@ -261,7 +263,7 @@ public sealed class ContainerState
             return _known.Remove(id);
         var visual = new ItemVisual(icon, underlay, overlay, uiEffects, ItemIcon.PlateFor(itemType));
         var partFull = maxStructure > 0 && structure < maxStructure ? (double)Math.Max(0, structure) / maxStructure : (double?)null;
-        var known = new Known(id, name, visual, Math.Max(1, stack), stackMax, wcid, validLocations, partFull, container, itemSlots, packSlots);
+        var known = new Known(id, name, visual, Math.Max(1, stack), stackMax, wcid, validLocations, partFull, container, itemSlots);
         if (_known.TryGetValue(id, out var before) && before == known) return false;
         _known[id] = known;
         return true;

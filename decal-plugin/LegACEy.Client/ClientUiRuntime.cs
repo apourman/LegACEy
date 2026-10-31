@@ -2570,10 +2570,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return new RetailPanelHandle(this, takeover);
     }
 
-    /// <summary>
-    /// The panel takeover's own addresses. A mismatch, or a check that throws, turns only the takeover off; the bar and the Vault drag keep
-    /// their gates.
-    /// </summary>
     /// <summary>Retail's container view's own addresses: a mismatch leaves that view retail's, and nothing else.</summary>
     private bool RetailContainerCatalogueValid()
     {
@@ -2592,6 +2588,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private bool? _retailContainerValid;
 
+    /// <summary>
+    /// The panel takeover's own addresses. A mismatch, or a check that throws, turns only the takeover off; the bar and the Vault drag keep
+    /// their gates.
+    /// </summary>
     private bool RetailPanelCatalogueValid()
     {
         if (_retailPanelsValid is { } known) return known;

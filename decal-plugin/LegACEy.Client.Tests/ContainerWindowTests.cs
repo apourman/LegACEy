@@ -121,7 +121,7 @@ public sealed class ContainerWindowTests
         Assert.Equal("Chest of Lyre", state.NameOf(Chest));
         Assert.Equal(24, state.CapacityOf(Chest));
         Assert.Equal(0x06001111u, state.VisualOf(Chest)!.Icon);
-        // The pack takes the third place, so the potion is the third item but sits in the fourth cell of the server's list.
+        // The pack takes the third place in the server's list, so the potion is fourth there but the third item cell.
         Assert.Equal(new[] { Sword, Coins, Potion }, state.ItemsOf(Chest).Select(item => item.Id));
         Assert.Equal(new[] { Pack }, state.PacksOf(Chest).Select(item => item.Id));
         var sword = state.ItemsOf(Chest).First();
@@ -156,6 +156,18 @@ public sealed class ContainerWindowTests
         // The player's own objects stay known; a world object that is nobody's item was never kept.
         state.Receive(CreateObject, Created(Scroll, "Tree", 0x06002006));
         Assert.Null(state.VisualOf(Scroll));
+    }
+
+    [Fact]
+    public void A_pack_the_player_picks_up_while_a_chest_is_open_does_not_replace_the_chest()
+    {
+        var state = OpenedChest();
+        // ACE puts the ground pack in the player's inventory, then sends its contents as it does for every carried pack at login.
+        state.Receive(CreateObject, Created(Mine, "Backpack", 0x06002005, capacity: 24));
+        state.Receive(GameEvent, Event(0x0022, w => w.U32(Mine).U32(Me).U32(0).U32(1)));
+        state.Receive(GameEvent, View(Mine, (Scroll, 0)));
+        Assert.Equal(Chest, state.Opened);
+        Assert.Equal(new[] { Sword, Coins, Potion }, state.ItemsOf(Chest).Select(item => item.Id));
     }
 
     [Fact]

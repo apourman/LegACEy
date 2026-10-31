@@ -424,7 +424,8 @@ public sealed class ContainerWindow : UserControl, IDisposable, IRetailItemDropT
         // Over the window the item can only go into one of the container's packs; elsewhere a LegACEy window under the pointer may take it.
         if (new Rect(Bounds.Size).Contains(point))
         {
-            if (SlotAt(point) is { Kind: CellKind.Pack, ItemId: not 0 } pack && pack.ItemId != dragged) _port.MoveToContainer(dragged, pack.ItemId, 0);
+            if (SlotAt(point) is { Kind: CellKind.Pack, ItemId: not 0 } pack && pack.ItemId != dragged && !Holds(pack.ItemId, dragged))
+                _port.MoveToContainer(dragged, pack.ItemId, 0);
         }
         else _drag?.DeliverAtPointer(dragged, ItemName(dragged));
     }
