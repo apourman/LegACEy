@@ -9,11 +9,11 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The client's side of each Decal event. <see cref="ClientUiRuntime"/> is the client. The frame, the game window's messages, the server's
-/// messages and chat lines come from the client's own hooks since backlog 177, and login and logoff from the server's messages since 178.
+/// messages and chat lines come from the client's own hooks since backlog 177, login and logoff from the server's messages since 178,
+/// and the selection from the game since 179.
 /// </summary>
 internal interface IClientEvents
 {
-    void ItemSelected();
     void ContainerOpened();
     void InventoryChanged(uint id, uint container);
     void Shutdown();
@@ -66,9 +66,9 @@ public static unsafe class Bridge
             _client = createClient();
             *events = new BridgeEvents
             {
-                // Unused since 177 and 178; a stub from before them still raises them, so they are there and do nothing.
+                // Unused since 177, 178 and 179; a stub from before them still raises them, so they are there and do nothing.
                 Frame = &Unused, WindowMessage = &UnusedMessage, ServerMessage = &UnusedServerMessage, LoginComplete = &Unused, Logoff = &Unused,
-                LogoffAuthorized = &Unused, ItemSelected = &OnItemSelected, ContainerOpened = &OnContainerOpened,
+                LogoffAuthorized = &Unused, ItemSelected = &Unused, ContainerOpened = &OnContainerOpened,
                 InventoryChanged = &OnInventoryChanged, Shutdown = &OnShutdown
             };
             return 0;
@@ -89,9 +89,6 @@ public static unsafe class Bridge
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static void UnusedServerMessage(int type, byte* raw, int length) { }
-
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static void OnItemSelected() => Raise(static client => client.ItemSelected());
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static void OnContainerOpened() => Raise(static client => client.ContainerOpened());
@@ -249,7 +246,6 @@ public static unsafe class Bridge
     }
 
     internal static void UseItem(uint id, int state) => Check(_calls.UseItem((int)id, state), nameof(UseItem));
-    internal static void SelectItem(uint id) => Check(_calls.SelectItem((int)id), nameof(SelectItem));
     // Retail's own sender first: Decal's ID queue can hold the request for half a second.
     internal static void RequestId(uint id)
     {

@@ -12,7 +12,7 @@ using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>The combat stance, with Decal's combat mode values: 1 peace, 2 melee, 4 missile, 8 magic.</summary>
+/// <summary>The combat stance, with retail's own combat mode values: 1 peace, 2 melee, 4 missile, 8 magic.</summary>
 public enum RetailStance { Peace = 1, Melee = 2, Missile = 4, Magic = 8 }
 
 /// <summary>

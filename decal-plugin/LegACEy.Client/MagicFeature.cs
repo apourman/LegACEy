@@ -169,8 +169,7 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     {
         var item = _inventory().Items.FirstOrDefault(i => (uint)i.Wcid == wcid);
         if (item == null) return;
-        // Decal's SelectItem only when the running client doesn't match retail's own selection.
-        if (!NativeSelection.TrySelect(item.Id, _log)) Bridge.SelectItem(item.Id);
+        NativeSelection.Select(item.Id);
     }
 
     bool IMagicGame.SendFilters(uint filters) => Send(SpellbookFilterAction, BitConverter.GetBytes(filters), "change the spellbook filters");

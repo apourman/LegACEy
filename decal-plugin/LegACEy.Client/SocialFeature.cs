@@ -160,20 +160,9 @@ internal sealed unsafe class SocialFeature : ISocialGame, IDisposable
 
     // The game, as the window reads it.
 
-    uint ISocialGame.Selection
-    {
-        get
-        {
-            try { return (uint)Bridge.Fact(BridgeFact.CurrentSelection); }
-            catch (COMException) { return 0; }
-        }
-    }
+    uint ISocialGame.Selection => NativeSelection.Selected;
 
-    void ISocialGame.Select(uint id)
-    {
-        try { Bridge.SelectItem(id); }
-        catch (COMException exception) { _log($"Could not select 0x{id:X8}: {exception.Message}"); }
-    }
+    void ISocialGame.Select(uint id) => NativeSelection.Select(id);
 
     bool? ISocialGame.Option(SocialOption option) =>
         PlayerModule() is { } module && OptionBits.TryGetValue(option, out var bits)

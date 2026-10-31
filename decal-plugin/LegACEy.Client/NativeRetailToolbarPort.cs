@@ -7,8 +7,8 @@ using LegACEy.Client.Demo;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// The toolbar's port over the installed client. The stance click is retail's combat toggle (ToggleCombatMode), the stance read is Decal's combat mode.
-/// A panel opens or closes through retail's own broadcast (CM_UI::SendNotice_SetPanelVisibility), by its panel number, as retail's buttons do. The selection is Decal's current selection; Use goes through Decal's UseItem and Examine through the appraisal
+/// The toolbar's port over the installed client. The stance click is retail's combat toggle (ToggleCombatMode), the stance read is retail's own combat mode (<see cref="NativeStance"/>).
+/// A panel opens or closes through retail's own broadcast (CM_UI::SendNotice_SetPanelVisibility), by its panel number, as retail's buttons do. The selection is retail's own selected id (<see cref="NativeSelection"/>); Use goes through Decal's UseItem and Examine through the appraisal
 /// window, never retail's examination panel. <see cref="Poll"/> raises <see cref="Changed"/> when the stance, any button's panel open state,
 /// the selection or the shortcut list moved, once a frame.
 /// </summary>
@@ -91,7 +91,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 
     public event Action? Changed;
 
-    public RetailStance Stance => (RetailStance)Bridge.Fact(BridgeFact.CombatMode);
+    public RetailStance Stance => NativeStance.Stance;
 
     /// <summary>
     /// The selected object with its meter read from the server's answers; null when nothing is selected. The name, kind and stack count are
@@ -112,7 +112,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// </summary>
     private RetailSelection? Described()
     {
-        var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+        var id = NativeSelection.Selected;
         if (id == _selectedId && !_rereadSelected) return _described;
         if (id != _selectedId) _meters.KeepOnly(id);
         _selectedId = id;
@@ -146,7 +146,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         get => Described() is { Kind: SelectionKind.Stack } stack ? SplitAmountFor(stack) : ReadInt(RetailToolbarCatalogue.SplitAmount);
         set
         {
-            var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+            var id = NativeSelection.Selected;
             if (Described() is not { Kind: SelectionKind.Stack } stack || stack.Id != id) return;
             (_chosenSplitStackId, _chosenSplitAmount) = (stack.Id, value);
             WriteSplitAmount(SplitAmountFor(stack));
@@ -167,7 +167,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// </summary>
     public void UseSelected()
     {
-        var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+        var id = NativeSelection.Selected;
         if (id == 0) return;
         if (_targetMode?.CancelIfInvalid(id) == true) return;
         if (_targetMode?.TryTarget(id) == true) return;
@@ -180,7 +180,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// </summary>
     public void ExamineSelected()
     {
-        var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+        var id = NativeSelection.Selected;
         if (_appraisals.ExamineSelection(id) == ExamineResult.Failed) _log("Could not examine the selection: the appraisal window could not show it.");
     }
 
@@ -225,7 +225,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         if (toolbar != IntPtr.Zero) UseShortcutNative(toolbar, index, true);
     }
 
-    public void Select(uint objectId) => Bridge.SelectItem(objectId);
+    public void Select(uint objectId) => NativeSelection.Select(objectId);
 
     /// <summary>
     /// Puts the object into the slot through retail's add, which sends AddShortCut to the server and updates the list. The caller empties

@@ -5,7 +5,7 @@ using LegACEy.Client.Demo;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// The attack bar's port over the installed client. The stance is Decal's combat mode. The set point, the attack height and the charge are
+/// The attack bar's port over the installed client. The stance is retail's own combat mode (<see cref="NativeStance"/>). The set point, the attack height and the charge are
 /// ClientCombatSystem's, and the three options are retail's PlayerModule accessors, so retail's keys and notices stay in step with the bar.
 /// It is built only once every list in <see cref="RetailAttackCatalogue"/> has passed. <see cref="Poll"/> raises <see cref="Changed"/> when a
 /// value moved, and is called once a frame on the game thread.
@@ -70,7 +70,7 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
 
     public event EventHandler? Changed;
 
-    public RetailStance Stance => (RetailStance)Bridge.Fact(BridgeFact.CombatMode);
+    public RetailStance Stance => NativeStance.Stance;
 
     public double SetPoint
     {

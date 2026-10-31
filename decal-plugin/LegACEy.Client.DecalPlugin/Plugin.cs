@@ -70,7 +70,6 @@ public sealed unsafe class Plugin : FilterBase
         {
             var core = CoreManager.Current;
             core.FilterInitComplete -= OnFilterInitComplete;
-            core.ItemSelected -= OnItemSelected;
             core.ContainerOpened -= OnContainerOpened;
         });
         Unsubscribe(() =>
@@ -98,8 +97,7 @@ public sealed unsafe class Plugin : FilterBase
         {
             var core = CoreManager.Current;
             core.FilterInitComplete -= OnFilterInitComplete;
-            // The open container and the selection are part of the inventory snapshot, whoever changed them.
-            core.ItemSelected += OnItemSelected;
+            // The open container is part of the inventory snapshot, whoever changed it.
             core.ContainerOpened += OnContainerOpened;
             var world = core.WorldFilter;
             world.CreateObject += OnCreated;
@@ -111,7 +109,6 @@ public sealed unsafe class Plugin : FilterBase
     }
 
     // Bridge.Raise on the client side catches every exception, so these plain forwards can't unwind into Decal.
-    private void OnItemSelected(object? sender, ItemSelectedEventArgs e) => _events->ItemSelected();
     private void OnContainerOpened(object? sender, ContainerOpenedEventArgs e) => _events->ContainerOpened();
 
     private void OnCreated(object? sender, CreateObjectEventArgs e) => InventoryChanged(e.New);
