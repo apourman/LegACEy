@@ -44,7 +44,6 @@ internal sealed unsafe class WorldEffects : IDisposable
     private const uint AddToAlphaListAddress = 0x0059D240, RenderSubsetAddress = 0x0059DA60;
     private static readonly ushort* AlphaCount = (ushort*)0x008729BC, ClipCount = (ushort*)0x008729C0;
     private readonly Queue<(int Mesh, int Index, int Surface, int Part)> _alphaList = new(), _clipList = new();
-    private int _queuedLogs;
     private const uint Gold = 0xFFFFC040;
     // ColorWriteEnable: the selection into the mask's colour, the player into its alpha.
     private const int SelectionChannels = 0x7, PlayerChannels = 0x8;
@@ -656,14 +655,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (before == 0) list.Clear();
         if (Selected != 0 && _inWorld && !_failed && *count == before + 1)
         {
-            var part = *DrawingPart;
-            list.Enqueue((mesh, index, surface, part));
-            // ponytail: confirms the 31 Oct cause in a play-test (the costume's surfaces are queued); drop once it has.
-            if (part != 0 && _queuedLogs < 3 && *(int*)(part + 0xE0) == PlayerObject())
-            {
-                _queuedLogs++;
-                _log($"Alpha list: a part of the player is queued for a late draw (mesh {mesh:X8}, surface {surface:X8}, {(translucent ? "alpha" : "clip")} list).");
-            }
+            list.Enqueue((mesh, index, surface, *DrawingPart));
         }
         return result;
     }
