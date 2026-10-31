@@ -67,7 +67,8 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     private readonly TextBlock _name;
     private readonly Border _leftArrow, _rightArrow;
     private readonly DerethCornerMarks _corners = new() { IsVisible = false, IsHitTestVisible = false };
-    private readonly Image[] _cast = new Image[3];
+    private readonly Image _cast = new() { Stretch = Stretch.Fill };
+    private Bitmap? _castUp, _castDown;
     private readonly Dictionary<uint, Bitmap?> _bitmaps = new();
     private readonly Dictionary<(uint Spell, int Number), WriteableBitmap?> _icons = new();
     private string _drawn = string.Empty;
@@ -418,28 +419,24 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         return new GameImage(image.Width, image.Height, ItemIconOutline.Over(tab.Pixels, image.Pixels));
     }
 
-    /// <summary>Retail's Cast button, from its three pieces, darker while pressed; a press casts the selected spell.</summary>
+    /// <summary>
+    /// Retail's Cast button, its three pieces joined into one image, darker while pressed; a press casts the selected spell. Joined, a scaled
+    /// bar has no seam where the pieces' edges would fall between screen pixels.
+    /// </summary>
     private Control CastButton()
     {
-        var pieces = new Grid { ColumnDefinitions = new ColumnDefinitions("32,*,32") };
-        for (var i = 0; i < 3; i++)
-        {
-            _cast[i] = new Image { Source = Bitmap(CastArt[i]), Stretch = Stretch.Fill };
-            Grid.SetColumn(_cast[i], i);
-            pieces.Children.Add(_cast[i]);
-        }
+        _castUp = GameArtImageExtension.CreateBitmap(JoinPieces(CastArt, (int)CastWidth));
+        _castDown = GameArtImageExtension.CreateBitmap(JoinPieces(CastPressedArt, (int)CastWidth));
+        _cast.Source = _castUp;
+        var pieces = new Grid { Children = { _cast } };
         var label = DerethPalette.CentreInk(new TextBlock
         {
             Text = "Cast", FontFamily = DerethPalette.Title, FontSize = 13, Foreground = NameBrush,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         });
-        Grid.SetColumnSpan(label, 3);
         pieces.Children.Add(label);
         var button = new Border { Child = pieces, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand) };
-        void Pressed(bool down)
-        {
-            for (var i = 0; i < 3; i++) _cast[i].Source = Bitmap(down ? CastPressedArt[i] : CastArt[i]);
-        }
+        void Pressed(bool down) => _cast.Source = down ? _castDown : _castUp;
         button.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(button).Properties.IsLeftButtonPressed) return;
@@ -450,6 +447,27 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         button.PointerReleased += (_, _) => Pressed(false);
         button.PointerCaptureLost += (_, _) => Pressed(false);
         return button;
+    }
+
+    /// <summary>
+    /// A left, middle and right piece of retail's art joined into one image <paramref name="width"/> pixels wide: the ends whole, the middle
+    /// tiled between them. Null without the art or with pieces of different heights.
+    /// </summary>
+    private GameImage? JoinPieces(uint[] ids, int width)
+    {
+        if (_art?.ReadImage(ids[0]) is not { } left || _art.ReadImage(ids[1]) is not { } middle || _art.ReadImage(ids[2]) is not { } right
+            || middle.Height != left.Height || right.Height != left.Height || width < left.Width + right.Width) return null;
+        var height = left.Height;
+        var pixels = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                var (piece, column) = x < left.Width ? (left, x)
+                    : x >= width - right.Width ? (right, x - (width - right.Width))
+                    : (middle, (x - left.Width) % middle.Width);
+                Array.Copy(piece.Pixels, (y * piece.Width + column) * 4, pixels, (y * width + x) * 4, 4);
+            }
+        return new GameImage(width, height, pixels);
     }
 
     /// <summary>A control that runs <paramref name="press"/> on a left press, then shows the port again.</summary>
