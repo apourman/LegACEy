@@ -314,7 +314,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _attackSwitch;
     private DateTime _lastAttackSwitchCheck;
     // The Dereth spell bar over the same panel in magic: whether its natives matched, the takeover, its port and window.
-    private bool? _spellBarNatives;
+    private bool? _spellBarNatives, _spellBarEndowmentNatives;
     private RetailAttackTakeover? _spellBar;
     private NativeSpellBarPort? _spellBarPort;
     private DerethSpellBarWindow? _spellBarWindow;
@@ -3576,6 +3576,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private ShortcutBar NewShortcutRow(int firstIndex) =>
         new(firstIndex, _toolbarPort!, ShortcutItemOf, _portal, new ItemDragHost(this), _shortcutDrag);
 
+    /// <summary>A wielded item by object id, from the inventory snapshot; null when it is not wielded. The spell bar asks every frame, so no enumerator.</summary>
+    private WieldedItem? WieldedItemOf(uint id)
+    {
+        var wielded = _inventory.Snapshot.Wielded;
+        for (var i = 0; i < wielded.Count; i++)
+            if (wielded[i].Id == id) return wielded[i];
+        return null;
+    }
+
     /// <summary>The icon and stack count of an object the player holds, from the inventory snapshot; null when it is not held.</summary>
     private ShortcutItem? ShortcutItemOf(uint id)
     {
@@ -4198,7 +4207,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IDisposable? OpenSpellBar(Point at)
     {
         if (!CanOpenWindows || _portal is not { } portal) return null;
-        var port = new NativeSpellBarPort(HudNatives().Lock, spell => _magic?.Examine(spell));
+        var endowment = NativesOnce(ref _spellBarEndowmentNatives, NativeSpellBarPort.ValidateEndowment, "spell bar's held item") == true;
+        var port = new NativeSpellBarPort(HudNatives().Lock, spell => _magic?.Examine(spell), endowment, WieldedItemOf,
+            spell => portal.ReadSpells(Log).TryGetValue(spell, out var info) ? info.Name : null);
         var window = new DerethSpellBarWindow(port, () => portal.ReadSpells(Log), portal, new ItemDragHost(this),
             () => _windows?.BeginMove(DerethSpellBarWindow.WindowId, _pointer));
         var definition = DerethSpellBarWindow.Definition(() => port.UiLocked);
