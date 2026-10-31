@@ -118,7 +118,7 @@ public sealed class InventoryWindowTests
         port.Push(InventorySample.Snapshot());
         using var host = new InventoryHost(port, showSlots: true);
 
-        // The server answers a use of a carried pack with only "use done" (a busy cursor); retail switches packs locally.
+        // The server answers a use of a carried pack with only "use done" (a busy cursor); retail switches packs locally, and its lists follow.
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
         Assert.Contains("Contents of Potions", host.Texts());
         Assert.Equal(InventorySample.BluePotion, InventoryDriver.Id(host.Cells[0]).ItemId);
@@ -126,7 +126,11 @@ public sealed class InventoryWindowTests
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Character));
         Assert.Contains("Contents of Main Pack", host.Texts());
         // A click selects the pack, never uses it; the main pack is the character, so an item in use can target them.
-        Assert.Equal(new[] { $"select 0x{InventorySample.Potions:X8}", $"select 0x{InventorySample.Character:X8}" }, port.Commands);
+        Assert.Equal(new[]
+        {
+            $"open 0x{InventorySample.Potions:X8}", $"select 0x{InventorySample.Potions:X8}",
+            $"open 0x{InventorySample.Character:X8}", $"select 0x{InventorySample.Character:X8}"
+        }, port.Commands);
     });
 
     [Fact]
@@ -138,7 +142,7 @@ public sealed class InventoryWindowTests
 
         // As in retail, the focus opens: the grid empties and the header names it, with no count.
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Focus));
-        Assert.Equal(new[] { $"select 0x{InventorySample.Focus:X8}" }, port.Commands);
+        Assert.Equal(new[] { $"open 0x{InventorySample.Focus:X8}", $"select 0x{InventorySample.Focus:X8}" }, port.Commands);
         Assert.Contains("Contents of Foci of Strife", host.Texts());
         Assert.DoesNotContain("0 / 0", host.Texts());
         Assert.Empty(host.Cells);
