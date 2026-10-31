@@ -121,6 +121,11 @@ public sealed class MagicWindowTests
         Assert.Equal(new[] { ("Lead Scarab", 0, 25), ("Ginseng", 12, 0) },
             view.ListedComponents().Select(r => (r.Component.Name, r.Carried, r.Desired)));
 
+        // A click lights the row and selects the carried item in the game; a click on empty space only clears the row.
+        view.SelectComponent(702);
+        view.SelectComponent(0);
+        Assert.Equal(new[] { 702u }, game.SelectedComponents);
+
         view.SetDesired(702, 30);
         view.SetDesired(691, 0);
         Assert.Equal(new[] { (702u, 30), (691u, 0) }, game.Desired);
@@ -192,6 +197,7 @@ public sealed class MagicWindowTests
                 MagicWindow.Width, 760);
             view.ShowTab(tab);
             if (tab == 0) view.Select(view.ListedSpells()[2].Id);
+            else view.SelectComponent(view.ListedComponents()[4].Component.Wcid);
             panel.Tick();
             panel.Tick();
             PanelPng.Save(panel, Path.Combine(folder, name + ".png"));
@@ -201,7 +207,7 @@ public sealed class MagicWindowTests
     private sealed class FakeGame : IMagicGame
     {
         public readonly Dictionary<uint, int> Carried = new();
-        public readonly List<uint> Filters = new(), Deleted = new(), Examined = new(), AddedToBar = new();
+        public readonly List<uint> Filters = new(), Deleted = new(), Examined = new(), AddedToBar = new(), SelectedComponents = new();
         public readonly List<(uint, int)> Desired = new();
         public IReadOnlyDictionary<uint, int> CarriedComponents() => Carried;
         public bool SendFilters(uint filters) { Filters.Add(filters); return true; }
@@ -211,5 +217,6 @@ public sealed class MagicWindowTests
         public bool DropOnSpellBar(uint spell) => AddToSpellBar(spell);
         public void HoverSpellBar(bool dragging) { }
         public void Examine(uint spell) => Examined.Add(spell);
+        public void SelectComponent(uint wcid) => SelectedComponents.Add(wcid);
     }
 }

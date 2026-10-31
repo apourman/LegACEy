@@ -33,6 +33,8 @@ public interface IMagicGame
     void HoverSpellBar(bool dragging);
     /// <summary>Shows the spell in the appraisal window, as retail's examination panel shows a spell.</summary>
     void Examine(uint spell);
+    /// <summary>Selects a carried item of the component (by weenie class) in the game, as a click in retail's Components tab does.</summary>
+    void SelectComponent(uint wcid);
 }
 
 /// <summary>
@@ -93,6 +95,7 @@ public sealed class MagicWindow
     private readonly Dictionary<uint, (Image Light, bool On)> _toggles = new();
     private readonly Dictionary<uint, Bitmap?> _bitmaps = new();
     private readonly Dictionary<uint, Bitmap?> _spellIcons = new();
+    private readonly Dictionary<uint, Bitmap?> _componentIcons = new();
     private readonly Dictionary<Panel, string> _drawn = new();
     private int _tab;
     private uint _selected, _selectedComponent;
@@ -326,9 +329,11 @@ public sealed class MagicWindow
     public IReadOnlyList<(SpellComponentInfo Component, int Carried, int Desired)> ListedComponents() =>
         ComponentRows(_components(), _game.CarriedComponents(), _state.Desired);
 
+    /// <summary>Lights the component's row and, as retail's click does, selects a carried one in the game; 0 only clears the row.</summary>
     public void SelectComponent(uint wcid)
     {
         _selectedComponent = wcid;
+        if (wcid != 0) _game.SelectComponent(wcid);
         Refresh();
     }
 
@@ -368,7 +373,7 @@ public sealed class MagicWindow
     private Control ComponentRow(SpellComponentInfo component, int carried, int desired)
     {
         var wcid = component.Wcid;
-        var row = Row(wcid == _selectedComponent ? ComponentRowSelectedArt : ComponentRowArt, Bitmap(component.Icon), component.Name, 180);
+        var row = Row(wcid == _selectedComponent ? ComponentRowSelectedArt : ComponentRowArt, ComponentBitmap(component.Icon), component.Name, 180);
         var count = Label(carried.ToString(CultureInfo.InvariantCulture), 12);
         count.TextAlignment = TextAlignment.Right;
         count.Margin = new Thickness(0, 0, 8, 0);
@@ -386,11 +391,12 @@ public sealed class MagicWindow
         void Commit() => SetDesired(wcid, int.TryParse((entry.Text ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : 0);
         entry.LostFocus += (_, _) => Commit();
         entry.KeyDown += (_, e) => { if (e.Key == Key.Enter) Commit(); };
-        var figures = new StackPanel { Width = 60, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 0, 2), Children = { count, entry } };
+        var figures = new StackPanel { Width = 60, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 2, 2), Children = { count, entry } };
         ((Grid)row.Child!).Children.Add(figures);
         row.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(row).Properties.IsLeftButtonPressed) return;
+            e.Handled = true;
             SelectComponent(wcid);
         };
         return row;
@@ -450,6 +456,14 @@ public sealed class MagicWindow
     {
         if (!_spellIcons.TryGetValue(id, out var bitmap))
             _spellIcons[id] = bitmap = _art == null ? null : GameArtImageExtension.CreateBitmap(SpellIcon.Draw(_art, spell));
+        return bitmap;
+    }
+
+    /// <summary>A component's icon as retail draws an item icon: its white key edge takes the no-effect black (<see cref="ItemIcon"/>).</summary>
+    private Bitmap? ComponentBitmap(uint icon)
+    {
+        if (!_componentIcons.TryGetValue(icon, out var bitmap))
+            _componentIcons[icon] = bitmap = _art == null ? null : GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, 0, icon, 0, 0, 0));
         return bitmap;
     }
 
