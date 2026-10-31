@@ -870,8 +870,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     // The character entered the world and its session starts on the next frame.
     private bool _sessionPending;
-    // Backlog 178's parity check, until Decal's identity reads go: Decal's names are compared with the native ones once Decal has caught up.
-    private bool _parityPending;
 
     // InventoryPutObjInContainer, WieldObject and InventoryPutObjectIn3D (ACE's GameEventType).
     private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };
@@ -962,27 +960,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (!_sessionPending || _inGame) return;
         _sessionPending = false;
-        _parityPending = true;
         Log($"{Identity.CharacterName} entered the world on {Identity.Server}: its session starts, before portal space.");
         LoginComplete();
-    }
-
-    /// <summary>
-    /// Backlog 178's parity check: logs whether Decal's id, names, race and gender match the native ones, once Decal has switched to this
-    /// character. Saved places and settings are keyed by the names, so a mismatch would lose them. Goes with Decal's identity reads.
-    /// </summary>
-    private void LogIdentityParity()
-    {
-        if (!_parityPending) return;
-        try
-        {
-            if ((uint)Bridge.Fact(BridgeFact.CharacterId) != Identity.CharacterId) return;
-            var decal = (Bridge.Text(BridgeText.CharacterName), Bridge.Text(BridgeText.ServerName), Bridge.Text(BridgeText.Race), Bridge.Text(BridgeText.Gender));
-            var native = (Identity.CharacterName, Identity.Server, Identity.Race, Identity.Gender);
-            Log(decal == native ? $"Identity parity: Decal and native match: {native}." : $"Identity parity: MISMATCH, Decal {decal}, native {native}.");
-        }
-        catch (COMException exception) { Log($"Identity parity: Decal could not be read: {exception.Message}"); }
-        _parityPending = false;
     }
 
     /// <summary>
@@ -1165,7 +1144,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void Logoff()
     {
         _sessionPending = false;
-        _parityPending = false;
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
@@ -1612,7 +1590,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             return;
 
         StartSessionOnWorldEntry();
-        LogIdentityParity();
         if (_uiSizeChanged) Guard(ApplyUiSize);
         if (_positionsResetRequested) Guard(ResetPositions);
         if (_layoutToLoad is { } layout) Guard(() => LoadUiLayout(layout));

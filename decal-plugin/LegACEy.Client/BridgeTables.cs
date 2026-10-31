@@ -93,7 +93,7 @@ public unsafe struct BridgeCalls
 /// <summary>The integer facts <see cref="BridgeCalls.Fact"/> answers.</summary>
 public enum BridgeFact
 {
-    /// <summary>CharacterFilter.Id.</summary>
+    /// <summary>CharacterFilter.Id. Unused since 178: the server's PlayerDescription names the character.</summary>
     CharacterId,
     Health, MaxHealth, Stamina, MaxStamina, Mana, MaxMana,
     /// <summary>CharacterFilter.BurdenUnits.</summary>
@@ -122,6 +122,7 @@ public enum BridgeFact
 /// <summary>The strings <see cref="BridgeCalls.Text"/> answers.</summary>
 public enum BridgeText
 {
+    /// <summary>Unused since 178, as ServerName, Race and Gender: the server's PlayerDescription and Login_WorldInfo give them.</summary>
     CharacterName,
     ServerName,
     /// <summary>The folder holding the stub DLL: the log, settings and Plugins\ live there. Unused since 177: the client finds it from its own folder.</summary>
