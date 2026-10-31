@@ -144,6 +144,9 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
 
     public void Examine(uint spell) => _examine(spell);
 
+    public SpellBarEndowment? Endowment => null; // TODO(169): read retail's endowment item
+    public void SelectEndowment() { }
+
     public bool UiLocked => _lockAvailable && NativeUi.IsUiLocked;
 
     /// <summary>

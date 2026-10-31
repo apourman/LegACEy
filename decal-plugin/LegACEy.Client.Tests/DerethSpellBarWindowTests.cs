@@ -152,14 +152,28 @@ public sealed class DerethSpellBarWindowTests
         var ids = names.Select(n => spells.Where(s => s.Value.Name == n).Select(s => s.Key).DefaultIfEmpty(0u).Min()).Where(id => id != 0).ToArray();
         var port = new FakeSpellBarPort(ids);
         port.Select(ids.Skip(1).FirstOrDefault());
-        foreach (var width in new[] { DerethSpellBarWindow.DesignWidth, 900 })
+        // LEGACEY_SPELLBAR_ENDOWMENT names a 32 by 32 BGRA icon for the item at the left, selected, under retail's name for it.
+        var endowmentIcon = Environment.GetEnvironmentVariable("LEGACEY_SPELLBAR_ENDOWMENT");
+        IGameArtSource? art = portal;
+        if (endowmentIcon != null)
         {
-            using var panel = AvaloniaPanel.Create(() => new DerethSpellBarWindow(port, () => spells, portal, null, () => { }), width, 90);
+            art = new WithIcon(portal, 0x0600FFFF, new GameImage(32, 32, File.ReadAllBytes(endowmentIcon)));
+            port.Endowment = new SpellBarEndowment(new ItemVisual(0x0600FFFF, 0, 0, 0), "White Sapphire Orb (Might of the 5 Mules)", false);
+            port.SelectEndowment();
+        }
+        foreach (var (width, height) in new[] { (DerethSpellBarWindow.DesignWidth, 90), (900, 90), (457, 67), (813, 120) })
+        {
+            using var panel = AvaloniaPanel.Create(() => new DerethSpellBarWindow(port, () => spells, art, null, () => { }), width, height);
             panel.Tick();
             panel.Tick();
-            PanelPng.Save(panel, Path.Combine(folder, $"spellbar-{width}.png"));
+            PanelPng.Save(panel, Path.Combine(folder, $"spellbar-{width}x{height}.png"));
         }
     });
+
+    private sealed class WithIcon(IGameArtSource? inner, uint id, GameImage image) : IGameArtSource
+    {
+        public GameImage? ReadImage(uint wanted) => wanted == id ? image : inner?.ReadImage(wanted);
+    }
 
     private sealed class FakeSpellBarPort : ISpellBarPort
     {
@@ -179,6 +193,12 @@ public sealed class DerethSpellBarWindowTests
             Selected = spell;
         }
         public void Examine(uint spell) => Examined.Add(spell);
+        public SpellBarEndowment? Endowment { get; set; }
+        public void SelectEndowment()
+        {
+            if (Endowment != null) Endowment = Endowment with { Selected = true };
+            Selected = 0;
+        }
         public bool UiLocked => false;
         public event EventHandler? Changed { add { } remove { } }
     }
