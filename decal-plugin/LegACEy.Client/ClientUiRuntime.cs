@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -846,6 +847,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // DDD_EndDDD, which ends the DDD exchange at connect (ACE's GameMessageOpcode).
     internal const int DddEndMessage = 0xF7EA;
 
+    // Login_CreatePlayer: the character's id as it enters the world, before portal space (ACE's PlayerCreate).
+    private const int PlayerCreateMessage = 0xF746;
+
+    // The character entering the world from Login_CreatePlayer, until its session starts; 0 when none is.
+    private uint _enteringWorld;
+
     // InventoryPutObjInContainer, WieldObject and InventoryPutObjectIn3D (ACE's GameEventType).
     private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };
 
@@ -877,6 +884,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _inventory.MarkStale();
         // The server's DDD exchange ended: a LegACEy server with a world sent its note before this.
         if (type == DddEndMessage) _world?.NoNote();
+        // The id is the message's last four bytes, whether or not Decal's raw bytes start with the type.
+        if (type == PlayerCreateMessage && raw.Length >= 4) _enteringWorld = BinaryPrimitives.ReadUInt32LittleEndian(raw[^4..]);
         if (_serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
@@ -890,9 +899,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             Guard(() => _serverChannel.Receive(payload));
     }
 
-    /// <summary>Enable character-specific windows once Decal has finished loading character identity.</summary>
+    /// <summary>
+    /// Starts the character's session: its windows, toolbar, chat and bars. Retail shows its windows from the world entry on, through
+    /// portal space, so the session starts then (<see cref="StartSessionOnWorldEntry"/>); Decal's login complete, after portal space, starts
+    /// it when that did not.
+    /// </summary>
     public void LoginComplete()
     {
+        if (_inGame) return;
         _loggedIn = true;
         HideCharacterSelectToast();
         // A Log out and update whose logout never came through is forgotten, so this session's own logout doesn't close the game.
@@ -913,6 +927,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             PublishGameState();
             RequestServerActions();
         });
+    }
+
+    /// <summary>
+    /// Starts the session of the character entering the world once Decal knows it: its id is the one the server sent, so the windows
+    /// load this character's places and settings, never the last one's.
+    /// </summary>
+    private void StartSessionOnWorldEntry()
+    {
+        if (_enteringWorld == 0 || _inGame) return;
+        try { if ((uint)Bridge.Fact(BridgeFact.CharacterId) != _enteringWorld || SessionCharacter().Length == 0) return; }
+        catch (COMException) { return; }
+        _enteringWorld = 0;
+        Log("The character entered the world: its session starts, before portal space.");
+        LoginComplete();
     }
 
     /// <summary>
@@ -1091,8 +1119,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return true;
     }
 
+    /// <summary>The session ends: the server let the logoff through, at the end of the logout animation, or a rebuild closes it.</summary>
     public void Logoff()
     {
+        _enteringWorld = 0;
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
@@ -1532,6 +1562,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_failed || !NativeUi.Ready)
             return;
 
+        StartSessionOnWorldEntry();
         if (_uiSizeChanged) Guard(ApplyUiSize);
         if (_positionsResetRequested) Guard(ResetPositions);
         if (_layoutToLoad is { } layout) Guard(() => LoadUiLayout(layout));

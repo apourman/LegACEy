@@ -127,10 +127,13 @@ public sealed unsafe class Plugin : FilterBase
     // Bridge.Raise on the client side catches every exception, so these plain forwards can't unwind into Decal.
     private void OnRenderFrame(object? sender, EventArgs e) => _events->Frame();
     private void OnLoginComplete(object? sender, EventArgs e) => _events->LoginComplete();
+    // Retail keeps its windows up through the logout animation, so the session ends when the server lets the logoff through; a refused
+    // logoff never ends it.
     private void OnLogoff(object? sender, LogoffEventArgs e)
     {
+        if (e.Type != LogoffEventType.Authorized) return;
         _events->Logoff();
-        if (e.Type == LogoffEventType.Authorized && _events->LogoffAuthorized != null) _events->LogoffAuthorized();
+        if (_events->LogoffAuthorized != null) _events->LogoffAuthorized();
     }
     private void OnItemSelected(object? sender, ItemSelectedEventArgs e) => _events->ItemSelected();
     private void OnContainerOpened(object? sender, ContainerOpenedEventArgs e) => _events->ContainerOpened();
@@ -159,9 +162,10 @@ public sealed unsafe class Plugin : FilterBase
     private void OnServerDispatch(object? sender, NetworkMessageEventArgs e)
     {
         // Game events (0xF7B0) carry the server channel; DDD_EndDDD (0xF7EA) ends character select's DDD exchange, after any world note;
+        // Login_CreatePlayer (0xF746) is the character entering the world, before portal space, when retail's windows come up;
         // 0xF625 to 0xF7DB are objects' looks, for the paperdoll (the client's LookCache); 0x02CD to 0x02E7 are the private int, int64,
         // skill, attribute and vital updates, for the character window (CharacterSheet).
-        if (e.Message.Type is not (0xF7B0 or 0xF7EA or 0xF625 or 0xF745 or 0xF747 or 0xF749 or 0xF74A or 0xF7DB
+        if (e.Message.Type is not (0xF7B0 or 0xF7EA or 0xF746 or 0xF625 or 0xF745 or 0xF747 or 0xF749 or 0xF74A or 0xF7DB
             or 0x02CD or 0x02CF or 0x02DD or 0x02E3 or 0x02E7)) return;
         try
         {
