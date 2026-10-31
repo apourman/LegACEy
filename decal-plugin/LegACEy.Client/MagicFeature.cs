@@ -218,7 +218,7 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         var focus = State.Infused.Contains(spell.School) || Foci.TryGetValue(spell.School, out var wcid) && carried.Contains(wcid);
         var formula = focus ? SpellFormula.ScarabOnly(spell) : SpellFormula.ForAccount(spell, MagicNatives.AccountName(_log));
         var table = _components().Components;
-        var components = formula.Select(c => table.TryGetValue(c, out var component) ? component : null).Where(c => c != null).Select(c => c!).ToList();
+        var components = formula.Where(table.ContainsKey).Select(c => table[c]).ToList();
         var school = SchoolNames.TryGetValue(spell.School, out var name) ? name : string.Empty;
         int? level = SchoolSkills.TryGetValue(spell.School, out var skill) && NativeVitals.TryReadSkillLevel(skill, _log, out var read) ? read : null;
         var details = new AppraisalSpell(spell, AppraisalSpell.FiguresOf(spell, level), components.Select(c => c.Name).ToList(),

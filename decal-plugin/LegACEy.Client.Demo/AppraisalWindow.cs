@@ -181,10 +181,11 @@ public sealed class AppraisalWindow
     private static (Control Body, Control? Top, Control? Foot, int Needed, InscriptionField? Field, Thickness MiddleMargin) Layout(AppraisalContent content,
         Func<uint, string, bool> inscribe, bool retail, IGameArtSource? art)
     {
-        var body = content.Spell is { } spell ? SpellBody(content, spell, art) : retail ? RetailBody(content) : SectionsBody(content);
+        var spell = content.Spell;
+        var body = spell != null ? SpellBody(content, spell, art) : retail ? RetailBody(content) : SectionsBody(content);
         var top = retail && content.Creature is { } creature ? HeaderBox(creature) : null;
         InscriptionField? field = null;
-        var foot = content.Spell != null ? FormulaPlate(content.Spell, art)
+        var foot = spell != null ? FormulaPlate(spell, art)
             : content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, retail, out field) : null;
         // A window measured before it is shown has no template yet, so the parts are measured and the chrome added to them.
         var needed = Chrome + new[] { body, top, foot }.Sum(part =>

@@ -606,7 +606,7 @@ public sealed class DerethWindow : UserControl
 
     /// <summary>
     /// The header's height, as the constructor set it (<see cref="IconHeaderHeight"/> or <see cref="HeaderHeight"/>). A window can slim it
-    /// down while it shows no icon, as far as <see cref="HeaderButtonSize"/>.
+    /// down while it shows no icon; below <see cref="HeaderButtonSize"/> the header buttons would not fit.
     /// </summary>
     public double HeaderBarHeight
     {
