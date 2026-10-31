@@ -75,11 +75,6 @@ public sealed unsafe class Plugin : FilterBase
         });
         Unsubscribe(() =>
         {
-            CoreManager.Current.CharacterFilter.LoginComplete -= OnLoginComplete;
-            CoreManager.Current.CharacterFilter.Logoff -= OnLogoff;
-        });
-        Unsubscribe(() =>
-        {
             var world = CoreManager.Current.WorldFilter;
             world.CreateObject -= OnCreated;
             world.ChangeObject -= OnChanged;
@@ -103,8 +98,6 @@ public sealed unsafe class Plugin : FilterBase
         {
             var core = CoreManager.Current;
             core.FilterInitComplete -= OnFilterInitComplete;
-            core.CharacterFilter.LoginComplete += OnLoginComplete;
-            core.CharacterFilter.Logoff += OnLogoff;
             // The open container and the selection are part of the inventory snapshot, whoever changed them.
             core.ItemSelected += OnItemSelected;
             core.ContainerOpened += OnContainerOpened;
@@ -118,15 +111,6 @@ public sealed unsafe class Plugin : FilterBase
     }
 
     // Bridge.Raise on the client side catches every exception, so these plain forwards can't unwind into Decal.
-    private void OnLoginComplete(object? sender, EventArgs e) => _events->LoginComplete();
-    // Retail keeps its windows up through the logout animation, so the session ends when the server lets the logoff through; a refused
-    // logoff never ends it.
-    private void OnLogoff(object? sender, LogoffEventArgs e)
-    {
-        if (e.Type != LogoffEventType.Authorized) return;
-        _events->Logoff();
-        if (_events->LogoffAuthorized != null) _events->LogoffAuthorized();
-    }
     private void OnItemSelected(object? sender, ItemSelectedEventArgs e) => _events->ItemSelected();
     private void OnContainerOpened(object? sender, ContainerOpenedEventArgs e) => _events->ContainerOpened();
 

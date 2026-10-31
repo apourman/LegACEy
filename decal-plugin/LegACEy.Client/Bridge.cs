@@ -9,14 +9,10 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The client's side of each Decal event. <see cref="ClientUiRuntime"/> is the client. The frame, the game window's messages, the server's
-/// messages and chat lines come from the client's own hooks since backlog 177.
+/// messages and chat lines come from the client's own hooks since backlog 177, and login and logoff from the server's messages since 178.
 /// </summary>
 internal interface IClientEvents
 {
-    void LoginComplete();
-    void Logoff();
-    /// <summary>A logoff the server has let through (Decal's Authorized type), after the Logoff it also raises.</summary>
-    void LogoffAuthorized();
     void ItemSelected();
     void ContainerOpened();
     void InventoryChanged(uint id, uint container);
@@ -70,10 +66,10 @@ public static unsafe class Bridge
             _client = createClient();
             *events = new BridgeEvents
             {
-                // Unused since 177; a stub from before it still raises them, so they are there and do nothing.
-                Frame = &Unused, WindowMessage = &UnusedMessage, ServerMessage = &UnusedServerMessage,
-                LoginComplete = &OnLoginComplete, Logoff = &OnLogoff, ItemSelected = &OnItemSelected, ContainerOpened = &OnContainerOpened,
-                InventoryChanged = &OnInventoryChanged, Shutdown = &OnShutdown, LogoffAuthorized = &OnLogoffAuthorized
+                // Unused since 177 and 178; a stub from before them still raises them, so they are there and do nothing.
+                Frame = &Unused, WindowMessage = &UnusedMessage, ServerMessage = &UnusedServerMessage, LoginComplete = &Unused, Logoff = &Unused,
+                LogoffAuthorized = &Unused, ItemSelected = &OnItemSelected, ContainerOpened = &OnContainerOpened,
+                InventoryChanged = &OnInventoryChanged, Shutdown = &OnShutdown
             };
             return 0;
         }
@@ -93,15 +89,6 @@ public static unsafe class Bridge
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static void UnusedServerMessage(int type, byte* raw, int length) { }
-
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static void OnLoginComplete() => Raise(static client => client.LoginComplete());
-
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static void OnLogoff() => Raise(static client => client.Logoff());
-
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static void OnLogoffAuthorized() => Raise(static client => client.LogoffAuthorized());
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static void OnItemSelected() => Raise(static client => client.ItemSelected());
@@ -214,7 +201,7 @@ public static unsafe class Bridge
         return new RetailSelection(id, name, kind, StackCount: row.StackCount);
     }
 
-    internal static GameStateSnapshot ReadGameState() => new(Text(BridgeText.CharacterName), Text(BridgeText.ServerName),
+    internal static GameStateSnapshot ReadGameState() => new(ClientUiRuntime.Identity.CharacterName, ClientUiRuntime.Identity.Server,
         Fact(BridgeFact.Health), Fact(BridgeFact.MaxHealth), Fact(BridgeFact.Stamina), Fact(BridgeFact.MaxStamina),
         Fact(BridgeFact.Mana), Fact(BridgeFact.MaxMana));
 

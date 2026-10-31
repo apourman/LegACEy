@@ -74,7 +74,6 @@ internal static unsafe class DecalCalls
         var character = core.CharacterFilter;
         return fact switch
         {
-            BridgeFact.CharacterId => character.Id,
             BridgeFact.Health => character.Health,
             BridgeFact.MaxHealth => Maximum(CharFilterVitalType.Health),
             BridgeFact.Stamina => character.Stamina,
@@ -139,11 +138,7 @@ internal static unsafe class DecalCalls
     {
         var value = (BridgeText)text switch
             {
-            BridgeText.CharacterName => CoreManager.Current.CharacterFilter.Name,
-            BridgeText.ServerName => CoreManager.Current.CharacterFilter.Server,
             BridgeText.PluginDirectory => Plugin.Directory,
-            BridgeText.Race => CoreManager.Current.CharacterFilter.Race,
-            BridgeText.Gender => CoreManager.Current.CharacterFilter.Gender,
             _ => throw new ArgumentOutOfRangeException(nameof(text), text, "Unknown bridge text.")
         };
         Utf8(value, buffer, capacity, length);

@@ -153,9 +153,9 @@ internal sealed class CharacterFeature : ICharacterGame, IDisposable
 
     // The game, as the window reads it.
 
-    string ICharacterGame.Name => Text(BridgeText.CharacterName);
-    string ICharacterGame.Race => Text(BridgeText.Race);
-    string ICharacterGame.Gender => Text(BridgeText.Gender);
+    string ICharacterGame.Name => ClientUiRuntime.Identity.CharacterName;
+    string ICharacterGame.Race => ClientUiRuntime.Identity.Race;
+    string ICharacterGame.Gender => ClientUiRuntime.Identity.Gender;
 
     StatValue? ICharacterGame.Value(StatKind kind, uint id)
     {
@@ -199,11 +199,5 @@ internal sealed class CharacterFeature : ICharacterGame, IDisposable
         var sent = _transport()?.SendAction(action, payload) == true;
         if (!sent) _log($"Could not send character action 0x{action:X4}: the game connection is not ready.");
         return sent;
-    }
-
-    private static string Text(BridgeText text)
-    {
-        try { return Bridge.Text(text); }
-        catch (COMException) { return string.Empty; }
     }
 }

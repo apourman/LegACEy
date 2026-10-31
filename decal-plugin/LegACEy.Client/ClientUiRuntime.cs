@@ -1,5 +1,4 @@
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -445,7 +444,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public ClientUiRuntime()
     {
         _looks = new GameLooks(_lookCache, () => ((ILegACEyPluginHost)this).ServerChannel, action => _plugins?.SupportsAction(action) == true,
-            () => (uint)Bridge.Fact(BridgeFact.CharacterId));
+            () => Identity.CharacterId);
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
@@ -866,11 +865,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // DDD_EndDDD, which ends the DDD exchange at connect (ACE's GameMessageOpcode).
     internal const int DddEndMessage = 0xF7EA;
 
-    // Login_CreatePlayer: the character's id as it enters the world, before portal space (ACE's PlayerCreate).
-    private const int PlayerCreateMessage = 0xF746;
+    /// <summary>The character playing and its server, from the server's messages; the windows' places and settings are kept under its names.</summary>
+    internal static SessionIdentity Identity { get; } = new();
 
-    // The character entering the world from Login_CreatePlayer, until its session starts; 0 when none is.
-    private uint _enteringCharacterId;
+    // The character entered the world and its session starts on the next frame.
+    private bool _sessionPending;
 
     // InventoryPutObjInContainer, WieldObject and InventoryPutObjectIn3D (ACE's GameEventType).
     private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };
@@ -903,8 +902,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _inventory.MarkStale();
         // The server's DDD exchange ended: a LegACEy server with a world sent its note before this.
         if (type == DddEndMessage) _world?.NoNote();
-        // The id is the message's last four bytes.
-        if (type == PlayerCreateMessage && raw.Length >= 4) _enteringCharacterId = BinaryPrimitives.ReadUInt32LittleEndian(raw[^4..]);
+        switch (Identity.Receive(type, raw))
+        {
+            case SessionChange.Entered: _sessionPending = true; break;
+            case SessionChange.LoggedOff:
+                Logoff();
+                LogoffAuthorized();
+                break;
+        }
         if (_serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
@@ -920,10 +925,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Starts the character's session: its windows, toolbar, chat and bars. Retail shows its windows from the world entry on, through
-    /// portal space, so the session starts then (<see cref="StartSessionOnWorldEntry"/>); Decal's login complete, after portal space, starts
-    /// it when that did not.
+    /// portal space, so the session starts then (<see cref="StartSessionOnWorldEntry"/>).
     /// </summary>
-    public void LoginComplete()
+    private void LoginComplete()
     {
         if (_inGame) return;
         _loggedIn = true;
@@ -949,19 +953,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Starts the session of the character entering the world once Decal knows it: its id is the one the server sent, so the windows
-    /// load this character's places and settings, never the last one's.
+    /// Starts the session of the character that entered the world. The server described it before Login_CreatePlayer, so the windows load
+    /// this character's places and settings, never the last one's.
     /// </summary>
     private void StartSessionOnWorldEntry()
     {
-        if (_enteringCharacterId == 0 || _inGame) return;
-        // Decal, not the native player id (RetailHudCatalogue.PlayerId): the windows' places and settings are kept under Decal's character
-        // and server names (SessionCharacter), so the session waits until Decal has switched to this character. The native id is already
-        // this character's when the message arrives and cannot say that. Backlog 176 moves the character's identity off Decal.
-        try { if ((uint)Bridge.Fact(BridgeFact.CharacterId) != _enteringCharacterId || SessionCharacter().Length == 0) return; }
-        catch (COMException) { return; }
-        _enteringCharacterId = 0;
-        Log("The character entered the world: its session starts, before portal space.");
+        if (!_sessionPending || _inGame) return;
+        _sessionPending = false;
+        Log($"{Identity.CharacterName} entered the world on {Identity.Server}: its session starts, before portal space.");
         LoginComplete();
     }
 
@@ -1112,10 +1111,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// The server has let the character go. After Log out and update, this closes the game, as its window's × does, never by ending the
-    /// process from under it, and the updater waiting for it installs once it has gone. Decal raises this Authorized logoff at the end
-    /// of the logout animation (seen in game, 31 Oct). Still to be seen in game: that retail closes cleanly on the WM_CLOSE.
+    /// process from under it, and the updater waiting for it installs once it has gone. The server lets the character go at the end of
+    /// the logout animation. Still to be seen in game: that retail closes cleanly on the WM_CLOSE.
     /// </summary>
-    public void LogoffAuthorized()
+    private void LogoffAuthorized()
     {
         if (!_quitPending) return;
         _quitPending = false;
@@ -1142,9 +1141,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>The session ends: the server let the logoff through, at the end of the logout animation, or a rebuild closes it.</summary>
-    public void Logoff()
+    private void Logoff()
     {
-        _enteringCharacterId = 0;
+        _sessionPending = false;
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
@@ -1608,7 +1607,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 // Never outline the player: opening the main pack selects them.
                 var selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
-                _worldEffects.Selected = selected != 0 && selected != (uint)Bridge.Fact(BridgeFact.CharacterId) ? selected : 0;
+                _worldEffects.Selected = selected != 0 && selected != Identity.CharacterId ? selected : 0;
             }
             _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
@@ -2238,9 +2237,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (now < _pruneAt) return;
         _pruneAt = now + PruneIntervalMs;
         // The character is always kept, with what it holds: Decal missing it for a moment (portal space, login) must not blank the paperdoll.
-        uint player;
-        try { player = (uint)Bridge.Fact(BridgeFact.CharacterId); }
-        catch (COMException) { return; }
+        var player = Identity.CharacterId;
         var forgotten = _lookCache.Prune(id =>
         {
             if (id == player) return true;
@@ -5098,8 +5095,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ReleaseFeatureWindow(id);
     }
 
-    private static string SessionCharacter() => Bridge.Text(BridgeText.CharacterName);
-    private static string SessionServer() => Bridge.Text(BridgeText.ServerName);
+    private static string SessionCharacter() => Identity.CharacterName;
+    private static string SessionServer() => Identity.Server;
 
     private void PublishGameState() => _gameStatePoller.Poll(_inGame);
 
