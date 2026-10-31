@@ -115,7 +115,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
                     Math.Max(0, Math.Min(screen.Width - Math.Max(size.Width, bounds.Width), saved.X)),
                     Math.Max(0, Math.Min(screen.Height - Math.Max(size.Height, bounds.Height), saved.Y)));
                 bounds = MoveNative(location);
-                // RenderFrame precedes retail layout: also recover on the following frame
+                // The frame can run before retail's layout: also recover on the following frame
                 // in case the layout reset happens after this frame's viewport observation.
                 if (!viewportChanged)
                     _resizeLocation = null;

@@ -18,7 +18,8 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The thin Decal stub. It starts the LegACEy client's .NET 10 runtime from runtime\ beside this DLL and hands it the bridge: Decal
-/// events go in through the client's table, and the client's Decal reads and actions come back out through <see cref="DecalCalls"/>.
+/// events go in through the client's table, and the client's Decal reads and actions come back out through <see cref="DecalCalls"/>. The
+/// client hooks its own frame, input, server messages and chat lines.
 /// Anything that fails here is logged and leaves the game untouched; nothing is thrown into Decal.
 /// </summary>
 [FriendlyName("LegACEy Decal Plugin")]
@@ -69,9 +70,6 @@ public sealed unsafe class Plugin : FilterBase
         {
             var core = CoreManager.Current;
             core.FilterInitComplete -= OnFilterInitComplete;
-            core.RenderFrame -= OnRenderFrame;
-            core.WindowMessage -= OnWindowMessage;
-            core.CommandLineText -= OnCommandLineText;
             core.ItemSelected -= OnItemSelected;
             core.ContainerOpened -= OnContainerOpened;
         });
@@ -80,7 +78,6 @@ public sealed unsafe class Plugin : FilterBase
             CoreManager.Current.CharacterFilter.LoginComplete -= OnLoginComplete;
             CoreManager.Current.CharacterFilter.Logoff -= OnLogoff;
         });
-        Unsubscribe(() => CoreManager.Current.EchoFilter.ServerDispatch -= OnServerDispatch);
         Unsubscribe(() =>
         {
             var world = CoreManager.Current.WorldFilter;
@@ -108,10 +105,6 @@ public sealed unsafe class Plugin : FilterBase
             core.FilterInitComplete -= OnFilterInitComplete;
             core.CharacterFilter.LoginComplete += OnLoginComplete;
             core.CharacterFilter.Logoff += OnLogoff;
-            core.RenderFrame += OnRenderFrame;
-            core.WindowMessage += OnWindowMessage;
-            core.CommandLineText += OnCommandLineText;
-            core.EchoFilter.ServerDispatch += OnServerDispatch;
             // The open container and the selection are part of the inventory snapshot, whoever changed them.
             core.ItemSelected += OnItemSelected;
             core.ContainerOpened += OnContainerOpened;
@@ -125,7 +118,6 @@ public sealed unsafe class Plugin : FilterBase
     }
 
     // Bridge.Raise on the client side catches every exception, so these plain forwards can't unwind into Decal.
-    private void OnRenderFrame(object? sender, EventArgs e) => _events->Frame();
     private void OnLoginComplete(object? sender, EventArgs e) => _events->LoginComplete();
     // Retail keeps its windows up through the logout animation, so the session ends when the server lets the logoff through; a refused
     // logoff never ends it.
@@ -137,43 +129,6 @@ public sealed unsafe class Plugin : FilterBase
     }
     private void OnItemSelected(object? sender, ItemSelectedEventArgs e) => _events->ItemSelected();
     private void OnContainerOpened(object? sender, ContainerOpenedEventArgs e) => _events->ContainerOpened();
-
-    private void OnWindowMessage(object? sender, WindowMessageEventArgs e)
-    {
-        try
-        {
-            if (_events->WindowMessage(e.Hwnd, e.Msg, e.WParam, e.LParam) != 0) e.Eat = true;
-        }
-        catch (Exception exception) { Log($"Could not pass a window message to LegACEy: {exception.Message}"); }
-    }
-
-    private void OnCommandLineText(object? sender, ChatParserInterceptEventArgs e)
-    {
-        try
-        {
-            if (_events->CommandLine == null || string.IsNullOrEmpty(e.Text)) return;
-            var text = Encoding.UTF8.GetBytes(e.Text);
-            fixed (byte* bytes = text)
-                if (_events->CommandLine(bytes, text.Length) != 0) e.Eat = true;
-        }
-        catch (Exception exception) { Log($"Could not pass a chat line to LegACEy: {exception.Message}"); }
-    }
-
-    private void OnServerDispatch(object? sender, NetworkMessageEventArgs e)
-    {
-        // Game events (0xF7B0) carry the server channel; DDD_EndDDD (0xF7EA) ends character select's DDD exchange, after any world note;
-        // Login_CreatePlayer (0xF746) is the character entering the world, before portal space, when retail's windows come up;
-        // 0xF625 to 0xF7DB are objects' looks, for the paperdoll (the client's LookCache); 0x02CD to 0x02E7 are the private int, int64,
-        // skill, attribute and vital updates, for the character window (CharacterSheet).
-        if (e.Message.Type is not (0xF7B0 or 0xF7EA or 0xF746 or 0xF625 or 0xF745 or 0xF747 or 0xF749 or 0xF74A or 0xF7DB
-            or 0x02CD or 0x02CF or 0x02DD or 0x02E3 or 0x02E7)) return;
-        try
-        {
-            var raw = e.Message.RawData;
-            fixed (byte* bytes = raw) _events->ServerMessage(e.Message.Type, bytes, raw.Length);
-        }
-        catch (Exception exception) { Log($"Could not pass a server message to LegACEy: {exception.Message}"); }
-    }
 
     private void OnCreated(object? sender, CreateObjectEventArgs e) => InventoryChanged(e.New);
     private void OnChanged(object? sender, ChangeObjectEventArgs e) => InventoryChanged(e.Changed);

@@ -8,10 +8,12 @@ using Reloaded.Hooks.Definitions.X86;
 
 namespace LegACEy.Client.DecalPlugin;
 
-/// <summary>Draws before the checked retail RenderDeviceD3D.EndScene function.</summary>
+/// <summary>Draws before the checked retail RenderDeviceD3D.EndScene function, and reads the game's Direct3D device there.</summary>
 internal sealed class PostUiDrawHook : IDisposable
 {
-    internal static readonly byte[] Signature = { 0x56, 0x8b, 0xf1, 0x8a, 0x86, 0xac, 0, 0, 0, 0x84, 0xc0, 0x74, 0x16 };
+    // The prologue up to RenderDeviceD3D's IDirect3DDevice9* (mov eax, [esi+0x468]), which EndScene ends the scene on.
+    internal static readonly byte[] Signature = { 0x56, 0x8b, 0xf1, 0x8a, 0x86, 0xac, 0, 0, 0, 0x84, 0xc0, 0x74, 0x16, 0x8b, 0x86, 0x68, 0x04, 0, 0 };
+    private const int DeviceOffset = 0x468;
     private readonly Action _draw;
     private readonly Action<Exception> _failed;
     private readonly Action<string> _log;
@@ -37,6 +39,8 @@ internal sealed class PostUiDrawHook : IDisposable
 
     public bool IsInstalled => _installed;
     public bool HasRun => _hasRun;
+    /// <summary>The game's IDirect3DDevice9, zero until the first frame.</summary>
+    public IntPtr Device { get; private set; }
 
     public bool Install()
     {
@@ -81,6 +85,7 @@ internal sealed class PostUiDrawHook : IDisposable
         if (!_inside && _installed)
         {
             _inside = true;
+            Device = Marshal.ReadIntPtr(renderDevice, DeviceOffset);
             _hasRun = true;
             try { _draw(); }
             catch (Exception exception)

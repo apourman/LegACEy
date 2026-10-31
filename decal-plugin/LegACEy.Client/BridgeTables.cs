@@ -8,15 +8,15 @@ namespace LegACEy.Client.DecalPlugin;
 // This file holds only the layouts and builds on net48 too (the DecalPlugin project compiles it), so the stub uses this same file
 // rather than a mirror. Append fields, never reorder them.
 
-/// <summary>Decal events into the client. The stub allocates it; Bridge.Init fills it in.</summary>
+/// <summary>Decal events into the client. The stub allocates it; Bridge.Init fills it in, with a do-nothing function in each unused slot.</summary>
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct BridgeEvents
 {
-    /// <summary>Decal's RenderFrame.</summary>
+    /// <summary>Decal's RenderFrame. Unused since 177: the client hooks retail's SceneTool::EndFrame.</summary>
     public delegate* unmanaged[Stdcall]<void> Frame;
-    /// <summary>Decal's WindowMessage: (hwnd, msg, wParam, lParam), returning 1 to eat the message.</summary>
+    /// <summary>Decal's WindowMessage: (hwnd, msg, wParam, lParam), returning 1 to eat the message. Unused since 177: the client subclasses the game window.</summary>
     public delegate* unmanaged[Stdcall]<int, int, int, int, int> WindowMessage;
-    /// <summary>Decal's EchoFilter.ServerDispatch: (message type, raw bytes, length). The bytes are only read during the call.</summary>
+    /// <summary>Decal's EchoFilter.ServerDispatch: (message type, raw bytes, length). Unused since 177: the client hooks retail's message queue.</summary>
     public delegate* unmanaged[Stdcall]<int, byte*, int, void> ServerMessage;
     /// <summary>CharacterFilter.LoginComplete.</summary>
     public delegate* unmanaged[Stdcall]<void> LoginComplete;
@@ -30,7 +30,7 @@ public unsafe struct BridgeEvents
     public delegate* unmanaged[Stdcall]<int, int, void> InventoryChanged;
     /// <summary>The plugin's Shutdown. No event is raised after it.</summary>
     public delegate* unmanaged[Stdcall]<void> Shutdown;
-    /// <summary>Decal's CommandLineText: (UTF-8 text, length), returning 1 to eat the line. Null from a client built before it.</summary>
+    /// <summary>Decal's CommandLineText: (UTF-8 text, length), returning 1 to eat the line. Unused since 177: the client hooks retail's chat commands.</summary>
     public delegate* unmanaged[Stdcall]<byte*, int, int> CommandLine;
     /// <summary>CharacterFilter.Logoff of the Authorized type, raised after Logoff. Null from a client built before it.</summary>
     public delegate* unmanaged[Stdcall]<void> LogoffAuthorized;
@@ -44,7 +44,7 @@ public unsafe struct BridgeEvents
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct BridgeCalls
 {
-    /// <summary>(out device): the game's IDirect3DDevice9, or zero when Decal has none yet.</summary>
+    /// <summary>(out device): the game's IDirect3DDevice9. Unused since 177: the client's EndScene hook reads it; the stub fails it.</summary>
     public delegate* unmanaged[Stdcall]<IntPtr*, int> Device;
     /// <summary>(fact, out value): one <see cref="BridgeFact"/> value.</summary>
     public delegate* unmanaged[Stdcall]<int, int*, int> Fact;
@@ -124,7 +124,7 @@ public enum BridgeText
 {
     CharacterName,
     ServerName,
-    /// <summary>The folder holding the stub DLL: the log, settings and Plugins\ live there.</summary>
+    /// <summary>The folder holding the stub DLL: the log, settings and Plugins\ live there. Unused since 177: the client finds it from its own folder.</summary>
     PluginDirectory,
     /// <summary>CharacterFilter.Race: the heritage, such as "Viamontian".</summary>
     Race,

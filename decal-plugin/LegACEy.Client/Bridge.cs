@@ -7,12 +7,12 @@ using LegACEy.Client.Demo;
 
 namespace LegACEy.Client.DecalPlugin;
 
-/// <summary>The client's side of each Decal event. <see cref="ClientUiRuntime"/> is the client.</summary>
+/// <summary>
+/// The client's side of each Decal event. <see cref="ClientUiRuntime"/> is the client. The frame, the game window's messages, the server's
+/// messages and chat lines come from the client's own hooks since backlog 177.
+/// </summary>
 internal interface IClientEvents
 {
-    void Frame();
-    bool WindowMessage(int hwnd, int message, int wParam, int lParam);
-    void ServerMessage(int type, ReadOnlySpan<byte> raw);
     void LoginComplete();
     void Logoff();
     /// <summary>A logoff the server has let through (Decal's Authorized type), after the Logoff it also raises.</summary>
@@ -21,8 +21,6 @@ internal interface IClientEvents
     void ContainerOpened();
     void InventoryChanged(uint id, uint container);
     void Shutdown();
-    /// <summary>A line the player typed into chat. True eats it, so retail does not send it.</summary>
-    bool CommandLine(string text);
     /// <summary>Switches LegACEy UI off after a failure that reached the bridge.</summary>
     void Disable(Exception exception);
 }
@@ -69,15 +67,13 @@ public static unsafe class Bridge
         try
         {
             _calls = *calls;
-            var directory = Text(BridgeText.PluginDirectory);
-            if (directory.Length > 0) ClientUiRuntime.PluginDirectory = directory;
             _client = createClient();
             *events = new BridgeEvents
             {
-                Frame = &OnFrame, WindowMessage = &OnWindowMessage, ServerMessage = &OnServerMessage, LoginComplete = &OnLoginComplete,
-                Logoff = &OnLogoff, ItemSelected = &OnItemSelected, ContainerOpened = &OnContainerOpened,
-                InventoryChanged = &OnInventoryChanged, Shutdown = &OnShutdown, CommandLine = &OnCommandLine,
-                LogoffAuthorized = &OnLogoffAuthorized
+                // Unused since 177; a stub from before it still raises them, so they are there and do nothing.
+                Frame = &Unused, WindowMessage = &UnusedMessage, ServerMessage = &UnusedServerMessage,
+                LoginComplete = &OnLoginComplete, Logoff = &OnLogoff, ItemSelected = &OnItemSelected, ContainerOpened = &OnContainerOpened,
+                InventoryChanged = &OnInventoryChanged, Shutdown = &OnShutdown, LogoffAuthorized = &OnLogoffAuthorized
             };
             return 0;
         }
@@ -90,22 +86,13 @@ public static unsafe class Bridge
     }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static void OnFrame() => Raise(static client => client.Frame());
+    private static void Unused() { }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static int OnWindowMessage(int hwnd, int message, int wParam, int lParam)
-    {
-        if (_client is not { } client) return 0;
-        try { return client.WindowMessage(hwnd, message, wParam, lParam) ? 1 : 0; }
-        catch (Exception exception) { Fail(client, exception); return 0; }
-    }
+    private static int UnusedMessage(int hwnd, int message, int wParam, int lParam) => 0;
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static void OnServerMessage(int type, byte* raw, int length)
-    {
-        var bytes = (IntPtr)raw;
-        Raise(client => client.ServerMessage(type, new ReadOnlySpan<byte>((byte*)bytes, length)));
-    }
+    private static void UnusedServerMessage(int type, byte* raw, int length) { }
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static void OnLoginComplete() => Raise(static client => client.LoginComplete());
@@ -124,14 +111,6 @@ public static unsafe class Bridge
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static void OnInventoryChanged(int id, int container) => Raise(client => client.InventoryChanged((uint)id, (uint)container));
-
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static int OnCommandLine(byte* text, int length)
-    {
-        if (_client is not { } client) return 0;
-        try { return client.CommandLine(Encoding.UTF8.GetString(text, length)) ? 1 : 0; }
-        catch (Exception exception) { Fail(client, exception); return 0; }
-    }
 
     /// <summary>A failed shutdown switches the UI off too, which gives retail's panels back; the client is gone either way.</summary>
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
@@ -159,13 +138,6 @@ public static unsafe class Bridge
     private static void Check(int result, string call)
     {
         if (result != 0) throw new COMException($"Decal call {call} failed.", result);
-    }
-
-    internal static IntPtr Device()
-    {
-        IntPtr device;
-        Check(_calls.Device(&device), nameof(Device));
-        return device;
     }
 
     internal static int Fact(BridgeFact fact)

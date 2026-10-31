@@ -15,8 +15,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// </summary>
 internal static unsafe class DecalCalls
 {
-    private const int EFail = unchecked((int)0x80004005);
-    private static readonly Guid Direct3DDevice9 = new("D0223B96-BF7A-43FD-92BD-A43B0D82B9EB");
+    private const int EFail = unchecked((int)0x80004005), ENotImpl = unchecked((int)0x80004001);
     // Decal raises ChatNameClicked only from its hook on retail's chat. This is the handler that hook calls, (text, id, ref eat), so a
     // click in LegACEy's chat reaches every plugin's ChatNameClicked as a retail click does. Private: read from Decal.Adapter 2.9.8.3.
     private static readonly MethodInfo? ChatClickIntercept =
@@ -59,22 +58,8 @@ internal static unsafe class DecalCalls
 
     private static int Fail(Exception exception) => Marshal.GetHRForException(exception) is var result && result != 0 ? result : EFail;
 
-    private static int Device(IntPtr* device) => Act(() => *device = OpenDevice());
-
-    private static IntPtr OpenDevice()
-    {
-        var iid = Direct3DDevice9;
-        var game = CoreManager.Current.Decal.Underlying.GetD3DDevice(ref iid);
-        if (game == null) return IntPtr.Zero;
-        var unknown = Marshal.GetIUnknownForObject(game);
-        // ponytail: the client keeps this reference for the session and never releases it, as Managed DirectX's Device did.
-        try
-        {
-            Marshal.ThrowExceptionForHR(Marshal.QueryInterface(unknown, ref iid, out var device));
-            return device;
-        }
-        finally { Marshal.Release(unknown); }
-    }
+    // Unused since 177: the client reads the device in its EndScene hook. A client from before it gets a failure, not a crash.
+    private static int Device(IntPtr* device) => ENotImpl;
 
     private static int Fact(int fact, int* value) => Act(() => *value = ReadFact((BridgeFact)fact));
 

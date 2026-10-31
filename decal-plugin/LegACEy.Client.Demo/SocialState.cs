@@ -76,7 +76,7 @@ public sealed class SocialState
     public void Receive(int messageType, ReadOnlySpan<byte> raw)
     {
         if (messageType != GameEventMessage) return;
-        // Decal's raw bytes may or may not start with the message type, as for the character sheet.
+        // The raw bytes may start with the message type (the hook's always do), as for the character sheet.
         if (raw.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(raw) == (uint)messageType) raw = raw.Slice(4);
         try
         {

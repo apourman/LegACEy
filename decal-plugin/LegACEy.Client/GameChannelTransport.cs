@@ -142,7 +142,7 @@ internal sealed class GameChannelTransport : IServerChannelTransport
     internal static byte[]? GameEventPayload(int messageType, ReadOnlySpan<byte> raw, uint eventType)
     {
         if (messageType != GameEventMessage) return null;
-        // Decal's raw bytes may or may not start with the message type (a character id never equals it); the event type follows
+        // The raw bytes may start with the message type, as the hook's always do (a character id never equals it); the event type follows
         // character and sequence either way. Only that one place is checked, so a sequence number never reads as the event type.
         var offset = raw.Length >= 4 && UInt32At(raw, 0) == GameEventMessage ? 16 : 12;
         if (raw.Length < offset || UInt32At(raw, offset - 4) != eventType) return null;

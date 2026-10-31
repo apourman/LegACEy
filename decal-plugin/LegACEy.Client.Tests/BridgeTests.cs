@@ -15,6 +15,7 @@ public sealed unsafe class BridgeTests : IDisposable
     private const uint Character = 0x50000001;
     private static readonly List<string> Calls = new();
     private static string _directory = string.Empty;
+    private readonly string _pluginDirectory = ClientUiRuntime.PluginDirectory;
     // The started client's shutdown, so a failed test still leaves the bridge free for the next one.
     private delegate* unmanaged[Stdcall]<void> _shutdown;
 
@@ -27,12 +28,13 @@ public sealed unsafe class BridgeTests : IDisposable
     public void Dispose()
     {
         if (_shutdown != null) _shutdown();
+        ClientUiRuntime.PluginDirectory = _pluginDirectory;
         Directory.Delete(_directory, recursive: true);
     }
 
     private static BridgeCalls FakeCalls() => new()
     {
-        Device = &Device, Fact = &Fact, Text = &Text, Inventory = &Inventory, Item = &Item,
+        Fact = &Fact, Text = &Text, Inventory = &Inventory, Item = &Item,
         UseItem = &UseItem, SelectItem = &SelectItem, RequestId = &RequestId, DropItem = &DropItem,
         MoveItem = &MoveItem, MergeItem = &MergeItem, AutoWield = &AutoWield,
         ValidLocations = &ValidLocations, Coverage = &Coverage, PluralName = &PluralName
@@ -49,27 +51,20 @@ public sealed unsafe class BridgeTests : IDisposable
         BridgeEvents second;
         Assert.Equal(1, Bridge.Start(&second, &calls, () => new RecordingClient()));
 
+        // The slots the client's own hooks replaced still answer a stub from before them, and reach nothing.
         events.Frame();
-        Assert.Equal(1, events.WindowMessage(0x1234, 0x0201, 1, (20 << 16) | 10));
-        client.Eat = false;
-        Assert.Equal(0, events.WindowMessage(0x1234, 0x0200, 0, 0));
+        Assert.Equal(0, events.WindowMessage(0x1234, 0x0201, 1, (20 << 16) | 10));
         var raw = new byte[] { 0xB0, 0xF7, 0, 0, 1, 2, 3 };
         fixed (byte* bytes = raw) events.ServerMessage(0xF7B0, bytes, raw.Length);
+        Assert.True(events.CommandLine == null);
         events.LoginComplete();
         events.InventoryChanged(unchecked((int)0x80000010), unchecked((int)Character));
         events.ItemSelected();
         events.ContainerOpened();
         events.Logoff();
         events.LogoffAuthorized();
-        client.Eat = true;
-        var line = System.Text.Encoding.UTF8.GetBytes("/legacey é");
-        fixed (byte* bytes = line) Assert.Equal(1, events.CommandLine(bytes, line.Length));
 
-        Assert.Equal(new[]
-        {
-            "frame", "message 1234 201 1 14000A", "message 1234 200 0 0", "server F7B0 B0-F7-00-00-01-02-03", "login",
-            "inventory 80000010 50000001", "selected", "container", "logoff", "logoff authorized", "command /legacey é"
-        }, client.Seen);
+        Assert.Equal(new[] { "login", "inventory 80000010 50000001", "selected", "container", "logoff", "logoff authorized" }, client.Seen);
 
         // The bridge-backed ports read the client's Decal facts and send its actions back out through the calls-out table.
         Assert.Equal(new GameStateSnapshot("Aerbax", "Coldeve", 40, 50, 60, 70, 80, 90), Bridge.ReadGameState());
@@ -87,7 +82,6 @@ public sealed unsafe class BridgeTests : IDisposable
         inventory.Wield(0x80000020, PaperdollSlot.Weapon);
         Assert.Equal(new[] { "use 7 0", "select 8", "id 8", "move 9 50000001 3 0", "merge 10 11", "drop 12", "wield 80000020 100000 1 0" },
             Calls.Where(call => !call.StartsWith("read")));
-        Assert.Equal(new IntPtr(0x0BADF00D), Bridge.Device());
         // An item the snapshot doesn't hold, such as one dragged from a chest, has its valid locations read from the world.
         Assert.Equal(0x100000u, inventory.WieldMask(0x80000030, PaperdollSlot.Weapon));
 
@@ -110,9 +104,6 @@ public sealed unsafe class BridgeTests : IDisposable
         var raised = events;
         var raise = new Action[]
         {
-            () => raised.Frame(),
-            () => Assert.Equal(0, raised.WindowMessage(0x1234, 0x0201, 1, 0)),
-            () => { fixed (byte* bytes = raw) raised.ServerMessage(0xF7B0, bytes, raw.Length); },
             () => raised.LoginComplete(), () => raised.Logoff(), () => raised.LogoffAuthorized(), () => raised.ItemSelected(), () => raised.ContainerOpened(),
             () => raised.InventoryChanged(1, 2), () => raised.Shutdown()
         };
@@ -121,8 +112,9 @@ public sealed unsafe class BridgeTests : IDisposable
     }
 
     [Fact]
-    public void Init_starts_the_real_client_which_logs_beside_the_stub_and_shuts_down()
+    public void Init_starts_the_real_client_which_logs_in_the_plugin_directory_and_shuts_down()
     {
+        ClientUiRuntime.PluginDirectory = _directory;
         BridgeEvents events;
         var calls = FakeCalls();
         var init = (delegate* unmanaged[Stdcall]<BridgeEvents*, BridgeCalls*, int>)&Bridge.Init;
@@ -154,7 +146,6 @@ public sealed unsafe class BridgeTests : IDisposable
     {
         public readonly List<string> Seen = new();
         public readonly List<Exception> Disabled = new();
-        public bool Eat = true;
         public bool Throw;
 
         private void See(string what)
@@ -163,13 +154,6 @@ public sealed unsafe class BridgeTests : IDisposable
             Seen.Add(what);
         }
 
-        public void Frame() => See("frame");
-        public bool WindowMessage(int hwnd, int message, int wParam, int lParam)
-        {
-            See($"message {hwnd:X} {message:X} {wParam:X} {lParam:X}");
-            return Eat;
-        }
-        public void ServerMessage(int type, ReadOnlySpan<byte> raw) => See($"server {type:X} {BitConverter.ToString(raw.ToArray())}");
         public void LoginComplete() => See("login");
         public void Logoff() => See("logoff");
         public void LogoffAuthorized() => See("logoff authorized");
@@ -177,11 +161,6 @@ public sealed unsafe class BridgeTests : IDisposable
         public void ContainerOpened() => See("container");
         public void InventoryChanged(uint id, uint container) => See($"inventory {id:X} {container:X}");
         public void Shutdown() => See("shutdown");
-        public bool CommandLine(string text)
-        {
-            See($"command {text}");
-            return Eat;
-        }
         public void Disable(Exception exception) => Disabled.Add(exception);
     }
 
@@ -193,13 +172,6 @@ public sealed unsafe class BridgeTests : IDisposable
     private static int Done(string call)
     {
         Calls.Add(call);
-        return 0;
-    }
-
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static int Device(IntPtr* device)
-    {
-        *device = new IntPtr(0x0BADF00D);
         return 0;
     }
 
@@ -223,7 +195,7 @@ public sealed unsafe class BridgeTests : IDisposable
     {
         var value = Encoding.UTF8.GetBytes((BridgeText)text switch
         {
-            BridgeText.CharacterName => "Aerbax", BridgeText.ServerName => "Coldeve", BridgeText.PluginDirectory => _directory, _ => ""
+            BridgeText.CharacterName => "Aerbax", BridgeText.ServerName => "Coldeve", _ => ""
         });
         if (value.Length <= capacity) value.CopyTo(new Span<byte>(buffer, capacity));
         *length = value.Length;

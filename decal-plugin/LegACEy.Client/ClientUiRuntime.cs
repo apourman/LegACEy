@@ -21,7 +21,7 @@ using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.DecalPlugin;
 
-/// <summary>The client runtime: wires the Decal events the bridge raises to the netstandard client UI framework.</summary>
+/// <summary>The client runtime: wires the game's frame, input and messages, and the Decal events the bridge raises, to the netstandard client UI framework.</summary>
 internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClientEvents, IAppraisalGame
 {
     [StructLayout(LayoutKind.Sequential)]
@@ -174,8 +174,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The per-character options kept in the position store. Reset window positions keeps these; every other row there is a window's place.
     private static readonly string[] PositionOptionKeys = { RetailChatWindows.TextSizeKey, RetailChatWindows.FadeKey };
     private const string TestFailureFile = "fail-post-ui-draw";
-    // The stub's folder, which the bridge sets before the client starts: the log, settings and Plugins\ live there.
-    internal static string PluginDirectory { get; set; } = ClientDirectory;
+    // The folder the client's runtime\ folder sits in, beside the stub: the log, settings and Plugins\ live there. A client run from
+    // anywhere else (the tests) keeps them in its own folder.
+    internal static string PluginDirectory { get; set; } =
+        IOPath.GetFileName(ClientDirectory).Equals("runtime", StringComparison.OrdinalIgnoreCase) ? IOPath.GetDirectoryName(ClientDirectory)! : ClientDirectory;
     // This client's own folder, the runtime folder beside the stub.
     private static string ClientDirectory => IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
     // Every client appends to the same log beside the DLL; the process id tells their lines apart.
@@ -205,6 +207,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly Dictionary<uint, IntPtr> _datCursors = new();
     private readonly Dictionary<int, IntPtr> _systemCursors = new();
     private PostUiDrawHook? _postUiDrawHook;
+    private FrameHook? _frameHook;
+    private ServerMessageHook? _serverMessages;
+    private ChatCommandHook? _chatCommands;
+    // Until the game window is subclassed, each frame tries again: a loader may start the client before the window exists.
+    private bool _windowHooked;
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
     private DateTime _lastMeasurementLog = DateTime.UtcNow;
@@ -537,6 +544,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             try { _inventory.Request = new RetailInventoryRequest(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Moving several items at once waits two seconds between items: {exception.Message}"); }
             LoadPlugins();
+            // The client's own frame, server messages and chat lines, in place of Decal's events.
+            _frameHook = FrameHook.Place(Frame, Disable, Log);
+            _serverMessages = ServerMessageHook.Place(ServerMessage, Disable, Log);
+            _chatCommands = ChatCommandHook.Place(CommandLine, Disable, Log);
+            EnsurePostUiDrawHook();
         }
         catch
         {
@@ -572,6 +584,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _gameMessages = null;
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
+            _frameHook?.Dispose();
+            _frameHook = null;
+            _serverMessages?.Dispose();
+            _serverMessages = null;
+            _chatCommands?.Dispose();
+            _chatCommands = null;
+            GameWindowHook.Remove();
             _worldEffects?.Dispose();
             _worldEffects = null;
             // With both hooks gone, nothing else frees the last frame's spare state blocks before the game's next device reset.
@@ -884,7 +903,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _inventory.MarkStale();
         // The server's DDD exchange ended: a LegACEy server with a world sent its note before this.
         if (type == DddEndMessage) _world?.NoNote();
-        // The id is the message's last four bytes, whether or not Decal's raw bytes start with the type.
+        // The id is the message's last four bytes.
         if (type == PlayerCreateMessage && raw.Length >= 4) _enteringCharacterId = BinaryPrimitives.ReadUInt32LittleEndian(raw[^4..]);
         if (_serverChannel == null || _channelTransport == null)
             return;
@@ -1196,7 +1215,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void CreateUi()
     {
-        _device = GameDevice.Open();
+        _device = OpenDevice();
         var acclient = Process.GetCurrentProcess().MainModule!.FileName;
         _portal = new PortalDat(IOPath.Combine(IOPath.GetDirectoryName(acclient)!, "client_portal.dat"));
         GameArtImageExtension.CurrentSource = _portal;
@@ -1240,9 +1259,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _windowsEnabled = EnsurePostUiDrawHook();
     }
 
+    /// <summary>The game's Direct3D device, as the EndScene hook last read it. Throws until the game has drawn a frame.</summary>
+    private IntPtr OpenDevice() => _postUiDrawHook?.Device is { } device && device != IntPtr.Zero
+        ? device : throw new InvalidOperationException("The game has drawn no frame yet.");
+
     private bool EnsurePostUiDrawHook()
     {
-        // Entry rendering needs this before LoginComplete creates character windows.
+        // Placed at startup, which reads the game's device from the first frame; entry rendering needs it before LoginComplete creates
+        // character windows.
         _postUiDrawHook ??= new PostUiDrawHook(DrawAfterRetailUi, Disable, Log);
         try
         {
@@ -1494,7 +1518,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     public void Frame()
     {
-        // What this thread allocated since the last frame ended: hooks, the post-UI draw, Decal's events.
+        if (!_windowHooked) _windowHooked = GameWindowHook.TryPlace(WindowMessage, Disable, Log);
+        // What this thread allocated since the last frame ended: hooks, the post-UI draw, Decal's events, window and server messages.
         if (_lastFrameEndBytes != 0) _betweenFrameBytes += GC.GetAllocatedBytesForCurrentThread() - _lastFrameEndBytes;
         var start = Stopwatch.GetTimestamp();
         if (_world != null) Guard(TickWorldUpdates);
@@ -2813,7 +2838,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_worldToastHostTried) return false;
         if (_device == IntPtr.Zero)
         {
-            try { _device = GameDevice.Open(); }
+            try { _device = OpenDevice(); }
             catch (InvalidOperationException) { return false; }
         }
         _worldToastHostTried = true;
@@ -4589,7 +4614,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         public void Dispose() => _owner.ReleaseFeatureWindow(_windowId);
     }
 
-    /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>
+    /// <summary>Translate the game window's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>
     public bool WindowMessage(int hwnd, int message, int wParam, int lParam)
     {
         // Known from character select on.
