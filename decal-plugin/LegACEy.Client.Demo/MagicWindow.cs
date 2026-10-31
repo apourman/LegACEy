@@ -49,6 +49,8 @@ public sealed class MagicWindow
     private static readonly string[] TabNames = { "Spellbook", "Components" };
     // Retail's art: the list rows (and their selected edge), the filter block, the toggles' off, off-hover, on and on-hover lights, Delete.
     private const uint RowArt = 0x06001396, RowSelectedArt = 0x06001397, ComponentRowArt = 0x06005E21, ComponentRowSelectedArt = 0x06005E22;
+    // The Components tab's category header (template 0x10000466) and the tile under each buy amount (0x1000046B).
+    private const uint ComponentHeaderArt = 0x06001392, PanelTile = 0x06004CC2;
     private const uint FilterBlockArt = 0x06002722, DeleteArt = 0x06004CDA, DeleteHoverArt = 0x06004CDB;
     private const uint ToggleOff = 0x06004D15, ToggleOffHover = 0x06004D16, ToggleOn = 0x06004D17, ToggleOnHover = 0x06004D18;
     /// <summary>Retail's question before a spell leaves the spellbook (gmSpellbookUI::DeleteSpell).</summary>
@@ -62,6 +64,14 @@ public sealed class MagicWindow
         ("War", MagicState.WarFilter, 187, 22), ("Void", MagicState.VoidFilter, 237, 22)
     };
     private static readonly string[] Numerals = { "I", "II", "III", "IV", "V", "VI", "VII", "VIII" };
+    /// <summary>
+    /// Retail's component categories by the table's component type, in the order its Components tab lists them (the ID_SpellComp_Category_*
+    /// strings in client_local_English.dat).
+    /// </summary>
+    private static readonly Dictionary<uint, string> Categories = new()
+    {
+        [1] = "SCARABS", [2] = "HERBS", [3] = "POWDERED GEMS", [4] = "ALCHEMICAL SUBSTANCES", [5] = "TALISMANS", [6] = "TAPERS", [7] = "PEAS"
+    };
 
     private static readonly IBrush WellBrush = DerethPalette.Brush(Color.FromArgb(0xB0, 0x06, 0x05, 0x04));
 
@@ -304,14 +314,14 @@ public sealed class MagicWindow
     // Components.
 
     /// <summary>
-    /// The components the Components tab lists: every one the player carries or asked to keep, by name, with how many are carried and
-    /// how many are wanted.
+    /// The components the Components tab lists: every one the player carries or asked to keep, with how many are carried and how many are
+    /// wanted, by category as retail groups them, then by name.
     /// </summary>
     public static IReadOnlyList<(SpellComponentInfo Component, int Carried, int Desired)> ComponentRows(SpellComponentTable table,
         IReadOnlyDictionary<uint, int> carried, IReadOnlyDictionary<uint, int> desired) =>
         carried.Keys.Concat(desired.Keys).Distinct().Select(table.ByWcid).OfType<SpellComponentInfo>()
             .Select(c => (Component: c, Carried: carried.TryGetValue(c.Wcid, out var n) ? n : 0, Desired: desired.TryGetValue(c.Wcid, out var d) ? d : 0))
-            .OrderBy(r => r.Component.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            .OrderBy(r => r.Component.Type).ThenBy(r => r.Component.Name, StringComparer.OrdinalIgnoreCase).ToList();
 
     public IReadOnlyList<(SpellComponentInfo Component, int Carried, int Desired)> ListedComponents() =>
         ComponentRows(_components(), _game.CarriedComponents(), _state.Desired);
@@ -337,8 +347,22 @@ public sealed class MagicWindow
         if (rows.All(r => r.Component.Wcid != _selectedComponent)) _selectedComponent = 0;
         Redraw(_componentList, $"{_selectedComponent}|{string.Join(",", rows.Select(r => $"{r.Component.Wcid}:{r.Carried}:{r.Desired}"))}", () =>
         {
-            foreach (var (component, carried, desired) in rows) _componentList.Children.Add(ComponentRow(component, carried, desired));
+            uint? category = null;
+            foreach (var (component, carried, desired) in rows)
+            {
+                if (component.Type != category && Categories.TryGetValue(component.Type, out var title)) _componentList.Children.Add(ComponentHeader(title));
+                category = component.Type;
+                _componentList.Children.Add(ComponentRow(component, carried, desired));
+            }
         });
+    }
+
+    /// <summary>A category header on retail's art, its title centred.</summary>
+    private Control ComponentHeader(string title)
+    {
+        var text = Label(title, 13);
+        text.HorizontalAlignment = HorizontalAlignment.Center;
+        return new Border { Height = RowHeight, Background = Art(ComponentHeaderArt, Stretch.Fill) ?? Brushes.Transparent, Child = text };
     }
 
     private Control ComponentRow(SpellComponentInfo component, int carried, int desired)
@@ -347,20 +371,22 @@ public sealed class MagicWindow
         var row = Row(wcid == _selectedComponent ? ComponentRowSelectedArt : ComponentRowArt, Bitmap(component.Icon), component.Name, 180);
         var count = Label(carried.ToString(CultureInfo.InvariantCulture), 12);
         count.TextAlignment = TextAlignment.Right;
-        count.Width = 60;
+        count.Margin = new Thickness(0, 0, 8, 0);
+        // Retail's entry: the panel tile under a right-aligned amount, 0 when none is wanted.
         var entry = new TextBox
         {
-            Text = desired > 0 ? desired.ToString(CultureInfo.InvariantCulture) : string.Empty, MaxLength = 5, Width = 60, Height = 15, MinHeight = 0,
-            Padding = new Thickness(3, 0), FontFamily = DerethPalette.Title, FontSize = 11, Foreground = DerethPalette.CreamBrush,
-            CaretBrush = DerethPalette.GoldBrush, Background = DerethPalette.Brush(Color.FromArgb(0xE0, 0x0A, 0x09, 0x07)),
-            BorderBrush = DerethPalette.Brush(DerethPalette.Line), BorderThickness = new Thickness(1), TextAlignment = TextAlignment.Right,
-            VerticalContentAlignment = VerticalAlignment.Center
+            Text = desired.ToString(CultureInfo.InvariantCulture), MaxLength = 5, Width = 60, Height = 15, MinHeight = 0,
+            Padding = new Thickness(0, 0, 8, 0), FontFamily = DerethPalette.Title, FontSize = 11, Foreground = DerethPalette.TextBrush,
+            CaretBrush = DerethPalette.GoldBrush, Background = Tile(PanelTile) ?? Brushes.Black,
+            BorderThickness = new Thickness(0), TextAlignment = TextAlignment.Right, VerticalContentAlignment = VerticalAlignment.Center
         };
+        ScrollViewer.SetVerticalScrollBarVisibility(entry, ScrollBarVisibility.Disabled);
+        ScrollViewer.SetHorizontalScrollBarVisibility(entry, ScrollBarVisibility.Disabled);
         ToolTip.SetTip(entry, "How many to keep");
         void Commit() => SetDesired(wcid, int.TryParse((entry.Text ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : 0);
         entry.LostFocus += (_, _) => Commit();
         entry.KeyDown += (_, e) => { if (e.Key == Key.Enter) Commit(); };
-        var figures = new StackPanel { Width = 60, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 1, 8, 1), Children = { count, entry } };
+        var figures = new StackPanel { Width = 60, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 0, 2), Children = { count, entry } };
         ((Grid)row.Child!).Children.Add(figures);
         row.PointerPressed += (_, e) =>
         {
@@ -432,6 +458,15 @@ public sealed class MagicWindow
         if (!_bitmaps.TryGetValue(id, out var bitmap)) _bitmaps[id] = bitmap = GameArtImageExtension.CreateBitmap(_art, id);
         return bitmap;
     }
+
+    /// <summary>Art repeated at its own size, as retail's tiled media draws it.</summary>
+    private IBrush? Tile(uint id) => Bitmap(id) is { } bitmap
+        ? new ImageBrush(bitmap)
+        {
+            Stretch = Stretch.None, TileMode = TileMode.Tile, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top,
+            DestinationRect = new RelativeRect(0, 0, bitmap.Size.Width, bitmap.Size.Height, RelativeUnit.Absolute)
+        }
+        : null;
 
     private IBrush? Art(uint id, Stretch stretch) => Bitmap(id) is { } bitmap ? new ImageBrush(bitmap) { Stretch = stretch } : null;
 
