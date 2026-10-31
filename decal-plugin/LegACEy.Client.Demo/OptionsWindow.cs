@@ -138,7 +138,7 @@ public sealed partial class OptionsWindow
         new("Listen to PK death messages.", 0x34, "HearPKDeaths")
     };
 
-    /// <summary>Retail's Gameplay Options buttons: label and top edge, each 240 × 32 at x 26 (LayoutDesc 0x2100002A).</summary>
+    /// <summary>Retail's Gameplay Options buttons: label and top edge, each 240 × 32 (LayoutDesc 0x2100002A), centred across the window.</summary>
     private static readonly (GameplayButton Button, string Label, double Y)[] GameplayButtons =
     {
         (GameplayButton.ExitToCharacterSelection, "Exit to Character Selection", 20),
@@ -170,12 +170,11 @@ public sealed partial class OptionsWindow
         _tabs = new DerethSegmented(TabNames, fitLabels: true, tabs: true) { VerticalAlignment = VerticalAlignment.Center };
         _tabs.Chosen += ShowTab;
 
-        var gameplay = new Canvas { Width = 298, Height = 337, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        var gameplay = new Canvas { Width = 240, Height = 337, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top };
         foreach (var (button, label, y) in GameplayButtons)
         {
             var press = new ArtButton(this, label, BlueButton, BluePressed, BlueDisabled, () => _game.Press(button)) { Width = 240, Height = 32 };
             _gameplay[button] = press;
-            Canvas.SetLeft(press, 26);
             Canvas.SetTop(press, y);
             gameplay.Children.Add(press);
         }
