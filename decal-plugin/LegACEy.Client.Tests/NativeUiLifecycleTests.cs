@@ -485,6 +485,24 @@ public sealed class NativeUiLifecycleTests
     }
 
     [Fact]
+    public void Unparking_for_saveui_puts_the_panel_at_its_place_for_retail_and_the_next_tick_parks_it_again()
+    {
+        var port = new FakeRetailPanelPort { Open = true, Location = new Point(500, 300) };
+        var events = new List<bool>();
+        using var takeover = new RetailPanelTakeover(port, events.Add, _ => { });
+        takeover.Tick(enabled: true);
+
+        takeover.Unpark();
+        Assert.Equal(new Point(500, 300), port.Location);
+
+        takeover.Tick(enabled: true);
+        Assert.Equal(RetailPanelTakeover.Parked, port.Location);
+        Assert.Equal(new Point(500, 300), takeover.HeldPlace);
+        // Our window stayed open throughout.
+        Assert.Equal(new[] { true }, events);
+    }
+
+    [Fact]
     public void Retail_opening_its_panel_in_portal_space_parks_it_and_our_window_opens_once_it_can()
     {
         var port = new FakeRetailPanelPort { Open = true, Location = new Point(500, 300) };
