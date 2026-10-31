@@ -647,6 +647,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var name = space < 0 ? command : command[..space];
         if (name.Equals("/saveui", StringComparison.OrdinalIgnoreCase) || name.Equals("@saveui", StringComparison.OrdinalIgnoreCase))
         {
+            // Retail saves its panel's place from this same line, after us: the panel must stand there, not parked off-screen.
+            foreach (var panel in _retailPanels) panel.Unpark();
             if (space > 0) Guard(() => SaveUiLayout(command[space..].Trim()));
             return false;
         }
