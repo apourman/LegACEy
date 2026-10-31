@@ -677,13 +677,6 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         Int(response, HeritageGroupInt) > 0 && (StringOf(response, TemplateString) != null || StringOf(response, DateOfBirthString) != null
             || Int(response, TitleIdInt) > 0);
 
-    // Heritage names by the server's HeritageGroup, as OpenAC's CharacterIdentityText names them (MIT).
-    private static readonly string[] HeritageNames =
-    {
-        string.Empty, "Aluvian", "Gharu'ndim", "Sho", "Viamontian", "Umbraen", "Gearknight", "Tumerok", "Lugian", "Empyrean", "Penumbraen",
-        "Undead", "Olthoi", "Olthoi",
-    };
-
     /// <summary>
     /// A character's type line is its level, then heritage and gender ("Level 126 · Aluvian Male"). A creature's is its type, then its level
     /// ("Drudge · Level 80"). A name the names do not hold is left out.
@@ -693,7 +686,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         var level = response.Ints.TryGetValue(LevelInt, out var value) && value > 0 ? "Level " + Invariant(value) : null;
         if (IsCharacter(response))
         {
-            var heritage = Named(HeritageNames, Int(response, HeritageGroupInt));
+            var heritage = Named(SessionIdentity.HeritageNames, Int(response, HeritageGroupInt));
             var gender = Int(response, GenderInt) switch { 1 => "Male", 2 => "Female", _ => null };
             return Join(" · ", level, Join(" ", heritage, gender));
         }
@@ -716,7 +709,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             return new AppraisalCreatureHeader(type == null ? Array.Empty<string>() : new[] { type }, level);
         }
         var gender = Int(response, GenderInt) switch { 1 => "Male", 2 => "Female", _ => null };
-        var lines = new[] { Join(" ", gender, Named(HeritageNames, Int(response, HeritageGroupInt))), TitleOf(response, names),
+        var lines = new[] { Join(" ", gender, Named(SessionIdentity.HeritageNames, Int(response, HeritageGroupInt))), TitleOf(response, names),
             PkStatusText(Int(response, PlayerKillerStatusInt)) };
         return new AppraisalCreatureHeader(lines.OfType<string>().Where(line => line.Length > 0).ToList(), level, Character: true);
     }

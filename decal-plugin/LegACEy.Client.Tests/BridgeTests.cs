@@ -57,16 +57,20 @@ public sealed unsafe class BridgeTests : IDisposable
         var raw = new byte[] { 0xB0, 0xF7, 0, 0, 1, 2, 3 };
         fixed (byte* bytes = raw) events.ServerMessage(0xF7B0, bytes, raw.Length);
         Assert.True(events.CommandLine == null);
+        // So do the login and logoff slots, which the server's own messages replaced (178).
         events.LoginComplete();
+        events.Logoff();
+        events.LogoffAuthorized();
         events.InventoryChanged(unchecked((int)0x80000010), unchecked((int)Character));
         events.ItemSelected();
         events.ContainerOpened();
-        events.Logoff();
-        events.LogoffAuthorized();
 
-        Assert.Equal(new[] { "login", "inventory 80000010 50000001", "selected", "container", "logoff", "logoff authorized" }, client.Seen);
+        Assert.Equal(new[] { "inventory 80000010 50000001", "selected", "container" }, client.Seen);
 
-        // The bridge-backed ports read the client's Decal facts and send its actions back out through the calls-out table.
+        // The bridge-backed ports read the client's Decal facts and send its actions back out through the calls-out table; the character
+        // and server come from the server's messages.
+        ClientUiRuntime.Identity.Receive(0xF7E1, SessionIdentityTests.WorldInfo("Coldeve"));
+        ClientUiRuntime.Identity.Receive(0xF7B0, SessionIdentityTests.Description(Character, "Aerbax"));
         Assert.Equal(new GameStateSnapshot("Aerbax", "Coldeve", 40, 50, 60, 70, 80, 90), Bridge.ReadGameState());
         var inventory = new BridgeInventoryPort(_ => { });
         inventory.MarkStale();
@@ -104,7 +108,7 @@ public sealed unsafe class BridgeTests : IDisposable
         var raised = events;
         var raise = new Action[]
         {
-            () => raised.LoginComplete(), () => raised.Logoff(), () => raised.LogoffAuthorized(), () => raised.ItemSelected(), () => raised.ContainerOpened(),
+            () => raised.ItemSelected(), () => raised.ContainerOpened(),
             () => raised.InventoryChanged(1, 2), () => raised.Shutdown()
         };
         foreach (var raiseOne in raise) raiseOne();
@@ -154,9 +158,6 @@ public sealed unsafe class BridgeTests : IDisposable
             Seen.Add(what);
         }
 
-        public void LoginComplete() => See("login");
-        public void Logoff() => See("logoff");
-        public void LogoffAuthorized() => See("logoff authorized");
         public void ItemSelected() => See("selected");
         public void ContainerOpened() => See("container");
         public void InventoryChanged(uint id, uint container) => See($"inventory {id:X} {container:X}");
@@ -181,7 +182,6 @@ public sealed unsafe class BridgeTests : IDisposable
         if (_failFacts) return EFail;
         *value = (BridgeFact)fact switch
         {
-            BridgeFact.CharacterId => unchecked((int)Character),
             BridgeFact.Health => 40, BridgeFact.MaxHealth => 50, BridgeFact.Stamina => 60, BridgeFact.MaxStamina => 70,
             BridgeFact.Mana => 80, BridgeFact.MaxMana => 90, BridgeFact.Burden => 123, BridgeFact.Strength => 100,
             BridgeFact.MainPackCapacity => 102, BridgeFact.SidePackCapacity => 7,
@@ -193,12 +193,7 @@ public sealed unsafe class BridgeTests : IDisposable
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static int Text(int text, byte* buffer, int capacity, int* length)
     {
-        var value = Encoding.UTF8.GetBytes((BridgeText)text switch
-        {
-            BridgeText.CharacterName => "Aerbax", BridgeText.ServerName => "Coldeve", _ => ""
-        });
-        if (value.Length <= capacity) value.CopyTo(new Span<byte>(buffer, capacity));
-        *length = value.Length;
+        *length = 0;
         return 0;
     }
 

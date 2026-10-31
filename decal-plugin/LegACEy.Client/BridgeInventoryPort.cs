@@ -75,7 +75,7 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     /// </summary>
     public void ObjectChanged(uint id, uint container)
     {
-        var characterId = (uint)Bridge.Fact(BridgeFact.CharacterId);
+        var characterId = ClientUiRuntime.Identity.CharacterId;
         var snapshot = _refresh.Snapshot;
         if (id == characterId || container == characterId || snapshot.Contains(id) || snapshot.Contains(container))
             _refresh.MarkStale();
@@ -160,8 +160,8 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     /// <summary>The client's inventory reads, made on the game thread once per rebuild.</summary>
     private sealed class BridgeInventoryReader : IInventoryReader
     {
-        public uint CharacterId => (uint)Bridge.Fact(BridgeFact.CharacterId);
-        public string CharacterName => Bridge.Text(BridgeText.CharacterName);
+        public uint CharacterId => ClientUiRuntime.Identity.CharacterId;
+        public string CharacterName => ClientUiRuntime.Identity.CharacterName;
         public IReadOnlyList<InventoryObjectRead> Objects => Bridge.Inventory();
         public int MainPackCapacity => Bridge.Fact(BridgeFact.MainPackCapacity);
         public int SidePackCapacity => Bridge.Fact(BridgeFact.SidePackCapacity);

@@ -18,9 +18,9 @@ public unsafe struct BridgeEvents
     public delegate* unmanaged[Stdcall]<int, int, int, int, int> WindowMessage;
     /// <summary>Decal's EchoFilter.ServerDispatch: (message type, raw bytes, length). Unused since 177: the client hooks retail's message queue.</summary>
     public delegate* unmanaged[Stdcall]<int, byte*, int, void> ServerMessage;
-    /// <summary>CharacterFilter.LoginComplete.</summary>
+    /// <summary>CharacterFilter.LoginComplete. Unused since 178: the server's Login_CreatePlayer starts the session.</summary>
     public delegate* unmanaged[Stdcall]<void> LoginComplete;
-    /// <summary>CharacterFilter.Logoff.</summary>
+    /// <summary>CharacterFilter.Logoff. Unused since 178: the server's Login_LogOffCharacter ends the session.</summary>
     public delegate* unmanaged[Stdcall]<void> Logoff;
     /// <summary>CoreManager.ItemSelected.</summary>
     public delegate* unmanaged[Stdcall]<void> ItemSelected;
@@ -32,7 +32,7 @@ public unsafe struct BridgeEvents
     public delegate* unmanaged[Stdcall]<void> Shutdown;
     /// <summary>Decal's CommandLineText: (UTF-8 text, length), returning 1 to eat the line. Unused since 177: the client hooks retail's chat commands.</summary>
     public delegate* unmanaged[Stdcall]<byte*, int, int> CommandLine;
-    /// <summary>CharacterFilter.Logoff of the Authorized type, raised after Logoff. Null from a client built before it.</summary>
+    /// <summary>CharacterFilter.Logoff of the Authorized type, raised after Logoff. Unused since 178, as Logoff.</summary>
     public delegate* unmanaged[Stdcall]<void> LogoffAuthorized;
 }
 
