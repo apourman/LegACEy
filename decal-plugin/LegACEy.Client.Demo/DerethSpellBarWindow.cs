@@ -18,7 +18,8 @@ namespace LegACEy.Client.Demo;
 /// The tabs I to VIII open a tab; a click on a spell selects it (retail's selection frame, its name under the cells) and shows it in the
 /// appraisal window, a double click casts it, and Cast casts the selected spell, each through <see cref="ISpellBarPort"/>. Like retail's, the
 /// bar resizes in width: the cells take the room, Cast keeps to the right. Its height scales the whole bar, so it can be slimmer or larger
-/// than retail's. The wielded item with an on-use spell, such as an orb, sits at the left as retail's does; a click selects it. A drag takes a spell off the bar, as retail's does, and a release over the
+/// than retail's. The wielded item with an on-use spell, such as an orb, sits at the left as retail's does: a click selects it, a double
+/// click uses it. A drag takes a spell off the bar, as retail's does, and a release over the
 /// cells puts it back where it is dropped; a spell from the spellbook dropped on the cells goes there too (<see cref="DropAt"/>). While a
 /// spell is dragged, retail's accept ring marks the cell it would land in, and a tab under the pointer opens, so a drop moves the spell to
 /// that tab: on its cells where dropped, on the tab itself at its end. A press on
@@ -124,7 +125,16 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         Put(_rightArrow, 0, ArrowY, ArrowWidth, ArrowHeight);
         _castButton = CastButton();
         Put(_castButton, 0, CastY, CastWidth, Cell);
-        Put(Pressable(_endowment, _port.SelectEndowment), EndowmentX, CellsY, Cell, Cell);
+        // Retail's click on the held item selects it, so Cast uses it; a double click uses it at once, as a spell's casts.
+        _endowment.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(_endowment).Properties.IsLeftButtonPressed) return;
+            e.Handled = true;
+            _port.SelectEndowment();
+            if (e.ClickCount > 1) _port.Cast();
+            Sync();
+        };
+        Put(_endowment, EndowmentX, CellsY, Cell, Cell);
         Put(_corners, 0, 0, DesignWidth, DesignHeight);
         // Hovering shows where the window resizes, unless retail's UI is locked.
         _root.PointerEntered += (_, _) => _corners.IsVisible = !_port.UiLocked;
