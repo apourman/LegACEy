@@ -43,7 +43,8 @@ internal sealed unsafe class WorldEffects : IDisposable
     // behind each record in the order queued, which the flush draws them in.
     private const uint AddToAlphaListAddress = 0x0059D240, RenderSubsetAddress = 0x0059DA60;
     private static readonly ushort* AlphaCount = (ushort*)0x008729BC, ClipCount = (ushort*)0x008729C0;
-    private readonly Queue<(int Mesh, int Index, int Surface, int Part)> _alphaList = new(), _clipList = new();
+    private readonly record struct Queued(int Mesh, int Index, int Surface, int Part);
+    private readonly Queue<Queued> _alphaList = new(), _clipList = new();
     private const uint Gold = 0xFFFFC040;
     // ColorWriteEnable: the selection into the mask's colour, the player into its alpha.
     private const int SelectionChannels = 0x7, PlayerChannels = 0x8;
@@ -149,7 +150,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private delegate int AddToAlphaListFn(int mesh, int index, int surface, int matrix, int flag, int alpha);
 
     [Function(CallingConventions.Cdecl)]
-    private delegate int RenderSubsetFn(int index, int surface, int a, int b, int mesh);
+    private delegate int RenderSubsetFn(int index, int surface, int flag1, int flag2, int mesh);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void FullViewFn();
@@ -521,8 +522,6 @@ internal sealed unsafe class WorldEffects : IDisposable
         _worldFog = _failed ? null : _fog.TakeFog();
         _viewIndoors = _landscapeHook != null && (*(uint*)(smartBox + 0xC) & 0xFFFF) >= 0x100;
         _outsideDrawn = false;
-        _alphaList.Clear();
-        _clipList.Clear();
         int[]? retailFog = null;
         try
         {
@@ -655,24 +654,24 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (before == 0) list.Clear();
         if (Selected != 0 && _inWorld && !_failed && *count == before + 1)
         {
-            list.Enqueue((mesh, index, surface, *DrawingPart));
+            list.Enqueue(new Queued(mesh, index, surface, *DrawingPart));
         }
         return result;
     }
 
     /// <summary>A queued surface drawn by the flush has no part in 0x008EE3D8; it gets back the one that queued it, so the mask sees it.</summary>
-    private int OnRenderSubset(int index, int surface, int a, int b, int mesh)
+    private int OnRenderSubset(int index, int surface, int flag1, int flag2, int mesh)
     {
         var part = 0;
         if (*DrawingPart != 0 || !_inWorld || !(Take(_alphaList, mesh, index, surface, out part) || Take(_clipList, mesh, index, surface, out part)) || part == 0)
-            return _subsetHook.OriginalFunction(index, surface, a, b, mesh);
+            return _subsetHook.OriginalFunction(index, surface, flag1, flag2, mesh);
         *DrawingPart = part;
-        try { return _subsetHook.OriginalFunction(index, surface, a, b, mesh); }
+        try { return _subsetHook.OriginalFunction(index, surface, flag1, flag2, mesh); }
         finally { *DrawingPart = 0; }
     }
 
     // The flush draws the records in the order they were queued, so the next one is the head.
-    private static bool Take(Queue<(int Mesh, int Index, int Surface, int Part)> list, int mesh, int index, int surface, out int part)
+    private static bool Take(Queue<Queued> list, int mesh, int index, int surface, out int part)
     {
         part = 0;
         if (list.Count == 0) return false;
