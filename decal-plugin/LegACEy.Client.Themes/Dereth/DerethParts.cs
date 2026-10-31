@@ -599,6 +599,16 @@ public sealed class DerethWindow : UserControl
         }
     }
 
+    /// <summary>
+    /// The header's height, as the constructor set it (<see cref="IconHeaderHeight"/> or <see cref="HeaderHeight"/>). A window can slim it
+    /// down while it shows no icon, as far as <see cref="HeaderButtonSize"/>.
+    /// </summary>
+    public double HeaderBarHeight
+    {
+        get => _header.Height;
+        set => _header.Height = value;
+    }
+
     /// <summary>A control in the content whose area the window's fill leaves see-through (see <see cref="DerethFrame.SeeThrough"/>).</summary>
     public Control? SeeThrough
     {
