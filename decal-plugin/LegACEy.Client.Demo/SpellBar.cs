@@ -27,7 +27,17 @@ public interface ISpellBarPort
     void Insert(uint spell, int index);
     /// <summary>Shows the spell in the appraisal window, as a click on a spell on retail's bar does.</summary>
     void Examine(uint spell);
+    /// <summary>
+    /// The wielded item whose on-use spell retail's bar offers at its left, such as an orb; null with none. Its name is retail's, the item and
+    /// its spell: "White Sapphire Orb (Might of the 5 Mules)".
+    /// </summary>
+    SpellBarEndowment? Endowment { get; }
+    /// <summary>Selects the item at the bar's left on the open tab, so Cast uses it, as a click on it does in retail.</summary>
+    void SelectEndowment();
     /// <summary>Whether retail's UI is locked, in which case no window moves.</summary>
     bool UiLocked { get; }
     event EventHandler? Changed;
 }
+
+/// <summary>The item at the spell bar's left: its icon, retail's name for it with its spell, and whether it is the open tab's selection.</summary>
+public sealed record SpellBarEndowment(ItemVisual Visual, string Name, bool Selected);

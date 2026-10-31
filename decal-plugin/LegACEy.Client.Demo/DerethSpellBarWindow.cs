@@ -17,7 +17,9 @@ namespace LegACEy.Client.Demo;
 /// with a 5 DIP frame) on retail's own tab, cell and button art, in the Dereth gilded frame the attack bar wears. It is open in magic only.
 /// The tabs I to VIII open a tab; a click on a spell selects it (retail's selection frame, its name under the cells) and shows it in the
 /// appraisal window, a double click casts it, and Cast casts the selected spell, each through <see cref="ISpellBarPort"/>. Like retail's, the
-/// bar resizes in width only: the cells take the room, Cast keeps to the right. A drag takes a spell off the bar, as retail's does, and a release over the
+/// bar resizes in width: the cells take the room, Cast keeps to the right. Its height scales the whole bar, so it can be slimmer or larger
+/// than retail's. The wielded item with an on-use spell, such as an orb, sits at the left as retail's does: a click selects it, a double
+/// click uses it. A drag takes a spell off the bar, as retail's does, and a release over the
 /// cells puts it back where it is dropped; a spell from the spellbook dropped on the cells goes there too (<see cref="DropAt"/>). While a
 /// spell is dragged, retail's accept ring marks the cell it would land in, and a tab under the pointer opens, so a drop moves the spell to
 /// that tab: on its cells where dropped, on the tab itself at its end. A press on
@@ -27,7 +29,7 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
 {
     /// <summary>The window's id, under which its place and size are kept for the character.</summary>
     public const string WindowId = "dereth-spellbar";
-    public const int DesignWidth = 610, DesignHeight = 90, MinimumWidth = 400, MaximumWidth = 1920;
+    public const int DesignWidth = 610, DesignHeight = 90, MinimumWidth = 400, MaximumWidth = 1920, MinimumHeight = 60, MaximumHeight = 180;
 
     // Retail's places inside its 5 DIP frame: the tabs along the top, the cell list (23 DIPs into its row, between the scroll arrows), the
     // selected spell's name under it, and Cast at the right. Measured from the right: the right arrow's and Cast's left edges, and the room
@@ -35,7 +37,10 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     private const double Frame = 5, TabWidth = 47, TabHeight = 20, Cell = 32, DragThreshold = 4;
     private const double CellsX = Frame + 63, CellsY = Frame + 24, CellsRightGap = 98;
     private const double ArrowY = Frame + 22, ArrowWidth = 23, ArrowHeight = 36, LeftArrowX = Frame + 40, RightArrowFromRight = 98;
-    private const double CastY = Frame + 24, CastWidth = 75, NameX = Frame + 40, NameY = Frame + 60, NameHeight = 18;
+    private const double CastY = Frame + 24, CastWidth = 75, NameX = Frame + 40, NameY = Frame + 62, NameHeight = 18, EndowmentX = Frame + 4;
+    // Retail's text: the name and Cast in white, the open tab's numeral light grey and the others mid grey.
+    private static readonly IBrush NameBrush = Brushes.White, OpenTabBrush = new SolidColorBrush(Color.FromRgb(204, 204, 204)),
+        TabBrush = new SolidColorBrush(Color.FromRgb(127, 127, 127));
     // Retail's art: the panel's tile, the open and the other tabs, an empty cell, Cast's left, middle and right (and pressed), the arrows.
     private const uint BackgroundArt = 0x06004CC2, OpenTabArt = 0x06005EB8, TabArt = 0x06005EB9, EmptyCellArt = 0x06001A97, SelectedArt = 0x06004D21,
         AcceptArt = 0x060011F9;
@@ -51,6 +56,9 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     private readonly IItemDragHost? _drag;
     private readonly Action _startMove;
     private readonly Canvas _root;
+    private readonly LayoutTransformControl _scaled;
+    private readonly Border _endowment = new() { IsVisible = false };
+    private double _scale = 1;
     private readonly Border[] _tabs = new Border[Numerals.Length];
     private readonly Canvas _cells = new() { Height = Cell, ClipToBounds = true, Background = Brushes.Transparent };
     private readonly DerethGildedPlate _plate = new(6, ornate: false);
@@ -59,7 +67,7 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     private readonly TextBlock _name;
     private readonly Border _leftArrow, _rightArrow;
     private readonly DerethCornerMarks _corners = new() { IsVisible = false, IsHitTestVisible = false };
-    private readonly Image[] _cast = new Image[3];
+    private readonly Image _cast = new() { Stretch = Stretch.Fill };
     private readonly Dictionary<uint, Bitmap?> _bitmaps = new();
     private readonly Dictionary<(uint Spell, int Number), WriteableBitmap?> _icons = new();
     private string _drawn = string.Empty;
@@ -107,7 +115,7 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         Put(_cells, CellsX, CellsY, 0, Cell);
         _name = new TextBlock
         {
-            FontFamily = DerethPalette.Title, FontSize = 13, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = DerethPalette.Title, FontSize = 13, Foreground = NameBrush, VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis, IsHitTestVisible = false
         };
         Put(_name, NameX, NameY, 0, NameHeight);
@@ -117,12 +125,23 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         Put(_rightArrow, 0, ArrowY, ArrowWidth, ArrowHeight);
         _castButton = CastButton();
         Put(_castButton, 0, CastY, CastWidth, Cell);
+        // Retail's click on the held item selects it, so Cast uses it; a double click uses it at once, as a spell's casts.
+        _endowment.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(_endowment).Properties.IsLeftButtonPressed) return;
+            e.Handled = true;
+            _port.SelectEndowment();
+            if (e.ClickCount > 1) _port.Cast();
+            Sync();
+        };
+        Put(_endowment, EndowmentX, CellsY, Cell, Cell);
         Put(_corners, 0, 0, DesignWidth, DesignHeight);
         // Hovering shows where the window resizes, unless retail's UI is locked.
         _root.PointerEntered += (_, _) => _corners.IsVisible = !_port.UiLocked;
         _root.PointerExited += (_, _) => _corners.IsVisible = false;
-        SizeChanged += (_, e) => Place(e.NewSize.Width);
-        Place(DesignWidth);
+        _scaled = new LayoutTransformControl { Child = _root };
+        SizeChanged += (_, e) => Place(e.NewSize);
+        Place(new Size(DesignWidth, DesignHeight));
 
         _cells.PointerPressed += OnCellPressed;
         _cells.PointerMoved += OnCellMoved;
@@ -136,18 +155,19 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         {
             if (e.GetCurrentPoint(_root).Properties.IsLeftButtonPressed && !_port.UiLocked) _startMove();
         };
-        Content = _root;
+        Content = _scaled;
         _port.Changed += OnPortChanged;
         Sync();
     }
 
     /// <summary>
-    /// The window's definition: no title bar, so the frame drags it, at retail's size; it resizes in width only, as retail's does, unless
-    /// retail's UI is locked. Per-window scaling draws it larger or smaller.
+    /// The window's definition: no title bar, so the frame drags it, at retail's size. Unless retail's UI is locked it resizes in width, for
+    /// more cells, and in height, which scales the bar from 60 to 180 DIPs high; the width keeps room for retail's 400 DIPs at any height.
     /// </summary>
     public static WindowDefinition Definition(Func<bool> uiLocked) => new(WindowId, "Spell bar", DesignWidth, DesignHeight, titleBarHeight: 1,
-        theme: new DerethClientTheme(), resizing: new WindowResizing(new System.Drawing.Size(MinimumWidth, DesignHeight),
-            new System.Drawing.Size(MaximumWidth, DesignHeight), uiLocked), dragsFromContent: true);
+        theme: new DerethClientTheme(), resizing: new WindowResizing(
+            new System.Drawing.Size(MinimumWidth * MinimumHeight / DesignHeight, MinimumHeight), new System.Drawing.Size(MaximumWidth, MaximumHeight),
+            uiLocked, shape: ((double)MinimumWidth / DesignHeight, (double)MaximumWidth / DesignHeight)), dragsFromContent: true);
 
     /// <summary>The first spell the cells show.</summary>
     public int First => _first;
@@ -155,7 +175,7 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     /// <summary>How many whole cells show at the window's width: 13 at retail's 610 DIPs, with the start of a fourteenth.</summary>
     public int VisibleCells => Math.Max(1, (int)(_cells.Width / Cell));
 
-    /// <summary>The selected spell's name, as retail writes it under the cells; empty with none selected.</summary>
+    /// <summary>The selected spell's name, or the selected item's with its spell, as retail writes it under the cells; empty with none.</summary>
     public string SelectedName => _name.Text ?? string.Empty;
 
     /// <summary>Closes the bar; a drag still under way is cancelled, and its spell goes back where it was.</summary>
@@ -171,7 +191,7 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     /// </summary>
     public bool DropAt(uint spell, Point at)
     {
-        if (DropIndexAt(at) is not { } index) return false;
+        if (DropIndexAt(at / _scale) is not { } index) return false;
         _port.Insert(spell, index);
         Sync();
         return true;
@@ -183,7 +203,7 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     /// </summary>
     public void HoverAt(Point? at)
     {
-        var dropAt = at is { } point ? DropIndexAt(point) : null;
+        var dropAt = at is { } point ? DropIndexAt(point / _scale) : null;
         if (dropAt == _dropAt) return;
         _dropAt = dropAt;
         Sync();
@@ -304,7 +324,7 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         for (var i = 0; i < _tabs.Length; i++)
         {
             _tabs[i].Background = Stretched(i == open ? OpenTabArt : TabArt);
-            ((TextBlock)_tabs[i].Child!).Foreground = i == open ? DerethPalette.TextBrush : DerethPalette.MutedBrush;
+            ((TextBlock)_tabs[i].Child!).Foreground = i == open ? OpenTabBrush : TabBrush;
         }
         var spells = _port.Spells;
         var selected = _port.Selected;
@@ -312,7 +332,10 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         _leftArrow.IsVisible = _rightArrow.IsVisible = spells.Count > VisibleCells;
         _leftArrow.Opacity = _first > 0 ? 1 : 0.5;
         _rightArrow.Opacity = _first < spells.Count - VisibleCells ? 1 : 0.5;
-        _name.Text = selected != 0 && _spells().TryGetValue(selected, out var named) ? named.Name : string.Empty;
+        var endowment = _port.Endowment;
+        _name.Text = endowment is { Selected: true } ? endowment.Name
+            : selected != 0 && _spells().TryGetValue(selected, out var named) ? named.Name : string.Empty;
+        ShowEndowment(endowment);
         var drawn = $"{open}|{_first}|{selected}|{_dropAt}|{_cells.Width}|{string.Join(",", spells)}";
         if (drawn == _drawn) return;
         _drawn = drawn;
@@ -337,10 +360,34 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         }
     }
 
-    /// <summary>Lays the bar out for its width: the frame, the background and the cells stretch, the right arrow and Cast keep to the right.</summary>
-    private void Place(double width)
+    /// <summary>The item at the left, retail's selection frame over it while it is selected; hidden with none.</summary>
+    private void ShowEndowment(SpellBarEndowment? endowment)
     {
-        width = Math.Max(MinimumWidth, width);
+        if (Equals(_endowment.Tag, endowment)) return;
+        _endowment.Tag = endowment;
+        _endowment.IsVisible = endowment != null;
+        if (endowment == null) return;
+        var visual = endowment.Visual;
+        var icon = _art == null ? null
+            : GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects, visual.Plate));
+        var layers = new Grid();
+        layers.Children.Add(icon == null ? new Border { Background = DerethPalette.PlaqueBrush } : new DerethItemIcon(icon));
+        if (endowment.Selected) layers.Children.Add(Overlay(SelectedArt));
+        _endowment.Child = layers;
+        ToolTip.SetTip(_endowment, endowment.Name);
+    }
+
+    /// <summary>
+    /// Lays the bar out for the window's size: its height scales the bar, and at that scale the frame, the background and the cells stretch
+    /// across the width while the right arrow and Cast keep to the right.
+    /// </summary>
+    private void Place(Size size)
+    {
+        _scale = Math.Max(MinimumHeight, size.Height) / DesignHeight;
+        _scaled.LayoutTransform = new ScaleTransform(_scale, _scale);
+        var width = Math.Max(MinimumWidth, size.Width / _scale);
+        _root.Width = width;
+        _root.Height = DesignHeight;
         var inside = width - 2 * Frame;
         _plate.Width = _corners.Width = width;
         _background.Width = inside;
@@ -368,28 +415,24 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         return new GameImage(image.Width, image.Height, ItemIconOutline.Over(tab.Pixels, image.Pixels));
     }
 
-    /// <summary>Retail's Cast button, from its three pieces, darker while pressed; a press casts the selected spell.</summary>
+    /// <summary>
+    /// Retail's Cast button, its three pieces joined into one image, darker while pressed; a press casts the selected spell. Joined, a scaled
+    /// bar has no seam where the pieces' edges would fall between screen pixels.
+    /// </summary>
     private Control CastButton()
     {
-        var pieces = new Grid { ColumnDefinitions = new ColumnDefinitions("32,*,32") };
-        for (var i = 0; i < 3; i++)
-        {
-            _cast[i] = new Image { Source = Bitmap(CastArt[i]), Stretch = Stretch.Fill };
-            Grid.SetColumn(_cast[i], i);
-            pieces.Children.Add(_cast[i]);
-        }
+        var up = GameArtImageExtension.CreateBitmap(JoinPieces(CastArt, (int)CastWidth));
+        var down = GameArtImageExtension.CreateBitmap(JoinPieces(CastPressedArt, (int)CastWidth));
+        _cast.Source = up;
+        var pieces = new Grid { Children = { _cast } };
         var label = DerethPalette.CentreInk(new TextBlock
         {
-            Text = "Cast", FontFamily = DerethPalette.Title, FontSize = 13, Foreground = DerethPalette.TextBrush,
+            Text = "Cast", FontFamily = DerethPalette.Title, FontSize = 13, Foreground = NameBrush,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         });
-        Grid.SetColumnSpan(label, 3);
         pieces.Children.Add(label);
         var button = new Border { Child = pieces, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand) };
-        void Pressed(bool down)
-        {
-            for (var i = 0; i < 3; i++) _cast[i].Source = Bitmap(down ? CastPressedArt[i] : CastArt[i]);
-        }
+        void Pressed(bool pressed) => _cast.Source = pressed ? down : up;
         button.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(button).Properties.IsLeftButtonPressed) return;
@@ -400,6 +443,27 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         button.PointerReleased += (_, _) => Pressed(false);
         button.PointerCaptureLost += (_, _) => Pressed(false);
         return button;
+    }
+
+    /// <summary>
+    /// A left, middle and right piece of retail's art joined into one image <paramref name="width"/> pixels wide: the ends whole, the middle
+    /// tiled between them. Null without the art or with pieces of different heights.
+    /// </summary>
+    private GameImage? JoinPieces(uint[] ids, int width)
+    {
+        if (_art?.ReadImage(ids[0]) is not { } left || _art.ReadImage(ids[1]) is not { } middle || _art.ReadImage(ids[2]) is not { } right
+            || middle.Height != left.Height || right.Height != left.Height || width < left.Width + right.Width) return null;
+        var height = left.Height;
+        var pixels = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                var (piece, column) = x < left.Width ? (left, x)
+                    : x >= width - right.Width ? (right, x - (width - right.Width))
+                    : (middle, (x - left.Width) % middle.Width);
+                Array.Copy(piece.Pixels, (y * piece.Width + column) * 4, pixels, (y * width + x) * 4, 4);
+            }
+        return new GameImage(width, height, pixels);
     }
 
     /// <summary>A control that runs <paramref name="press"/> on a left press, then shows the port again.</summary>
