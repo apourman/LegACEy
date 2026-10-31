@@ -87,8 +87,6 @@ internal static unsafe class DecalCalls
             BridgeFact.MainPackCapacity => CharacterObject()?.Values(LongValueKey.ItemSlots, 0) ?? 0,
             BridgeFact.SidePackCapacity => CharacterObject()?.Values(LongValueKey.PackSlots, 0) ?? 0,
             BridgeFact.OpenedContainer => core.Actions.OpenedContainer,
-            BridgeFact.CurrentSelection => core.Actions.CurrentSelection,
-            BridgeFact.CombatMode => (int)core.Actions.CombatMode,
             BridgeFact.CharacterMembership => Membership(character),
             _ => throw new ArgumentOutOfRangeException(nameof(fact), fact, "Unknown bridge fact.")
         };
@@ -245,7 +243,8 @@ internal static unsafe class DecalCalls
 
 
     private static int UseItem(int id, int state) => Act(() => CoreManager.Current.Actions.UseItem(id, state));
-    private static int SelectItem(int id) => Act(() => CoreManager.Current.Actions.SelectItem(id));
+    // Unused since 179: the client selects through retail's own SetSelectedObject. The slot answers, as Device's does.
+    private static int SelectItem(int id) => ENotImpl;
     // Every ID we ask for is the player's own (right-click, E, the window following the selection), so it skips Decal's ID queue,
     // which other plugins fill at login; Actions.RequestId would wait behind them. Only the latest one stays pending, as in retail.
     private static int RequestId(int id) => Act(() => CoreManager.Current.IDQueue.ShortcircuitID(id));

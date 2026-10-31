@@ -229,7 +229,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     {
         get
         {
-            var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+            var id = NativeSelection.Selected;
             return id == 0 ? null : Bridge.Selection(id)?.Name;
         }
     }
@@ -266,7 +266,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// <summary>Tells an object by its id with retail's TalkDirect action, sent through the client's own send.</summary>
     public bool TellDirect(uint objectId, string text) => _sendAction(TalkDirectAction.Opcode, TalkDirectAction.Payload(objectId, text));
 
-    public uint SelectedId => (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+    public uint SelectedId => NativeSelection.Selected;
 
     /// <summary>
     /// Sends the text through retail's chat box call: its receiver is the live communication system, and the call is the one at the box's

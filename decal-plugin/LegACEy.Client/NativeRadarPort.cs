@@ -8,7 +8,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>
 /// The radar's port over the installed client. The player and the objects are read from retail's physics objects each call, as retail's
 /// radar reads them each frame (gmRadarUI::DrawObjects): the objects are CObjectMaint's, by id, with their weenie's radar behaviour and the
-/// colour retail's own GetBlipColor gives them. Names come from Decal's WorldFilter. Selecting goes through Decal's SelectItem; the UI lock
+/// colour retail's own GetBlipColor gives them. Names come from Decal's WorldFilter. Selecting goes through retail's own SetSelectedObject; the UI lock
 /// is set as retail's radar lock button sets it.
 /// </summary>
 /// <remarks>Every address was checked against the installed acclient.exe by <see cref="RetailHudCatalogue"/>; a feature that did not check
@@ -32,7 +32,7 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
 
     /// <param name="natives">Which HUD features the running client matched.</param>
     /// <param name="name">An object's name from Decal's WorldFilter, or null when Decal has none yet.</param>
-    /// <param name="select">Decal's SelectItem.</param>
+    /// <param name="select">Retail's own selection (<see cref="NativeSelection.Select"/>).</param>
     public NativeRadarPort(RetailHudNatives natives, Func<uint, string?> name, Action<uint> select)
     {
         _natives = natives;

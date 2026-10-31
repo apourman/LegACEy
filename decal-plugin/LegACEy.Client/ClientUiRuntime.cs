@@ -232,7 +232,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Point _pointer;
     // The Dereth toolbar over retail's toolbar: its port, window, surface and takeover, held only while the switch is on.
     // Keeps only the selected object's answers, so combat traffic does not grow it.
-    private readonly SelectionMeters _selectionMeters = new(() => (uint)Bridge.Fact(BridgeFact.CurrentSelection));
+    private readonly SelectionMeters _selectionMeters = new(() => NativeSelection.Selected);
+    // The selected id last seen by the frame, to mark the inventory stale when it changes.
+    private uint _lastSelection;
     private NativeRetailToolbarPort? _toolbarPort;
     private RetailToolbar? _toolbar;
     private ScreenSurface? _toolbarSurface;
@@ -483,12 +485,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             SessionRecord.Open(Log);
             SessionRecord.LogGraphics(Log);
             NativeUi.Initialize(Log);
+            NativeSelection.Initialize(Log);
+            NativeStance.Initialize(Log);
             StartWorldUpdates();
             // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
             if (NativeUi.Ready && RetailPanelCatalogueValid())
             {
                 var examinationPort = new NativeExaminationPort();
-                _examination = new RetailExaminationTakeover(examinationPort, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
+                _examination = new RetailExaminationTakeover(examinationPort, () => NativeSelection.Selected,
                     _appraisal, Log, examinationPort.VerifyRoot, () => examinationPort.ExaminedSpell(Log), spell => _magic?.Examine(spell) == true);
             }
             else Log("Retail's examination panel is left to retail: the native UI or its addresses are not ready.");
@@ -646,8 +650,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
-    // The open container and the selection are part of the inventory snapshot, whoever changed them.
-    public void ItemSelected() => _inventory.MarkStale();
+    // The open container is part of the inventory snapshot, whoever changed it.
     public void ContainerOpened() => _inventory.MarkStale();
 
     /// <summary>
@@ -1600,13 +1603,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             var start = PhaseTimes.Start();
             PublishGameState();
+            // The selection is part of the inventory snapshot, whoever changed it.
+            var selection = NativeSelection.Selected;
+            if (selection != _lastSelection)
+            {
+                _lastSelection = selection;
+                _inventory.MarkStale();
+            }
             _inventory.Flush(_inGame);
             _inventory.TargetMode?.Tick();
             _busyCursor?.Show(_inGame && _appraisal.Waiting);
             if (_worldEffects != null)
             {
                 // Never outline the player: opening the main pack selects them.
-                var selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
+                var selected = _inGame ? NativeSelection.Selected : 0;
                 _worldEffects.Selected = selected != 0 && selected != Identity.CharacterId ? selected : 0;
             }
             _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
@@ -3102,7 +3112,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Peace stance stands in for "not in combat": a character can still be attacked in it, but the confirm has already asked.
     private static bool InPeace()
     {
-        try { return (RetailStance)Bridge.Fact(BridgeFact.CombatMode) == RetailStance.Peace; }
+        try { return NativeStance.Stance == RetailStance.Peace; }
         catch (Exception) { return false; }
     }
 
@@ -4063,7 +4073,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!NativeUi.Ready || _device == IntPtr.Zero || _portal == null) return false;
         var natives = HudNatives();
         if (!natives.RadarWindow) return false;
-        _radarPort = new NativeRadarPort(natives, ObjectName, Bridge.SelectItem);
+        _radarPort = new NativeRadarPort(natives, ObjectName, NativeSelection.Select);
         // Read before the radar is held, so the Dereth radar opens where retail's was.
         var retail = NativeUi.GetElement(RetailHudCatalogue.Radar);
         _radarPlace = retail == IntPtr.Zero ? null : NativeUi.GetBounds(retail).Location;
@@ -4124,7 +4134,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var at = _radarPlace ?? new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * _windows!.ScaleOf(RadarWindowId)) - 12), 12);
         var port = _radarPort;
         var window = new RetailRadarWindow(port, RadarGround, RadarPlans, LoadRadarOptions(), SaveRadarOptions,
-            () => (uint)Bridge.Fact(BridgeFact.CurrentSelection), () => _windows?.BeginMove(RadarWindowId, _pointer), _radarPlaceNames.NameOf);
+            () => NativeSelection.Selected, () => _windows?.BeginMove(RadarWindowId, _pointer), _radarPlaceNames.NameOf);
         window.CoordinatesClicked += text => _chatWindows?.Main?.Insert(text);
         window.PingRequested += Ping;
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
@@ -4224,7 +4234,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var spellsOn = SwitchOn(RetailSpellBarSwitchFile, ref _lastSpellBarSwitchCheck, ref _spellBarSwitch);
         // Retail's panel is given back if the post-UI draw is gone or the LegACEy windows failed, as the radar's is.
         var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
-        var stance = (attackOn || spellsOn) && _inGame ? (RetailStance)Bridge.Fact(BridgeFact.CombatMode) : RetailStance.Peace;
+        var stance = (attackOn || spellsOn) && _inGame ? NativeStance.Stance : RetailStance.Peace;
         var viewport = GameDevice.ViewportSize(_device);
         // Both hold the one panel: the bar leaving gives it back before the bar arriving holds it, so the one holding last restores it right.
         if (stance == RetailStance.Magic) TickAttackBar(attackOn, canDraw, stance, viewport);
@@ -4387,7 +4397,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>Where the player stands, read from retail's physics as the radar reads it; null outside the world or when the HUD natives did not match.</summary>
     private RadarPosition? PlayerPosition() =>
-        NativeUi.Ready ? (_radarPort ?? new NativeRadarPort(HudNatives(), ObjectName, Bridge.SelectItem)).Player?.Position : null;
+        NativeUi.Ready ? (_radarPort ?? new NativeRadarPort(HudNatives(), ObjectName, NativeSelection.Select)).Player?.Position : null;
 
     /// <summary>Whether the character has Recklessness trained or specialized, as the server described the character.</summary>
     private bool Reckless() => _character?.Sheet.Skills.TryGetValue(RecklessnessSkill, out var skill) == true && skill.Training >= SkillTraining.Trained;

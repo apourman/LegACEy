@@ -62,7 +62,7 @@ internal sealed class NativeRetailSplitPort : IRetailSplitPort
     public NativeRetailSplitPort(Func<uint, int, byte[]> readMemory, Action<string> log) =>
         _retailAttempts = NativeUiCatalogue.Validate(readMemory, log, Entries, "A refused split shows no \"can't be split\" line: the running client does not match its native entries.");
 
-    public uint SelectedId => (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+    public uint SelectedId => NativeSelection.Selected;
 
     public int SplitAmount => BitConverter.ToInt32(NativeUi.ReadMemory(RetailToolbarCatalogue.SplitAmount, 4), 0);
 

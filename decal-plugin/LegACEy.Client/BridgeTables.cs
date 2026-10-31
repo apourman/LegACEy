@@ -22,7 +22,7 @@ public unsafe struct BridgeEvents
     public delegate* unmanaged[Stdcall]<void> LoginComplete;
     /// <summary>CharacterFilter.Logoff. Unused since 178: the server's Login_LogOffCharacter ends the session.</summary>
     public delegate* unmanaged[Stdcall]<void> Logoff;
-    /// <summary>CoreManager.ItemSelected.</summary>
+    /// <summary>CoreManager.ItemSelected. Unused since 179: the client compares the game's selected id each frame.</summary>
     public delegate* unmanaged[Stdcall]<void> ItemSelected;
     /// <summary>CoreManager.ContainerOpened.</summary>
     public delegate* unmanaged[Stdcall]<void> ContainerOpened;
@@ -56,7 +56,7 @@ public unsafe struct BridgeCalls
     public delegate* unmanaged[Stdcall]<int, BridgeItem*, int*, int> Item;
     /// <summary>Actions.UseItem(id, state).</summary>
     public delegate* unmanaged[Stdcall]<int, int, int> UseItem;
-    /// <summary>Actions.SelectItem(id).</summary>
+    /// <summary>Actions.SelectItem(id). Unused since 179: the client calls retail's SetSelectedObject.</summary>
     public delegate* unmanaged[Stdcall]<int, int> SelectItem;
     /// <summary>Actions.RequestId(id).</summary>
     public delegate* unmanaged[Stdcall]<int, int> RequestId;
@@ -108,9 +108,9 @@ public enum BridgeFact
     SidePackCapacity,
     /// <summary>Actions.OpenedContainer.</summary>
     OpenedContainer,
-    /// <summary>Actions.CurrentSelection.</summary>
+    /// <summary>Actions.CurrentSelection. Unused since 179: the client reads the game's selected id.</summary>
     CurrentSelection,
-    /// <summary>Actions.CombatMode: the player's combat stance, Decal's values (1 peace, 2 melee, 4 missile, 8 magic).</summary>
+    /// <summary>Actions.CombatMode: the player's combat stance (1 peace, 2 melee, 4 missile, 8 magic). Unused since 179: the client reads retail's own combat mode.</summary>
     CombatMode,
     /// <summary>
     /// The player's allegiance and society facts as bits: 1 in an allegiance, 2 with a monarch, 4 with a patron, 8 with vassals, 16 in a
