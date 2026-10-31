@@ -28,10 +28,9 @@ public sealed class DerethSegmented : Border
     private int _selected;
 
     /// <param name="blueOption">The option lit blue rather than gold when chosen, such as a switch's Retail choice; -1 for none.</param>
-    /// <param name="cellPadding">Each option's padding around its label; 8 by 4 when not given.</param>
     /// <param name="fitLabels">Each option as wide as its label, rather than all the same width.</param>
     /// <param name="tabs">Retail's panel tabs, for a window header, rather than a groove.</param>
-    public DerethSegmented(IReadOnlyList<string> options, int blueOption = -1, Thickness? cellPadding = null, bool fitLabels = false, bool tabs = false)
+    public DerethSegmented(IReadOnlyList<string> options, int blueOption = -1, bool fitLabels = false, bool tabs = false)
     {
         _blueOption = blueOption;
         _tabs = tabs;
@@ -47,11 +46,14 @@ public sealed class DerethSegmented : Border
                 Text = options[i], FontFamily = tabs ? DerethPalette.Title : DerethPalette.Body, FontSize = 12, Foreground = DerethPalette.MutedBrush,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             };
-            var cell = new Border { Background = Brushes.Transparent, Padding = cellPadding ?? new Thickness(8, 4), Child = tabs ? DerethPalette.CentreInk(label) : label };
+            var cell = new Border
+            {
+                Background = Brushes.Transparent, Padding = tabs ? new Thickness(fitLabels ? 7 : 0, 0) : new Thickness(8, 4),
+                Child = tabs ? DerethPalette.CentreInk(label) : label
+            };
             if (tabs)
             {
                 cell.Height = 22;
-                cell.Padding = new Thickness(fitLabels ? 7 : 0, 0);
                 cell.BorderThickness = new Thickness(1, 1, 1, 0);
                 cell.CornerRadius = new CornerRadius(6, 6, 0, 0);
                 cell.VerticalAlignment = VerticalAlignment.Bottom;
