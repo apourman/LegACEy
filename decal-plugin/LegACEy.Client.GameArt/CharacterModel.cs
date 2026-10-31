@@ -138,6 +138,7 @@ public sealed class CharacterModel
     /// Assemble a character from portal.dat: the setup's parts in its first placement (the default pose), with the
     /// appearance's part swaps, texture swaps and palette applied. Unreadable parts and textures are skipped or drawn grey. A pose (an
     /// animation, such as <see cref="PaperDollPose"/>) stands the parts in its second frame instead: the first leads in from another pose.
+    /// A pose made for another body (a human stance on a monster's setup, with a different part count) is ignored.
     /// </summary>
     public static CharacterModel Build(PortalDat dat, CharacterAppearance appearance, uint pose = 0)
     {
