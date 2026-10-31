@@ -273,18 +273,51 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
     public bool ForgetWindowSizes() =>
         ForgetWhere(key => Decode(key.Substring(key.LastIndexOf('|') + 1))?.EndsWith(WindowManager.SizeKeySuffix, StringComparison.Ordinal) == true);
 
-    private bool ForgetWhere(Func<string, bool> match)
+    /// <summary>
+    /// Makes the target server and character's rows a copy of the source's: the target's other rows go. A named UI layout is a server and
+    /// character no game has, so this saves one and loads one. Returns false as <see cref="ForgetPlaces"/> does.
+    /// </summary>
+    public bool CopyPlaces(string fromServer, string fromCharacter, string toServer, string toCharacter)
+    {
+        string from = Encode(fromServer) + "|" + Encode(fromCharacter) + "|", to = Encode(toServer) + "|" + Encode(toCharacter) + "|";
+        return Edit(rows => rows.Keys.Where(key => key.StartsWith(to, StringComparison.Ordinal))
+            .Select(key => new KeyValuePair<string, WindowPlacement?>(key, null))
+            .Concat(rows.Where(row => row.Key.StartsWith(from, StringComparison.Ordinal))
+                .Select(row => new KeyValuePair<string, WindowPlacement?>(to + row.Key.Substring(from.Length), row.Value))));
+    }
+
+    /// <summary>Whether the server and character have any row, such as a named UI layout that was saved.</summary>
+    public bool Has(string server, string character)
+    {
+        var owner = Encode(server) + "|" + Encode(character) + "|";
+        lock (_sync)
+        {
+            using var file = File.Exists(_path) ? Open(FileMode.Open, FileAccess.Read, FileShare.Read) : null;
+            return Rows(file)?.Keys.Any(key => key.StartsWith(owner, StringComparison.Ordinal)) == true;
+        }
+    }
+
+    private bool ForgetWhere(Func<string, bool> match) =>
+        Edit(rows => rows.Keys.Where(match).Select(key => new KeyValuePair<string, WindowPlacement?>(key, null)));
+
+    /// <summary>
+    /// Applies the edits made from the file's rows, in order: a place, or null to forget one. False when the file could not be read or
+    /// written; if it was read, the edits hold for this session, as a failed save does.
+    /// </summary>
+    private bool Edit(Func<IReadOnlyDictionary<string, WindowPlacement>, IEnumerable<KeyValuePair<string, WindowPlacement?>>> edits)
     {
         lock (_sync)
         {
-            var forgotten = new List<string>();
+            var made = new List<KeyValuePair<string, WindowPlacement?>>();
             if (Change(rows =>
                 {
-                    forgotten.AddRange(rows.Keys.Where(match));
-                    foreach (var key in forgotten) rows.Remove(key);
+                    made.AddRange(edits(rows));
+                    foreach (var edit in made)
+                        if (edit.Value is { } placement) rows[edit.Key] = placement;
+                        else rows.Remove(edit.Key);
                 }))
                 return true;
-            foreach (var key in forgotten) _session[key] = null;
+            foreach (var edit in made) _session[edit.Key] = edit.Value;
             return false;
         }
     }

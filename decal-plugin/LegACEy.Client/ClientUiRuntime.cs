@@ -162,6 +162,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _uiSizeChanged;
     // Set by Reset window positions in the Settings window, applied on the next frame, outside that window's click.
     private bool _positionsResetRequested;
+    // Set by /loadui, applied on the next frame, outside the Dereth chat's Enter, since loading rebuilds the chat window too.
+    private string? _layoutToLoad;
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
     // The release build stamps the client with the plugin version, so the menu shows which release is installed.
@@ -446,15 +448,23 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _row2Choice = new ShortcutRowChoice(_settingsStore);
         _opacities = new WindowOpacities(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
-        if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
-            _uiSize = Math.Clamp(size, UiSizeChoice.Smallest, UiSizeChoice.Largest);
-        if (_settingsStore.Load("", "", WaterKey) is { Location: var water })
-            _water = new WaterChoice(water.Y != 0, Math.Clamp(water.X, 0, WaterChoice.Most));
-        if (_settingsStore.Load("", "", GameMessageTextSizeKey) is { Location.X: var messageSize and > 0 })
-            _gameMessageTextSize = Math.Clamp(messageSize, DerethMessageBands.SmallestTextSize, DerethMessageBands.LargestTextSize);
+        LoadInstallSettings();
+    }
+
+    /// <summary>The settings kept for every character on the install, read from the settings file: at start, and after /loadui.</summary>
+    private void LoadInstallSettings()
+    {
+        // A setting with no row takes its default, so a layout saved before it was set brings that back.
+        _uiSize = _settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 }
+            ? Math.Clamp(size, UiSizeChoice.Smallest, UiSizeChoice.Largest) : DefaultUiSize;
+        _water = _settingsStore.Load("", "", WaterKey) is { Location: var water }
+            ? new WaterChoice(water.Y != 0, Math.Clamp(water.X, 0, WaterChoice.Most)) : WaterChoice.Default;
+        _gameMessageTextSize = _settingsStore.Load("", "", GameMessageTextSizeKey) is { Location.X: var messageSize and > 0 }
+            ? Math.Clamp(messageSize, DerethMessageBands.SmallestTextSize, DerethMessageBands.LargestTextSize) : DerethMessageBands.DefaultTextSize;
         _gameMessagesHidden = _settingsStore.Load("", "", GameMessagesHiddenKey) is { Location.X: 1 };
-        if (_settingsStore.Load("", "", GameMessagePlaceKey) is { Location: var place, Size: not null }) _gameMessagePlace = place;
+        _gameMessagePlace = _settingsStore.Load("", "", GameMessagePlaceKey) is { Location: var place, Size: not null } ? place : null;
         _gameMessagesRetail = !SwitchCustom(IOPath.Combine(PluginDirectory, RetailGameMessagesSwitchFile));
+        if (_gameMessageBands != null) _gameMessageBands.TextScale = _gameMessageTextSize / 100.0;
     }
 
     public void Startup()
@@ -643,6 +653,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         var space = command.IndexOf(' ');
         var name = space < 0 ? command : command[..space];
+        if (name.Equals("/saveui", StringComparison.OrdinalIgnoreCase) || name.Equals("@saveui", StringComparison.OrdinalIgnoreCase))
+        {
+            // Retail saves its panel's place from this same line, after us: the panel must stand there, not parked off-screen.
+            foreach (var panel in _retailPanels) panel.Unpark();
+            if (space > 0) Guard(() => SaveUiLayout(command[space..].Trim()));
+            return false;
+        }
+        if (name.Equals("/loadui", StringComparison.OrdinalIgnoreCase) || name.Equals("@loadui", StringComparison.OrdinalIgnoreCase))
+        {
+            if (space > 0) _layoutToLoad = command[space..].Trim();
+            return false;
+        }
         if (!name.Equals("/water", StringComparison.OrdinalIgnoreCase) && !name.Equals("@water", StringComparison.OrdinalIgnoreCase))
             return false;
         if (_water.Apply(space < 0 ? "" : command[space..]) is not { } water)
@@ -653,6 +675,78 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         SetWater(water);
         SayInChat(water.ToString());
         return true;
+    }
+
+    // Named UI layouts are rows of the position, settings and chat tab files under these servers, which no game server is called: the
+    // character's rows under the first, the install's settings (UI size, game messages, water) under the second, and each window's
+    // Dereth or Retail switch under the third, X 1 for Retail.
+    private const string UiLayoutServer = "\u0001ui-layout", UiLayoutInstallServer = "\u0001ui-layout-install",
+        UiLayoutSwitchServer = "\u0001ui-layout-switches";
+    private static readonly string[] SwitchFiles =
+    {
+        RetailPanelSwitchFile, RetailAppraisalSwitchFile, RetailToolbarSwitchFile, RetailChatSwitchFile, RetailVitalsSwitchFile,
+        RetailRadarSwitchFile, RetailAttackSwitchFile, RetailSpellBarSwitchFile, RetailCharacterSwitchFile, RetailSocialSwitchFile,
+        RetailMapSwitchFile, RetailQuestsSwitchFile, RetailMagicSwitchFile, RetailOptionsSwitchFile, RetailGameMessagesSwitchFile,
+    };
+
+    /// <summary>
+    /// /saveui name, alongside retail's own: every LegACEy setting, saved under the name for every character on this computer. This
+    /// character's window places and sizes, options (vitals, radar, appraisal, opacity, plugins) and chat tabs, the install's settings, and
+    /// which windows are Dereth or Retail. The line still reaches retail, which saves its own layout under the name.
+    /// </summary>
+    private void SaveUiLayout(string name)
+    {
+        var layout = name.ToLowerInvariant();
+        string server = SessionServer(), character = SessionCharacter();
+        var saved = _positionStore.CopyPlaces(server, character, UiLayoutServer, layout)
+            & _settingsStore.CopyPlaces(server, character, UiLayoutServer, layout)
+            & _settingsStore.CopyPlaces("", "", UiLayoutInstallServer, layout);
+        foreach (var file in SwitchFiles)
+            _settingsStore.Save(UiLayoutSwitchServer, layout, file, (new Point(SwitchCustom(IOPath.Combine(PluginDirectory, file)) ? 0 : 1, 0), null));
+        CopyChatTabs(server, character, UiLayoutServer, layout);
+        if (!saved) Log($"Saving UI layout '{layout}': the position or settings file can't be read or written; it holds for this session.");
+        SayInChat($"LegACEy UI saved in layout '{name}'.");
+    }
+
+    /// <summary>
+    /// /loadui name, alongside retail's own: this character and the install take every LegACEy setting the layout saved, and the UI
+    /// rebuilds with them. A name with no LegACEy layout changes nothing. The line still reaches retail, which loads its own layout.
+    /// </summary>
+    private void LoadUiLayout(string name)
+    {
+        _layoutToLoad = null;
+        if (!_inGame) return;
+        var layout = name.ToLowerInvariant();
+        if (!_settingsStore.Has(UiLayoutSwitchServer, layout))
+        {
+            SayInChat($"No LegACEy UI saved in layout '{name}'; /saveui {name} saves it.");
+            return;
+        }
+        Log($"Loading UI layout '{layout}': rebuilding the LegACEy UI.");
+        Rebuild(resetPositions: false, closed: () =>
+        {
+            // After the windows close, since closing saves where they stood.
+            string server = SessionServer(), character = SessionCharacter();
+            var loaded = _positionStore.CopyPlaces(UiLayoutServer, layout, server, character)
+                & _settingsStore.CopyPlaces(UiLayoutServer, layout, server, character)
+                & _settingsStore.CopyPlaces(UiLayoutInstallServer, layout, "", "");
+            foreach (var file in SwitchFiles)
+                if (_settingsStore.Load(UiLayoutSwitchServer, layout, file) is { Location.X: var retail })
+                    SetSwitch(IOPath.Combine(PluginDirectory, file), custom: retail == 0);
+            CopyChatTabs(UiLayoutServer, layout, server, character);
+            if (!loaded) Log($"Loading UI layout '{layout}': the position or settings file can't be read or written; it holds for this session.");
+            _opacities.Forget();
+            LoadInstallSettings();
+        });
+        SayInChat($"LegACEy UI loaded from layout '{name}'.");
+    }
+
+    /// <summary>Makes the target's chat tabs a copy of the source's: a window with no row there shows the six default tabs.</summary>
+    private void CopyChatTabs(string fromServer, string fromCharacter, string toServer, string toCharacter)
+    {
+        foreach (var id in _chatTabs.Windows(toServer, toCharacter)) _chatTabs.Remove(toServer, toCharacter, id);
+        foreach (var id in _chatTabs.Windows(fromServer, fromCharacter))
+            if (_chatTabs.Load(fromServer, fromCharacter, id) is { } tabs) _chatTabs.Save(toServer, toCharacter, id, tabs);
     }
 
     /// <summary>
@@ -1252,20 +1346,28 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             percent => _opacities.Set(SessionServer(), SessionCharacter(), sizeIds[0], percent));
         return new UiWindowChoice(title, () => SwitchCustom(path), custom =>
         {
-            try
-            {
-                if (custom) File.Delete(path);
-                else File.WriteAllText(path, string.Empty);
-                _switchHeld.Remove(path);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                // The card keeps the chosen state for this session, so it doesn't snap back to the file's.
-                Log($"Could not switch the {title} window: {exception.Message}");
-                _switchHeld[path] = custom;
-            }
+            SetSwitch(path, custom);
             recheck();
         }, size, opacity);
+    }
+
+    /// <summary>
+    /// Puts a window on LegACEy's (no file) or retail's (the file). A file that can't be changed keeps the chosen state for this session,
+    /// so the Settings card doesn't snap back to the file's.
+    /// </summary>
+    private void SetSwitch(string path, bool custom)
+    {
+        try
+        {
+            if (custom) File.Delete(path);
+            else File.WriteAllText(path, string.Empty);
+            _switchHeld.Remove(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Log($"Could not switch {IOPath.GetFileName(path)}: {exception.Message}");
+            _switchHeld[path] = custom;
+        }
     }
 
     /// <summary>All windows' opacity set from the Settings window: every card's window takes it, and so does every window without a card.</summary>
@@ -1324,15 +1426,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>
     /// Closes every window and opens the session's again, as a relog does. With <paramref name="resetPositions"/> the saved window places are
     /// forgotten once the windows have closed, since closing saves where they stood, and the Settings window reopens on General rather than
-    /// on the tab it was on.
+    /// on the tab it was on. <paramref name="closed"/> runs once the windows have closed, before they open again.
     /// </summary>
-    private void Rebuild(bool resetPositions)
+    private void Rebuild(bool resetPositions, Action? closed = null)
     {
         var settingsOpen = _windows?.Get(SettingsWindowId) != null;
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
         Logoff();
         if (resetPositions) ForgetWindowPlaces();
+        if (closed != null) Guard(closed);
         _carriedChatHistory = chatHistory;
         LoginComplete();
         // The Settings window comes back on the tab it was on, which the tab store keeps; after a reset, on General.
@@ -1431,6 +1534,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         if (_uiSizeChanged) Guard(ApplyUiSize);
         if (_positionsResetRequested) Guard(ResetPositions);
+        if (_layoutToLoad is { } layout) Guard(() => LoadUiLayout(layout));
         // A failed rebuild has torn the UI down; the block below would build it again this frame.
         if (_failed) return;
 

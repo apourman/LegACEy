@@ -38,8 +38,6 @@ internal sealed unsafe class WorldEffects : IDisposable
         (int*)0x00847050, (int*)0x00867304, (int*)0x008470D0, (int*)0x008470CC, (int*)0x00867300
     };
     private readonly int[] _savedView = new int[ViewGlobals.Length];
-    // The player's CPhysicsObj, kept by CPhysicsObj::SetPlayer.
-    private static readonly int* PlayerObject = (int*)0x00844D68;
     private const uint Gold = 0xFFFFC040;
     // ColorWriteEnable: the selection into the mask's colour, the player into its alpha.
     private const int SelectionChannels = 0x7, PlayerChannels = 0x8;
@@ -308,7 +306,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         {
             // Only objects in a world cell: the sky's objects (and anything else not in the world) are drawn with their own camera.
             var physicsObject = *(int*)(part + 0xE0);
-            var player = physicsObject == *PlayerObject;
+            var player = physicsObject == PlayerObject();
             if (physicsObject != 0 && *(int*)(physicsObject + 0x90) != 0)
             {
                 var id = *(uint*)(physicsObject + 0x8);
@@ -388,8 +386,19 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// </summary>
     internal static uint PlayerCell()
     {
-        var player = *PlayerObject;
-        return player != 0 && *(int*)(player + 0x90) != 0 ? *(uint*)(player + 0x4C) : 0;
+        var player = PlayerObject();
+        return player != 0 && *(int*)(player + RetailHudCatalogue.ObjectInCell) != 0 ? *(uint*)(player + RetailHudCatalogue.ObjectCell) : 0;
+    }
+
+    /// <summary>
+    /// The player's CPhysicsObj, or 0 out of the world: the SmartBox's player, which retail clears when the player leaves the world. Not
+    /// SmartBox::SetPlayer's other copy (0x844D68), which retail never clears: at character select it still points at the freed player, and
+    /// reading it crashed the client there (30 Oct).
+    /// </summary>
+    private static int PlayerObject()
+    {
+        var smartBox = *(int*)RetailHudCatalogue.SmartBox;
+        return smartBox == 0 ? 0 : *(int*)(smartBox + RetailHudCatalogue.SmartBoxPlayer);
     }
 
     /// <summary>
