@@ -7,7 +7,7 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// LegACEy's attack bar, drawn as the mockup's gilded panel: retail's layout one for one at half its width, 320 by 58 DIPs, in the Dereth theme.
+/// LegACEy's attack bar, drawn on the Dereth gilded panel: retail's layout one for one at retail's size, 610 by 90 DIPs, in the Dereth theme.
 /// It shows in melee and missile only. A click on the bar sets the set point, a plaque sets the height and a gem flips an option, each through
 /// <see cref="IAttackBarPort"/>; the charge and every value follow the port. A press on the plate away from the controls drags the window, unless
 /// retail's UI is locked. A drag on an edge or a corner gives it more width or height: more height draws the whole bar larger, and more
@@ -15,8 +15,11 @@ namespace LegACEy.Client.Demo;
 /// </summary>
 public sealed class DerethAttackBarWindow : UserControl, IDisposable
 {
-    /// <summary>The window's id, under which its place and size are kept for the character.</summary>
-    public const string WindowId = "dereth-attack";
+    /// <summary>
+    /// The window's id, under which its place and size are kept for the character. It was "dereth-attack" while the bar was 320 by 58; the new
+    /// id lets the bar open at retail's size instead of a size saved for the old one.
+    /// </summary>
+    public const string WindowId = "dereth-attack-bar";
 
     private readonly IAttackBarPort _port;
     private readonly Action _startMove;
@@ -70,7 +73,7 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
     public static WindowDefinition DefinitionOf(Func<bool> uiLocked) => new(WindowId, "Attack", DerethAttackBarArt.DesignWidth,
         DerethAttackBarArt.DesignHeight, titleBarHeight: 1, theme: new DerethClientTheme(), resizing: Resizing(uiLocked), dragsFromContent: true);
 
-    /// <summary>How the bar resizes: from 280 by 58 DIPs to 960 by 150, in either direction on its own, unless retail's UI is locked.</summary>
+    /// <summary>How the bar resizes: from 400 by 90 DIPs to 1220 by 180, in either direction on its own, unless retail's UI is locked.</summary>
     public static WindowResizing Resizing(Func<bool> uiLocked) => new(
         new System.Drawing.Size(DerethAttackBarArt.MinimumWidth, DerethAttackBarArt.DesignHeight),
         new System.Drawing.Size(DerethAttackBarArt.MaximumWidth, DerethAttackBarArt.MaximumHeight), uiLocked);
