@@ -8,16 +8,24 @@ using Reloaded.Hooks.Definitions.X86;
 
 namespace LegACEy.Client.DecalPlugin;
 
-/// <summary>Draws before the checked retail RenderDeviceD3D.EndScene function.</summary>
+/// <summary>
+/// The client's frame: runs the per-frame work, then draws, before the checked retail RenderDeviceD3D.EndScene function, and reads the
+/// game's Direct3D device there. A draw failure stops only the drawing; the frame keeps running, so /legacey can start the UI again.
+/// </summary>
 internal sealed class PostUiDrawHook : IDisposable
 {
-    internal static readonly byte[] Signature = { 0x56, 0x8b, 0xf1, 0x8a, 0x86, 0xac, 0, 0, 0, 0x84, 0xc0, 0x74, 0x16 };
+    // The prologue up to RenderDeviceD3D's IDirect3DDevice9* (mov eax, [esi+0x468]), which EndScene ends the scene on.
+    internal static readonly byte[] Signature = { 0x56, 0x8b, 0xf1, 0x8a, 0x86, 0xac, 0, 0, 0, 0x84, 0xc0, 0x74, 0x16, 0x8b, 0x86, 0x68, 0x04, 0, 0 };
+    private const int DeviceOffset = 0x468;
+    private readonly Action _frame;
     private readonly Action _draw;
     private readonly Action<Exception> _failed;
     private readonly Action<string> _log;
     private IHook<EndSceneDelegate>? _hook;
     private GCHandle _root;
     private bool _installed;
+    // Off after a draw failure, until Install asks for it again.
+    private bool _drawing;
     private bool _inside;
     private bool _hasRun;
     // Each flag keeps one line per installed hook; they reset in InstallAt.
@@ -28,19 +36,29 @@ internal sealed class PostUiDrawHook : IDisposable
     [Function(CallingConventions.MicrosoftThiscall)]
     internal delegate void EndSceneDelegate(IntPtr renderDevice);
 
-    public PostUiDrawHook(Action draw, Action<Exception> failed, Action<string> log)
+    public PostUiDrawHook(Action frame, Action draw, Action<Exception> failed, Action<string> log)
     {
+        _frame = frame ?? throw new ArgumentNullException(nameof(frame));
         _draw = draw ?? throw new ArgumentNullException(nameof(draw));
         _failed = failed ?? throw new ArgumentNullException(nameof(failed));
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
-    public bool IsInstalled => _installed;
+    /// <summary>Whether the hook draws: placed, and not stopped by a draw failure.</summary>
+    public bool IsInstalled => _installed && _drawing;
+    /// <summary>Whether it has drawn since it was placed or asked to draw again.</summary>
     public bool HasRun => _hasRun;
+    /// <summary>The game's IDirect3DDevice9, zero until the first frame.</summary>
+    public IntPtr Device { get; private set; }
 
+    /// <summary>Places the hook, or has a placed hook draw again after a draw failure.</summary>
     public bool Install()
     {
-        if (_installed) return true;
+        if (_installed)
+        {
+            if (!_drawing) (_drawing, _hasRun) = (true, false);
+            return true;
+        }
         var module = Process.GetCurrentProcess().MainModule!;
         var rva = FindEndSceneRva(File.ReadAllBytes(module.FileName));
         return rva == 0x1A0E10 && InstallAt(IntPtr.Add(module.BaseAddress, rva.Value));
@@ -56,6 +74,7 @@ internal sealed class PostUiDrawHook : IDisposable
         {
             _hook = ReloadedHooks.Instance.CreateHook<EndSceneDelegate>(OnEndScene, entry.ToInt64());
             _installed = true;
+            _drawing = true;
             _hasRun = false;
             _removedLogged = false;
             _removalFailureLogged = false;
@@ -81,18 +100,35 @@ internal sealed class PostUiDrawHook : IDisposable
         if (!_inside && _installed)
         {
             _inside = true;
-            _hasRun = true;
-            try { _draw(); }
-            catch (Exception exception)
+            try
             {
-                try { _failed(exception); }
-                catch { /* Reporting must never escape the native callback. */ }
-                Dispose();
+                Device = Marshal.ReadIntPtr(renderDevice, DeviceOffset);
+                Run(_frame);
+                if (_drawing)
+                {
+                    _hasRun = true;
+                    if (!Run(_draw)) _drawing = false;
+                }
             }
             finally { _inside = false; }
         }
         // Reloaded keeps the trampoline callable even after Disable().
         original(renderDevice);
+    }
+
+    private bool Run(Action work)
+    {
+        try
+        {
+            work();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            try { _failed(exception); }
+            catch { /* Reporting must never escape the native callback. */ }
+            return false;
+        }
     }
 
     public void Dispose()

@@ -8,26 +8,27 @@ class Program {
  [UnmanagedFunctionPointer(CallingConvention.ThisCall)] delegate void Invoke(IntPtr device);
  static int Main() {
   var entry=VirtualAlloc(IntPtr.Zero,(UIntPtr)64,0x3000,0x40);
-  var device=Marshal.AllocHGlobal(256);Marshal.Copy(new byte[256],0,device,256);
+  var device=Marshal.AllocHGlobal(0x470);Marshal.Copy(new byte[0x470],0,device,0x470);Marshal.WriteInt32(device,0x468,0x0BADF00D);
   var code=new byte[64];for(int i=0;i<64;i++)code[i]=0x90;
   PostUiDrawHook.Signature.CopyTo(code,0);
   code[35]=0xff;code[36]=0x06;code[37]=0x5e;code[38]=0xc3;
   Marshal.Copy(code,0,entry,64);
   var call=(Invoke)Marshal.GetDelegateForFunctionPointer(entry,typeof(Invoke));
-  var draws=0;var failures=0;var fail=false;var removedLogs=0;
-  using(var hook=new PostUiDrawHook(()=>{draws++;if(fail)throw new Exception("draw failure");},_=>{failures++;throw new Exception("report failure");},message=>{if(message=="Retail EndScene hook removed.")removedLogs++;})) {
+  var frames=0;var draws=0;var failures=0;var fail=false;var removedLogs=0;
+  using(var hook=new PostUiDrawHook(()=>frames++,()=>{draws++;if(fail)throw new Exception("draw failure");},_=>{failures++;throw new Exception("report failure");},message=>{if(message=="Retail EndScene hook removed.")removedLogs++;})) {
    if(!hook.InstallAt(entry)||hook.HasRun)throw new Exception("install/readiness");
    call(device);
-   if(!hook.HasRun||draws!=1||Marshal.ReadInt32(device)!=1)throw new Exception("callback/forwarding");
+   if(!hook.HasRun||frames!=1||draws!=1||Marshal.ReadInt32(device)!=1||hook.Device!=new IntPtr(0x0BADF00D))throw new Exception("callback/forwarding/device");
    fail=true;call(device);
    if(hook.IsInstalled||failures!=1||Marshal.ReadInt32(device)!=2)throw new Exception("failure isolation");
    call(device);
-   if(draws!=2||Marshal.ReadInt32(device)!=3)throw new Exception("disabled forwarding");
+   if(frames!=3||draws!=2||Marshal.ReadInt32(device)!=3)throw new Exception("frames after a draw failure, without drawing");
+   if(!hook.Install()||!hook.IsInstalled||hook.HasRun)throw new Exception("drawing again");
   }
   if(removedLogs!=1)throw new Exception("removal logged once");
   call(device);
   if(Marshal.ReadInt32(device)!=4)throw new Exception("unload forwarding");
-  Console.WriteLine("PASS: native x86 callback, thiscall forwarding, draw/report failure isolation, disable and unload.");
+  Console.WriteLine("PASS: native x86 callback, device read, thiscall forwarding, frames through a draw failure, drawing again, disable and unload.");
   CheckMovementOverride();
   return 0;
  }
