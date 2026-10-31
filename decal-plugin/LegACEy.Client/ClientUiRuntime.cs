@@ -3110,11 +3110,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     // Peace stance stands in for "not in combat": a character can still be attacked in it, but the confirm has already asked.
-    private static bool InPeace()
-    {
-        try { return NativeStance.Stance == RetailStance.Peace; }
-        catch (Exception) { return false; }
-    }
+    private static bool InPeace() => NativeStance.Stance == RetailStance.Peace;
 
     /// <summary>
     /// The confirm's Log out: logs the character out, and the logoff then closes the game so the waiting updater can install. False when

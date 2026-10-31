@@ -59,6 +59,10 @@ internal static class RetailToolbarCatalogue
     /// <summary>The ShortCutManager's slots: 18, rows 1 and 2.</summary>
     internal const int ShortcutSlots = 18;
 
+    /// <summary>The getter's entry, shared with <see cref="NativeStance"/>, which checks it on its own.</summary>
+    internal static readonly NativeUiEntry CombatSystemGetter = new("ClientCombatSystem::GetCombatSystem", GetCombatSystem,
+        NativeUiCatalogue.Bytes("A1 6C 16 87 00 C3"), Source, "Cdecl () -> ClientCombatSystem*, read from 0x0087166C");
+
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
     {
         new NativeUiEntry("gmToolbarUI vtable slot +0x0C holds ListenToElementMessage (class identity)", GmToolbarUIVtable + 0x0C,
@@ -75,8 +79,7 @@ internal static class RetailToolbarCatalogue
             NativeUiCatalogue.Bytes("83 FF 12 7D 68 8B 44 BB 04"), Source, "instruction reference (slot count and slot read)"),
         new NativeUiEntry("ShortCutManager::AddShortCut writes entry index (+4) and object id (+8)", ShortCutManagerSlotWrites,
             NativeUiCatalogue.Bytes("89 78 04 8B 56 08 89 50 08"), Source, "instruction reference (entry layout)"),
-        new NativeUiEntry("ClientCombatSystem::GetCombatSystem", GetCombatSystem, NativeUiCatalogue.Bytes("A1 6C 16 87 00 C3"),
-            Source, "Cdecl () -> ClientCombatSystem*, read from 0x0087166C"),
+        CombatSystemGetter,
         new NativeUiEntry("CM_UI::SendNotice_SetPanelVisibility", SendNoticeSetPanelVisibility,
             NativeUiCatalogue.Bytes("E8 6B 03 00 00 8B 10 68 F8 D1 4D 00 8B C8 FF 52 10"), Source,
             "Cdecl (uint panelId, bool visible) -> bool; the PDB's 0x0047A0A0 plus +0x400, as its neighbour EndCharacterSession"),

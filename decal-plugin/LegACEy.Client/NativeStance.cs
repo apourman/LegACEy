@@ -10,11 +10,9 @@ namespace LegACEy.Client.DecalPlugin;
 /// 8 magic: the values of <see cref="RetailStance"/> (RynthCore's CombatModeHooks reads it the same way). Checked against the running client
 /// once at start; when it does not match, the stance reads as peace.
 /// </summary>
-internal static class NativeStance
+internal static unsafe class NativeStance
 {
     private const string Source = "our disassembly of the installed end-of-retail acclient.exe";
-    /// <summary>ClientCombatSystem's singleton pointer, which ClientCombatSystem::GetCombatSystem returns; null outside the game.</summary>
-    private const uint CombatSystemPointer = 0x0087166C;
     /// <summary>The combat mode (int32) in ClientCombatSystem.</summary>
     private const int ModeOffset = 0x1C;
 
@@ -22,8 +20,7 @@ internal static class NativeStance
     // the offset.
     private static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
     {
-        new NativeUiEntry("ClientCombatSystem::GetCombatSystem reads the singleton at 0x0087166C", RetailToolbarCatalogue.GetCombatSystem,
-            NativeUiCatalogue.Bytes("A1 6C 16 87 00 C3"), Source, "data reference (mov eax, [0x0087166C]), Cdecl getter"),
+        RetailToolbarCatalogue.CombatSystemGetter,
         new NativeUiEntry("ClientCombatSystem::ToggleCombatMode compares the mode at +0x1C with peace (1)", RetailToolbarCatalogue.ToggleCombatMode + 3,
             NativeUiCatalogue.Bytes("83 7E 1C 01"), Source, "instruction reference (cmp dword ptr [esi+0x1C], 1)"),
     };
@@ -44,8 +41,8 @@ internal static class NativeStance
         get
         {
             if (!_ok) return RetailStance.Peace;
-            var system = Marshal.ReadIntPtr(new IntPtr(unchecked((int)CombatSystemPointer)));
-            return system == IntPtr.Zero ? RetailStance.Peace : (RetailStance)Marshal.ReadInt32(system, ModeOffset);
+            var system = ((delegate* unmanaged[Cdecl]<byte*>)RetailToolbarCatalogue.GetCombatSystem)();
+            return system == null ? RetailStance.Peace : (RetailStance)(*(int*)(system + ModeOffset));
         }
     }
 }
