@@ -67,7 +67,7 @@ public sealed class ContainerWindowTests
 
     /// <summary>A CreateObject as ACE's SerializeCreateObject writes it, with the fields a container's items use.</summary>
     private static byte[] Created(uint id, string name, uint icon, uint? container = null, int stack = 1, int stackMax = 0, int capacity = 0, int packs = 0,
-        uint overlay = 0, uint itemType = 0x80, bool moving = false)
+        uint overlay = 0, uint itemType = 0x80, bool moving = false, uint description = 0)
     {
         var w = new Wire().U32(id);
         // The model: 0x11, no palettes, textures or parts.
@@ -89,7 +89,7 @@ public sealed class ContainerWindowTests
         if (stackMax > 0) header |= 0x2000;
         if (container != null) header |= 0x4000;
         if (overlay != 0) header |= 0x40000000;
-        w.U32(header).String(name).Packed(0x1234).Packed(icon, 0x06000000).U32(itemType).U32(0).Align();
+        w.U32(header).String(name).Packed(0x1234).Packed(icon, 0x06000000).U32(itemType).U32(description).Align();
         if (capacity > 0) w.U8(capacity);
         if (packs > 0) w.U8(packs);
         if (stack > 1) w.U16(stack);
@@ -102,7 +102,7 @@ public sealed class ContainerWindowTests
     private static ContainerState OpenedChest()
     {
         var state = new ContainerState();
-        state.Receive(CreateObject, Created(Chest, "Chest of Lyre", 0x06001111, capacity: 24, packs: 2));
+        state.Receive(CreateObject, Created(Chest, "Chest of Lyre", 0x06001111, capacity: 24, packs: 2, description: 0x4)); // stuck
         state.Receive(GameEvent, View(Chest, (Sword, 0), (Coins, 0), (Pack, 1), (Potion, 0)));
         state.Receive(GameEvent, View(Pack, (InPack, 0)));
         state.Receive(CreateObject, Created(Sword, "Iron Sword", 0x06002000, Chest, overlay: 0x06002100));
@@ -168,6 +168,22 @@ public sealed class ContainerWindowTests
         state.Receive(GameEvent, View(Mine, (Scroll, 0)));
         Assert.Equal(Chest, state.Opened);
         Assert.Equal(new[] { Sword, Coins, Potion }, state.ItemsOf(Chest).Select(item => item.Id));
+    }
+
+    [Fact]
+    public void A_pack_can_be_carried_but_a_chest_cannot_and_a_pack_dropped_on_the_ground_opens_there()
+    {
+        var state = OpenedChest();
+        Assert.True(state.IsPack(Pack));
+        Assert.False(state.IsPack(Chest));
+        Assert.False(state.IsPack(Sword));
+
+        // The player takes the pack, closes the chest, drops the pack on the ground and opens it there.
+        state.Receive(GameEvent, Event(0x0022, w => w.U32(Pack).U32(Me).U32(0).U32(1)));
+        state.Receive(GameEvent, Event(0x0052, w => w.U32(Chest)));
+        state.Receive(GameEvent, Event(0x019A, w => w.U32(Pack)));
+        state.Receive(GameEvent, View(Pack, (InPack, 0)));
+        Assert.Equal(Pack, state.Opened);
     }
 
     [Fact]

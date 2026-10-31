@@ -43,10 +43,12 @@ public sealed class ContainerState
         RadarBehavior = 0x800000, Workmanship = 0x1000000, HouseOwner = 0x2000000, HouseRestrictions = 0x4000000, PScript = 0x8000000,
         HookType = 0x10000000, HookItemTypes = 0x20000000, IconOverlay = 0x40000000;
     private const uint IncludesSecondHeader = 0x04000000, IconUnderlay = 0x1;
+    // ObjectDescriptionFlag: a chest is stuck where it stands and a corpse can't be picked up.
+    private const uint StuckDescription = 0x4, CorpseDescription = 0x2000;
 
     /// <summary>One object the state knows: what a cell shows and where the object sits.</summary>
     private sealed record Known(uint Id, string Name, ItemVisual Visual, int StackCount, int StackMax, int Wcid, uint ValidLocations,
-        double? PartFull, uint Container, int ItemSlots, int PackSlots);
+        double? PartFull, uint Container, int ItemSlots, int PackSlots, bool Carryable);
 
     private readonly Dictionary<uint, Known> _known = new();
     // Each viewed container's items and packs, in the server's order: an item's index here is its cell.
@@ -77,8 +79,8 @@ public sealed class ContainerState
     /// <summary>How many items the container holds at most; zero when the server did not say.</summary>
     public int CapacityOf(uint id) => _known.TryGetValue(id, out var known) ? known.ItemSlots : 0;
 
-    /// <summary>Whether the object is a pack or other container the server sent with the opened container: it has item slots.</summary>
-    public bool IsPack(uint id) => CapacityOf(id) > 0;
+    /// <summary>Whether the object is a pack the player can pick up: it has item slots, and is neither stuck (a chest) nor a corpse.</summary>
+    public bool IsPack(uint id) => _known.TryGetValue(id, out var known) && known.ItemSlots > 0 && known.Carryable;
 
     /// <summary>How many packs the container holds at most: a corpse or chest has pack slots, a pack has none. Zero when the server did not say.</summary>
     public int PackCapacityOf(uint id) => _known.TryGetValue(id, out var known) ? known.PackSlots : 0;
@@ -141,8 +143,15 @@ public sealed class ContainerState
                 return Close(reader.UInt32());
             case PutInContainerEvent:
                 return PutIn(ref reader);
-            case WieldEvent or PutIn3DEvent:
+            case WieldEvent:
                 return Leave(reader.UInt32(), forget: false);
+            case PutIn3DEvent:
+            {
+                // Dropped on the ground: the object is in no container now, so opening it there opens it.
+                var item = reader.UInt32();
+                if (_known.TryGetValue(item, out var known)) _known[item] = known with { Container = 0 };
+                return Leave(item, forget: false);
+            }
             default:
                 return false;
         }
@@ -269,7 +278,8 @@ public sealed class ContainerState
             return _known.Remove(id);
         var visual = new ItemVisual(icon, underlay, overlay, uiEffects, ItemIcon.PlateFor(itemType));
         var partFull = maxStructure > 0 && structure < maxStructure ? (double)Math.Max(0, structure) / maxStructure : (double?)null;
-        var known = new Known(id, name, visual, Math.Max(1, stack), stackMax, wcid, validLocations, partFull, container, itemSlots, packSlots);
+        var known = new Known(id, name, visual, Math.Max(1, stack), stackMax, wcid, validLocations, partFull, container, itemSlots, packSlots,
+            (description & (StuckDescription | CorpseDescription)) == 0);
         if (_known.TryGetValue(id, out var before) && before == known) return false;
         _known[id] = known;
         return true;
