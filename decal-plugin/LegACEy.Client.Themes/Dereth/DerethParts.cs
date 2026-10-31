@@ -192,13 +192,17 @@ public sealed class DerethFrame : Decorator
         base.Render(context);
         var width = Bounds.Width;
         var height = Bounds.Height;
-        var corner = _art.Corner;
-        var edge = _art.Edge;
+        // In a scaled window the pieces snap to whole screen pixels, or each side's rim smooths to a different thickness and the corners
+        // miss the edges. Layout rounding already puts the frame's own bounds on whole pixels.
+        var scale = (VisualRoot as TopLevel)?.RenderScaling ?? 1;
+        double Snap(double size) => Math.Max(1, Math.Round(size * scale)) / scale;
+        var corner = Snap(_art.Corner);
+        var edge = Snap(_art.Edge);
         if (width < 2 * corner || height < 2 * corner) return;
         // The button's art has a rounded, see-through shadow ring outside its gold, so its fill stays inside the ring, or red shows
         // through at the corners.
         if (_kind == DerethFrameArt.Button)
-            context.FillRectangle(_art.Fill, new Rect(Bounds.Size).Deflate(1), ButtonFillRadius);
+            context.FillRectangle(_art.Fill, new Rect(Bounds.Size).Deflate(Snap(1)), ButtonFillRadius);
         else
         {
             using var faded = context.PushOpacity(GetFillOpacity(this));
