@@ -87,7 +87,7 @@ public sealed class QuestsWindow
         _journal = journal;
         _game = game;
         _contracts = contracts;
-        _tabs = new DerethSegmented(TabNames, cellPadding: new Thickness(4, 4)) { VerticalAlignment = VerticalAlignment.Center };
+        _tabs = new DerethSegmented(TabNames, tabs: true) { VerticalAlignment = VerticalAlignment.Center };
         _tabs.Chosen += ShowTab;
         _pages = new Control[3];
 

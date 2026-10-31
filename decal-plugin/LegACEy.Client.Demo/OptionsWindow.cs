@@ -167,7 +167,7 @@ public sealed partial class OptionsWindow
     {
         _game = game;
         _art = art;
-        _tabs = new DerethSegmented(TabNames, cellPadding: new Thickness(4, 4), fitLabels: true) { VerticalAlignment = VerticalAlignment.Center };
+        _tabs = new DerethSegmented(TabNames, fitLabels: true, tabs: true) { VerticalAlignment = VerticalAlignment.Center };
         _tabs.Chosen += ShowTab;
 
         var gameplay = new Canvas { Width = 298, Height = 337, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };

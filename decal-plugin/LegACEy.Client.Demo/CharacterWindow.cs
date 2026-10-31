@@ -115,7 +115,7 @@ public sealed class CharacterWindow
         _foldsChanged = foldsChanged;
 
         // The tabs sit in the header beside the close box, as retail's do: the window has no title to fill it.
-        _tabs = new DerethSegmented(TabNames) { VerticalAlignment = VerticalAlignment.Center };
+        _tabs = new DerethSegmented(TabNames, tabs: true) { VerticalAlignment = VerticalAlignment.Center };
         _tabs.Chosen += index =>
         {
             _tab = index;

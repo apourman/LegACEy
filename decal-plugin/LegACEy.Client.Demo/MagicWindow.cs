@@ -101,7 +101,7 @@ public sealed class MagicWindow
         _components = components;
         _art = art;
         _drag = drag;
-        _tabs = new DerethSegmented(TabNames, cellPadding: new Thickness(4, 4)) { VerticalAlignment = VerticalAlignment.Center };
+        _tabs = new DerethSegmented(TabNames, tabs: true) { VerticalAlignment = VerticalAlignment.Center };
         _tabs.Chosen += ShowTab;
 
         // Spellbook: the list, then retail's filter block with the Schools and Levels lights and Delete.
