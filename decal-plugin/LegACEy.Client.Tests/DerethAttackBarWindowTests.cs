@@ -90,6 +90,14 @@ public sealed class DerethAttackBarWindowTests
         Click(panel, GemX[2], GemY);
         Assert.True(port.ViewCombatTarget);
         Assert.True(view.Face.KeepInView);
+
+        // A click near the end of a label flips it too.
+        Click(panel, GemX[0] + 80, GemY);
+        Assert.False(port.AutoRepeatAttack);
+        Click(panel, GemX[1] + 65, GemY);
+        Assert.True(port.AutoTarget);
+        Click(panel, GemX[2] + 73, GemY);
+        Assert.False(port.ViewCombatTarget);
     });
 
     [Fact]

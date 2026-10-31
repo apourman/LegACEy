@@ -7,7 +7,7 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// LegACEy's attack bar, drawn as the mockup's gilded panel: retail's layout one for one at retail's size, 610 by 90 DIPs, in the Dereth theme.
+/// LegACEy's attack bar, drawn on the Dereth gilded panel: retail's layout one for one at retail's size, 610 by 90 DIPs, in the Dereth theme.
 /// It shows in melee and missile only. A click on the bar sets the set point, a plaque sets the height and a gem flips an option, each through
 /// <see cref="IAttackBarPort"/>; the charge and every value follow the port. A press on the plate away from the controls drags the window, unless
 /// retail's UI is locked. A drag on an edge or a corner gives it more width or height: more height draws the whole bar larger, and more

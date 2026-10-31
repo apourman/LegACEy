@@ -46,7 +46,7 @@ public sealed class DerethAttackLayout
     public Rect GrooveHit { get; }
     /// <summary>Where the Power or Accuracy label ends: inside the bar's right end, as retail's.</summary>
     public double RightLabelX => Groove.Right - 9;
-    /// <summary>Where the plate's top lozenge, bottom rule and stud are centred: over the bar, as the mockup places them.</summary>
+    /// <summary>Where the plate's top lozenge, bottom rule and stud are centred: over the bar.</summary>
     public double OrnamentX => 267 + _wide / 2;
 
     /// <summary>A height plaque's rectangle, drawn and clicked: 0 High, 1 Medium, 2 Low, from the top.</summary>
@@ -61,8 +61,8 @@ public sealed class DerethAttackLayout
     /// <summary>An option gem's centre: Repeat Attacks, Auto Target, Keep in View, from the left.</summary>
     public Point Toggle(int index) => new(index switch { 0 => 19, 1 => 125, _ => 213 }, 43 + _tall * 0.75);
 
-    /// <summary>An option's click area: its gem and its label. The last label is shorter, so its area is narrower, as the mockup's.</summary>
-    public Rect ToggleHit(int index) => new(Toggle(index).X - 6, Toggle(index).Y - 7, index == 2 ? 64 : 70, 14);
+    /// <summary>An option's click area: its gem and its label, each as wide as its 11 DIP Palatino label reaches.</summary>
+    public Rect ToggleHit(int index) => new(Toggle(index).X - 6, Toggle(index).Y - 8, index switch { 0 => 90, 1 => 76, _ => 84 }, 16);
 }
 
 /// <summary>
