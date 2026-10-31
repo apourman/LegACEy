@@ -46,7 +46,7 @@ public sealed class ContainerState
 
     /// <summary>One object the state knows: what a cell shows and where the object sits.</summary>
     private sealed record Known(uint Id, string Name, ItemVisual Visual, int StackCount, int StackMax, int Wcid, uint ValidLocations,
-        double? PartFull, uint Container, int ItemSlots);
+        double? PartFull, uint Container, int ItemSlots, int PackSlots);
 
     private readonly Dictionary<uint, Known> _known = new();
     // Each viewed container's items and packs, in the server's order: an item's index here is its cell.
@@ -76,6 +76,9 @@ public sealed class ContainerState
 
     /// <summary>How many items the container holds at most; zero when the server did not say.</summary>
     public int CapacityOf(uint id) => _known.TryGetValue(id, out var known) ? known.ItemSlots : 0;
+
+    /// <summary>How many packs the container holds at most: a corpse or chest has pack slots, a pack has none. Zero when the server did not say.</summary>
+    public int PackCapacityOf(uint id) => _known.TryGetValue(id, out var known) ? known.PackSlots : 0;
 
     /// <summary>The items the container holds in the server's order, one per cell. An item the client has not been sent yet is left out.</summary>
     public IReadOnlyList<InventoryItem> ItemsOf(uint id) => Entries(id, packs: false);
@@ -263,7 +266,7 @@ public sealed class ContainerState
             return _known.Remove(id);
         var visual = new ItemVisual(icon, underlay, overlay, uiEffects, ItemIcon.PlateFor(itemType));
         var partFull = maxStructure > 0 && structure < maxStructure ? (double)Math.Max(0, structure) / maxStructure : (double?)null;
-        var known = new Known(id, name, visual, Math.Max(1, stack), stackMax, wcid, validLocations, partFull, container, itemSlots);
+        var known = new Known(id, name, visual, Math.Max(1, stack), stackMax, wcid, validLocations, partFull, container, itemSlots, packSlots);
         if (_known.TryGetValue(id, out var before) && before == known) return false;
         _known[id] = known;
         return true;

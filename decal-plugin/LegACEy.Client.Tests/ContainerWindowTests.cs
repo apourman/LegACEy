@@ -221,16 +221,24 @@ public sealed class ContainerWindowTests
     }
 
     [Fact]
-    public void The_strip_shows_the_container_its_ten_pack_slots_and_a_row_of_cells_with_the_container_selected() => RenderThread.Run(() =>
+    public void The_strip_shows_the_container_its_pack_slots_and_a_row_of_cells_with_the_container_selected() => RenderThread.Run(() =>
     {
         using var rig = new Rig(ContainerLayout.Strip, ContainerWindow.StripHeight);
         Assert.Equal("Chest of Lyre", rig.View.ContainerName);
-        Assert.Equal(ContainerWindow.PackSlots, rig.View.PackCellCount);
+        // The chest takes two packs, so two pack slots.
+        Assert.Equal(2, rig.View.PackCellCount);
         // Capacity 24, so a cell for every slot; the cells are the capacity, not just the items.
         Assert.Equal(24, rig.View.ItemCellCount);
         Assert.Equal(new[] { Sword, Coins, Potion }, rig.View.ItemsShown);
         Assert.True(rig.Slots().Single(slot => Rig.ItemId(slot) == Chest).Selected);
         Assert.Equal(string.Empty, rig.View.CountText);
+
+        // A pack opened on the ground takes no packs, so as in retail its icon stands alone on the top row.
+        rig.State.Receive(GameEvent, Event(0x0052, w => w.U32(Chest)));
+        rig.State.Receive(CreateObject, Created(Mine, "Backpack", 0x06002005, capacity: 24));
+        rig.State.Receive(GameEvent, View(Mine, (Scroll, 0)));
+        rig.Panel.Tick();
+        Assert.Equal(0, rig.View.PackCellCount);
     });
 
     [Fact]
@@ -239,7 +247,7 @@ public sealed class ContainerWindowTests
         using var rig = new Rig(ContainerLayout.Grid, ContainerWindow.GridHeight);
         // 24 slots in 17 columns: two rows.
         Assert.Equal(34, rig.View.ItemCellCount);
-        Assert.Equal(ContainerWindow.PackSlots, rig.View.PackCellCount);
+        Assert.Equal(2, rig.View.PackCellCount);
         Assert.Equal("3 / 24", rig.View.CountText);
         Assert.Equal("Chest of Lyre", rig.View.ContainerName);
     });

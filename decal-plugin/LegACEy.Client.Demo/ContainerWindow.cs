@@ -37,8 +37,6 @@ public sealed class ContainerWindow : UserControl, IDisposable, IRetailItemDropT
     public const string StripId = "container", GridId = "container-tall";
     public const int Width = 653, StripHeight = 126, GridHeight = 241, GridMinimumHeight = 163;
     public const string Title = "Container";
-    /// <summary>Retail's container panel shows ten pack slots, and a chest holds up to as many.</summary>
-    public const int PackSlots = 10;
     /// <summary>The grid's columns: retail's item row is as wide.</summary>
     public const int GridColumns = 17;
     private const int StripMinimumCells = 17;
@@ -264,7 +262,8 @@ public sealed class ContainerWindow : UserControl, IDisposable, IRetailItemDropT
             _frameWindow.SetIcon(icon == null ? null : new Border { Child = icon, Tag = new CellId(CellKind.Root, container, container, -1), Background = Brushes.Transparent });
         }
         _packs.Children.Clear();
-        for (var index = 0; index < Math.Max(PackSlots, packs.Count); index++)
+        // As retail, only as many pack slots as the container takes: a pack's own view shows none.
+        for (var index = 0; index < Math.Max(_state.PackCapacityOf(container), packs.Count); index++)
         {
             var pack = index < packs.Count ? packs[index] : null;
             _packs.Children.Add(pack == null
