@@ -146,7 +146,6 @@ public sealed class DerethSpellBarWindowTests
         using var panel = AvaloniaPanel.Create(() => view = new DerethSpellBarWindow(port, () => Spells, null, null, () => { }), 407, 60);
         panel.Tick();
 
-        Assert.Equal(2 / 3.0, view.Scale, 3);
         Assert.Equal(13, view.VisibleCells);
         Click(panel, CellX(2) * 2 / 3, CellY * 2 / 3);
         Assert.Equal(2u, port.Selected);

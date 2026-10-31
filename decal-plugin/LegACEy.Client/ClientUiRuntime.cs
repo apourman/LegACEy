@@ -3576,14 +3576,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private ShortcutBar NewShortcutRow(int firstIndex) =>
         new(firstIndex, _toolbarPort!, ShortcutItemOf, _portal, new ItemDragHost(this), _shortcutDrag);
 
-    /// <summary>The icon and stack count of an object the player holds, from the inventory snapshot; null when it is not held.</summary>
+    /// <summary>A wielded item by object id, from the inventory snapshot; null when it is not wielded. The spell bar asks every frame, so no enumerator.</summary>
     private WieldedItem? WieldedItemOf(uint id)
     {
-        foreach (var worn in _inventory.Snapshot.Wielded)
-            if (worn.Id == id) return worn;
+        var wielded = _inventory.Snapshot.Wielded;
+        for (var i = 0; i < wielded.Count; i++)
+            if (wielded[i].Id == id) return wielded[i];
         return null;
     }
 
+    /// <summary>The icon and stack count of an object the player holds, from the inventory snapshot; null when it is not held.</summary>
     private ShortcutItem? ShortcutItemOf(uint id)
     {
         var snapshot = _inventory.Snapshot;

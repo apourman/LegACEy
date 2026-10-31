@@ -70,6 +70,7 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
     private readonly Action<uint> _examine;
     private readonly Func<uint, WieldedItem?> _wielded;
     private readonly Func<uint, string?> _spellName;
+    // The endowment counts only once the inventory knows the item, so the bar shows it when the inventory catches up.
     private (int Tab, uint Selected, int Spells, uint Endowment, bool EndowmentSelected)? _last;
 
     /// <param name="lockAvailable">Whether retail's Lock UI natives matched; the window does not move while the UI is locked.</param>
@@ -179,7 +180,9 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
         get
         {
             var menu = SubMenu(out var ui);
-            if (!_endowmentAvailable || menu == null || *(uint*)(ui + EndowmentItem) is var id && id == 0 || _wielded(id) is not { } item) return null;
+            if (!_endowmentAvailable || menu == null) return null;
+            var id = *(uint*)(ui + EndowmentItem);
+            if (id == 0 || _wielded(id) is not { } item) return null;
             // Retail's tooltip for it, "%s (%hs)": the item's name, then its spell's.
             var spell = _spellName(*(uint*)(ui + EndowmentSpell));
             return new SpellBarEndowment(item.Visual, spell == null ? item.Name : $"{item.Name} ({spell})", *(menu + SubMenuEndowmentSelected) != 0);
@@ -209,9 +212,10 @@ internal sealed unsafe class NativeSpellBarPort : ISpellBarPort
         var count = list == null ? 0 : *(int*)(list + ListCount);
         var spells = count;
         for (var i = 0; i < count; i++) spells = spells * 31 + (int)SpellAt(list, i);
+        var endowment = _endowmentAvailable && menu != null ? *(uint*)(ui + EndowmentItem) : 0;
+        if (endowment != 0 && _wielded(endowment) == null) endowment = 0;
         (int, uint, int, uint, bool)? now = menu == null ? null : (((delegate* unmanaged[Thiscall]<byte*, int>)CurrentTab)(ui),
-            *(uint*)(menu + SubMenuSelected), spells, _endowmentAvailable ? *(uint*)(ui + EndowmentItem) : 0,
-            _endowmentAvailable && *(menu + SubMenuEndowmentSelected) != 0);
+            *(uint*)(menu + SubMenuSelected), spells, endowment, endowment != 0 && *(menu + SubMenuEndowmentSelected) != 0);
         if (now == _last) return;
         _last = now;
         Changed?.Invoke(this, EventArgs.Empty);

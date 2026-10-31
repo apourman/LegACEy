@@ -68,7 +68,6 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     private readonly Border _leftArrow, _rightArrow;
     private readonly DerethCornerMarks _corners = new() { IsVisible = false, IsHitTestVisible = false };
     private readonly Image _cast = new() { Stretch = Stretch.Fill };
-    private Bitmap? _castUp, _castDown;
     private readonly Dictionary<uint, Bitmap?> _bitmaps = new();
     private readonly Dictionary<(uint Spell, int Number), WriteableBitmap?> _icons = new();
     private string _drawn = string.Empty;
@@ -175,9 +174,6 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
 
     /// <summary>How many whole cells show at the window's width: 13 at retail's 610 DIPs, with the start of a fourteenth.</summary>
     public int VisibleCells => Math.Max(1, (int)(_cells.Width / Cell));
-
-    /// <summary>How much the bar is scaled: its height over retail's 90 DIPs.</summary>
-    public double Scale => _scale;
 
     /// <summary>The selected spell's name, or the selected item's with its spell, as retail writes it under the cells; empty with none.</summary>
     public string SelectedName => _name.Text ?? string.Empty;
@@ -425,9 +421,9 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
     /// </summary>
     private Control CastButton()
     {
-        _castUp = GameArtImageExtension.CreateBitmap(JoinPieces(CastArt, (int)CastWidth));
-        _castDown = GameArtImageExtension.CreateBitmap(JoinPieces(CastPressedArt, (int)CastWidth));
-        _cast.Source = _castUp;
+        var up = GameArtImageExtension.CreateBitmap(JoinPieces(CastArt, (int)CastWidth));
+        var down = GameArtImageExtension.CreateBitmap(JoinPieces(CastPressedArt, (int)CastWidth));
+        _cast.Source = up;
         var pieces = new Grid { Children = { _cast } };
         var label = DerethPalette.CentreInk(new TextBlock
         {
@@ -436,7 +432,7 @@ public sealed class DerethSpellBarWindow : UserControl, IDisposable
         });
         pieces.Children.Add(label);
         var button = new Border { Child = pieces, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand) };
-        void Pressed(bool down) => _cast.Source = down ? _castDown : _castUp;
+        void Pressed(bool pressed) => _cast.Source = pressed ? down : up;
         button.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(button).Properties.IsLeftButtonPressed) return;
