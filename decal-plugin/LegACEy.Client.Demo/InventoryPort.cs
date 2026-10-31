@@ -40,6 +40,9 @@ public interface IInventoryPort
     /// from the world. Zero when the world does not say. A coat's reach past its wield slots (its skirt over the thighs) shows here.
     /// </summary>
     uint CoverageOf(uint itemId);
+
+    /// <summary>Whether an item the snapshot does not hold (one in an opened chest, or a pack opened on the ground) is a pack.</summary>
+    bool IsPack(uint itemId);
     /// <summary>Moves a stack onto another stack of the same item, which merges them where the server allows.</summary>
     void MergeStack(uint itemId, uint targetStackId);
 }
@@ -281,7 +284,11 @@ public sealed class FakeInventoryPort : IInventoryPort
     public List<string> Commands { get; } = new();
     /// <summary>The valid locations of items the snapshot does not hold (another window's container, a corpse), as the port reads them from the world.</summary>
     public Dictionary<uint, uint> WorldLocations { get; } = new();
+    /// <summary>The items outside the snapshot that are packs.</summary>
+    public HashSet<uint> WorldPacks { get; } = new();
     public event Action? Changed;
+
+    public bool IsPack(uint itemId) => WorldPacks.Contains(itemId);
 
     /// <summary>Replaces the snapshot and raises <see cref="Changed"/>.</summary>
     public void Push(InventorySnapshot snapshot)

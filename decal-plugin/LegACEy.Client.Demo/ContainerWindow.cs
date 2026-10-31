@@ -385,8 +385,9 @@ public sealed class ContainerWindow : UserControl, IDisposable, IRetailItemDropT
         if (_dragged == 0)
         {
             if (!PastThreshold(point)) return;
-            // Past the threshold the press is a drag or nothing, never a click. The container itself is not carried.
-            _dragged = press.Kind == CellKind.Root ? 0 : press.ItemId;
+            // Past the threshold the press is a drag or nothing, never a click. The container's icon carries the container, as retail's
+            // does: a pack opened on the ground is looted by dragging it to the inventory.
+            _dragged = press.ItemId;
             if (_dragged == 0)
             {
                 _press = null;
@@ -423,7 +424,7 @@ public sealed class ContainerWindow : UserControl, IDisposable, IRetailItemDropT
         // Over the window the item can only go into one of the container's packs; elsewhere a LegACEy window under the pointer may take it.
         if (new Rect(Bounds.Size).Contains(point))
         {
-            if (SlotAt(point) is { Kind: CellKind.Pack, ItemId: not 0 } pack && pack.ItemId != dragged && !Holds(pack.ItemId, dragged))
+            if (dragged != _state.Opened && SlotAt(point) is { Kind: CellKind.Pack, ItemId: not 0 } pack && pack.ItemId != dragged && !Holds(pack.ItemId, dragged))
                 _port.MoveToContainer(dragged, pack.ItemId, 0);
         }
         else _drag?.DeliverAtPointer(dragged, ItemName(dragged));
@@ -458,11 +459,11 @@ public sealed class ContainerWindow : UserControl, IDisposable, IRetailItemDropT
 
     private InventoryItem? Find(uint id) => _state.ItemsOf(Shown).Concat(_state.PacksOf(_state.Opened)).FirstOrDefault(item => item.Id == id);
 
-    private string ItemName(uint id) => Find(id)?.Name ?? string.Empty;
+    private string ItemName(uint id) => Find(id)?.Name ?? _state.NameOf(id);
 
     private GameImage? DragImage(uint id)
     {
-        var visual = Find(id)?.Visual ?? new ItemVisual(0, 0, 0, 0);
+        var visual = Find(id)?.Visual ?? _state.VisualOf(id) ?? new ItemVisual(0, 0, 0, 0);
         return ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects);
     }
 
@@ -515,7 +516,7 @@ public sealed class ContainerWindow : UserControl, IDisposable, IRetailItemDropT
             return;
         }
         var (into, _) = DropPlace(point);
-        var refused = into == dragged || Holds(into, dragged);
+        var refused = into == dragged || dragged == _state.Opened || Holds(into, dragged);
         _dropIndicator.Margin = new Thickness(origin.X, origin.Y, 0, 0);
         _dropIndicator.Width = control.Bounds.Width;
         _dropIndicator.Height = control.Bounds.Height;

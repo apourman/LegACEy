@@ -139,6 +139,11 @@ internal sealed class BridgeInventoryPort : IInventoryPort
         if (mask != 0 && !NativeWieldSender.TrySend(itemId, mask, _log)) Bridge.AutoWield(itemId, mask, 1, 0);
     }
 
+    /// <summary>Answers <see cref="IsPack"/> from what the server sent about opened containers; set once the container window exists.</summary>
+    public Func<uint, bool> OutsidePack { get; set; } = _ => false;
+
+    public bool IsPack(uint itemId) => OutsidePack(itemId);
+
     // Read as the pointer moves during a drag, so a failed read or a released object reads as covering nothing.
     public uint CoverageOf(uint itemId)
     {

@@ -702,6 +702,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var s = port.Snapshot;
         if (!external && !s.Contains(dragged) || dragged == s.MainPack.Id) return null;
         if (s.SidePacks.Any(pack => pack.Id == dragged)) return PackOnto(s, dragged, target);
+        if (external && port.IsPack(dragged)) return PackFromOutside(s, dragged, target);
         switch (target.Place)
         {
             case SlotPlace.Paperdoll:
@@ -778,6 +779,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (target.Place == SlotPlace.Paperdoll || target.Container == pack) return Refused;
         if (target.Place == SlotPlace.Cell && target.Container != main) return (true, p => p.MoveToContainer(pack, target.Container, target.SlotIndex));
         var position = target.Place == SlotPlace.Pack && target.Container != main ? target.SlotIndex : FirstEmptySidePosition(s);
+        return (true, p => p.MoveToContainer(pack, main, position));
+    }
+
+    /// <summary>
+    /// What dropping a pack from outside the inventory does (one in a chest, or a pack opened on the ground), as retail judges it: packs
+    /// go only in side-pack slots. An empty slot takes it, and the main pack's tile puts it in the first empty one; a pack cell, a side
+    /// pack and the paperdoll are red.
+    /// </summary>
+    private static (bool Accepted, Action<IInventoryPort> Send)? PackFromOutside(InventorySnapshot s, uint pack, InventorySlotId target)
+    {
+        var main = s.MainPack.Id;
+        if (target.Place != SlotPlace.Pack || target.Container != 0 && target.Container != main) return Refused;
+        var position = target.Container == 0 ? target.SlotIndex : FirstEmptySidePosition(s);
+        if (position >= s.SidePacks.Count) return Refused;
         return (true, p => p.MoveToContainer(pack, main, position));
     }
 

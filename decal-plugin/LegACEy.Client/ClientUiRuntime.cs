@@ -530,6 +530,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _container = new ContainerFeature(this,
                 NativeUi.Ready && RetailPanelCatalogueValid() && RetailContainerCatalogueValid() ? new NativeRetailContainerPort() : null,
                 _settingsStore, () => (SessionServer(), SessionCharacter()), id => _windows?.BeginMove(id, _pointer), Log);
+            _inventory.OutsidePack = _container.State.IsPack;
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);

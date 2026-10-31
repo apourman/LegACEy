@@ -331,6 +331,21 @@ public sealed class ContainerWindowTests
         Assert.Equal(0, rig.Drag.IconsOpen);
     });
 
+    [Fact]
+    public void The_container_s_icon_drags_the_container_itself_as_retail_s_does() => RenderThread.Run(() =>
+    {
+        using var rig = new Rig(ContainerLayout.Strip, ContainerWindow.StripHeight);
+        var start = InventoryDriver.Centre(rig.Panel, rig.Item(Chest));
+        var outside = ContainerWindow.Width + 40;
+        rig.Panel.PointerDown(start.X, start.Y, Avalonia.Input.KeyModifiers.None);
+        rig.Panel.PointerMove(start.X + 10, start.Y);
+        Assert.Equal(1, rig.Drag.IconsOpen);
+        rig.Panel.PointerMove(outside, start.Y);
+        rig.Panel.PointerUp(outside, start.Y);
+        Assert.Equal(new[] { (Chest, "Chest of Lyre") }, rig.Drag.Delivered);
+        Assert.Empty(rig.Port.Commands.Where(command => command.StartsWith("move")));
+    });
+
     // The header buttons of a window that is not on screen: the toggle has a tooltip, the close box has none.
     private static void Press(ContainerWindow view, bool toggle) =>
         view.GetLogicalDescendants().OfType<DerethHeaderButton>().Single(button => (ToolTip.GetTip(button) != null) == toggle)

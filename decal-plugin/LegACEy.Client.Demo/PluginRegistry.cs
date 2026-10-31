@@ -408,6 +408,7 @@ public sealed class PluginRegistry
             _registry.Guarded(_entry, () => _inner.MoveToContainer(itemId, containerId, slotIndex));
         public uint WieldMask(uint itemId, PaperdollSlot slot) => _inner.WieldMask(itemId, slot);
         public uint CoverageOf(uint itemId) => _inner.CoverageOf(itemId);
+        public bool IsPack(uint itemId) => _inner.IsPack(itemId);
         public void Wield(uint itemId, PaperdollSlot slot) => _registry.Guarded(_entry, () => _inner.Wield(itemId, slot));
         public void MergeStack(uint itemId, uint targetStackId) => _registry.Guarded(_entry, () => _inner.MergeStack(itemId, targetStackId));
 

@@ -77,6 +77,9 @@ public sealed class ContainerState
     /// <summary>How many items the container holds at most; zero when the server did not say.</summary>
     public int CapacityOf(uint id) => _known.TryGetValue(id, out var known) ? known.ItemSlots : 0;
 
+    /// <summary>Whether the object is a pack or other container the server sent with the opened container: it has item slots.</summary>
+    public bool IsPack(uint id) => CapacityOf(id) > 0;
+
     /// <summary>How many packs the container holds at most: a corpse or chest has pack slots, a pack has none. Zero when the server did not say.</summary>
     public int PackCapacityOf(uint id) => _known.TryGetValue(id, out var known) ? known.PackSlots : 0;
 
