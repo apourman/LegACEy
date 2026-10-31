@@ -95,7 +95,7 @@ public sealed class SocialWindow
     public const string WindowId = "social";
     public const int Width = 310, Height = 600;
     public static readonly WindowResizing Sizing = new(new System.Drawing.Size(Width, 460), new System.Drawing.Size(Width, 10_000));
-    private const double RowHeight = 19, ButtonWidth = 86, ButtonHeight = 27;
+    private const double RowHeight = 20, ButtonWidth = 86, ButtonHeight = 28;
     private const long ConfirmMs = 4000;
     private static long NowMs => System.Diagnostics.Stopwatch.GetTimestamp() * 1000 / System.Diagnostics.Stopwatch.Frequency;
     private static readonly string[] TabNames = { "Allegiance", "Fellowship", "Friends", "Squelch" };
@@ -161,12 +161,12 @@ public sealed class SocialWindow
         _state = state;
         _game = game;
         _tables = tables;
-        _tabs = new DerethSegmented(TabNames, cellPadding: new Thickness(4, 4)) { VerticalAlignment = VerticalAlignment.Center };
+        _tabs = new DerethSegmented(TabNames, tabs: true) { VerticalAlignment = VerticalAlignment.Center };
         _tabs.Chosen += ShowTab;
 
         // Allegiance: the counts, the patron and monarch, the vassals, retail's switch and three buttons.
-        _followers = Label("Followers: 0", 13, DerethPalette.TextBrush);
-        _rank = Label("Rank: [0]", 13, DerethPalette.TextBrush);
+        _followers = Label("Followers: 0", 14, DerethPalette.TextBrush);
+        _rank = Label("Rank: [0]", 14, DerethPalette.TextBrush);
         var counts = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), Margin = new Thickness(2, 0, 2, 4) };
         counts.Children.Add(_followers);
         Grid.SetColumn(_rank, 1);
@@ -191,23 +191,24 @@ public sealed class SocialWindow
             new Orb(game, SocialOption.ShareFellowshipLoot, "Share Fellowship Loot")
         };
         _create = Button("Create Fellowship", CreateFellowship, width: 230);
-        var orbs = new StackPanel { Spacing = 2, Margin = new Thickness(26, 6, 0, 10) };
+        var orbs = new StackPanel { Spacing = 2, Margin = new Thickness(22, 6, 0, 10) };
         foreach (var orb in _fellowshipOrbs) orbs.Children.Add(orb);
-        var words = Label(NoFellowshipText, 13, DerethPalette.TextBrush);
+        var words = Label(NoFellowshipText, 14, DerethPalette.TextBrush);
         words.TextWrapping = TextWrapping.Wrap;
         words.VerticalAlignment = VerticalAlignment.Top;
-        words.Margin = new Thickness(8, 10, 8, 0);
+        words.LineHeight = 18;
+        words.Margin = new Thickness(12, 28, 12, 0);
         // Retail's words fill the top third; the rule, the name box, the switches and the button follow from there.
-        words.Height = 180;
+        words.Height = 162;
         _noFellowship = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,*") };
         Place(_noFellowship, words, 0);
         Place(_noFellowship, new DerethRule(), 1);
-        Place(_noFellowship, Field("Fellowship Name:", _fellowshipName, new Thickness(30, 8, 8, 0)), 2);
+        Place(_noFellowship, Field("Fellowship Name:", _fellowshipName, new Thickness(30, 10, 12, 0)), 2);
         Place(_noFellowship, orbs, 3);
         Place(_noFellowship, Centred(_create), 4);
 
         // Fellowship, in one: its name, the fellows with their vitals, and six buttons in retail's two rows.
-        _fellowshipTitle = Centred(Label(string.Empty, 13, DerethPalette.TextBrush, title: true));
+        _fellowshipTitle = Centred(Label(string.Empty, 14, DerethPalette.TextBrush));
         _leader = Button("Leader", () => Act(SocialAction.Leader(_fellow)));
         _quit = Button("Quit", () => Act(SocialAction.QuitFellowship(disband: false)));
         _open = Button("Open", () => Act(SocialAction.Openness(!_state.Open)));
@@ -234,7 +235,7 @@ public sealed class SocialWindow
         _pages[2] = Stack(
             (Columns("Friend", "Status"), false), (Well(_friendList, () => { _friend = 0; Refresh(); }), true), (new DerethRule(), false),
             (_appearOffline, false), (Buttons(_tell, _removeFriend), false), (new DerethRule { Margin = new Thickness(0, 6, 0, 0) }, false),
-            (Field("Friend Name:", _friendName, new Thickness(8, 6, 8, 4)), false), (Centred(_add), false));
+            (Field("Friend Name:", _friendName, new Thickness(12, 8, 12, 6)), false), (Centred(_add), false));
 
         // Squelch: the list and Remove, then the name box and the two squelches.
         _removeSquelch = Button("Remove", RemoveSquelch);
@@ -244,7 +245,7 @@ public sealed class SocialWindow
         _pages[3] = Stack(
             (Columns("Squelch", "Type"), false), (Well(_squelchList, () => { _squelch = null; Refresh(); }), true),
             (new Border { Margin = new Thickness(0, 6, 0, 0), Child = Centred(_removeSquelch) }, false), (new DerethRule { Margin = new Thickness(0, 6, 0, 0) }, false),
-            (Field("Character", _squelchName, new Thickness(8, 6, 8, 4)), false), (Buttons(_squelchCharacter, _squelchAccount), false));
+            (Field("Character", _squelchName, new Thickness(12, 8, 12, 6)), false), (Buttons(_squelchCharacter, _squelchAccount), false));
 
         _page = new ContentControl { Margin = new Thickness(0, 5, 0, 0) };
         // The tabs sit in the header beside the close box, as the character window's do.
@@ -313,7 +314,7 @@ public sealed class SocialWindow
         {
             if (_state.Monarch is { } monarch && monarch.Id != _state.Player) _chain.Children.Add(Member("Monarch", monarch));
             if (_state.Patron is { } patron && patron.Id != _state.Monarch?.Id) _chain.Children.Add(Member("Patron", patron));
-            if (_state.Monarch?.Id == _state.Player) _chain.Children.Add(Label("You are the monarch of your allegiance.", 12, DerethPalette.MutedBrush));
+            if (_state.Monarch?.Id == _state.Player) _chain.Children.Add(Label("You are the monarch of your allegiance.", 12.5, DerethPalette.MutedBrush));
         });
         Redraw(_vassalList, $"{_vassal}|{string.Join(",", _state.Vassals)}", () =>
         {
@@ -331,11 +332,11 @@ public sealed class SocialWindow
     private Control Member(string role, AllegianceMember member)
     {
         var line = new Grid { ColumnDefinitions = new ColumnDefinitions("62,*,Auto"), ColumnSpacing = 4 };
-        line.Children.Add(Label(role + ":", 12.5, DerethPalette.MutedBrush));
-        var name = Label(member.Name, 13, member.Online ? DerethPalette.TextBrush : DerethPalette.MutedBrush, title: true);
+        line.Children.Add(Label(role + ":", 13, DerethPalette.MutedBrush));
+        var name = Label(member.Name, 13, member.Online ? DerethPalette.TextBrush : DerethPalette.MutedBrush);
         Grid.SetColumn(name, 1);
         line.Children.Add(name);
-        var level = Label(member.Level > 0 ? $"Level {member.Level}, Rank {member.Rank}" : $"Rank {member.Rank}", 11.5, DerethPalette.MutedBrush);
+        var level = Label(member.Level > 0 ? $"Level {member.Level}, Rank {member.Rank}" : $"Rank {member.Rank}", 12, DerethPalette.MutedBrush);
         Grid.SetColumn(level, 2);
         line.Children.Add(level);
         return line;
@@ -388,8 +389,8 @@ public sealed class SocialWindow
     {
         var selected = fellow.Id == _fellow;
         var top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 6 };
-        top.Children.Add(Label(fellow.Name, 12.5, fellow.Id == _state.Leader ? DerethPalette.GoldBrush : DerethPalette.TextBrush, title: true));
-        var level = Label(share is { } part ? $"{fellow.Level}/{part}%" : fellow.Level.ToString(CultureInfo.InvariantCulture), 12, DerethPalette.TextBrush);
+        top.Children.Add(Label(fellow.Name, 13, fellow.Id == _state.Leader ? DerethPalette.GoldBrush : DerethPalette.TextBrush));
+        var level = Label(share is { } part ? $"{fellow.Level}/{part}%" : fellow.Level.ToString(CultureInfo.InvariantCulture), 12.5, DerethPalette.TextBrush);
         Grid.SetColumn(level, 1);
         top.Children.Add(level);
         var bars = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*"), ColumnSpacing = 3, Margin = new Thickness(0, 1, 0, 0) };
@@ -410,7 +411,7 @@ public sealed class SocialWindow
     {
         var fraction = maximum == 0 ? 0 : Math.Min(1, (double)current / maximum);
         var fill = new Border { Background = brushes.Fill, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(2) };
-        var text = Centred(Label($"{current}/{maximum}", 10.5, DerethPalette.CreamBrush));
+        var text = Centred(Label($"{current}/{maximum}", 11, DerethPalette.CreamBrush));
         var well = new Grid { Height = 13 };
         well.Children.Add(fill);
         well.Children.Add(text);
@@ -535,8 +536,8 @@ public sealed class SocialWindow
     private Control Row(string name, string value, bool selected, Action click, IBrush nameBrush, IBrush? valueBrush = null)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 6, Height = RowHeight };
-        grid.Children.Add(Label(name, 13, nameBrush, title: true));
-        var text = Label(value, 12.5, valueBrush ?? DerethPalette.TextBrush);
+        grid.Children.Add(Label(name, 14, nameBrush));
+        var text = Label(value, 13, valueBrush ?? DerethPalette.TextBrush);
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
         return Selectable(grid, selected, click, new Thickness(4, 0));
@@ -577,15 +578,15 @@ public sealed class SocialWindow
         return new Border
         {
             Background = WellBrush, BorderBrush = LineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(2),
-            Padding = new Thickness(2), Margin = new Thickness(6, 0), Child = scroll
+            Padding = new Thickness(2), Margin = new Thickness(8, 0), Child = scroll
         };
     }
 
     private static Control Columns(string left, string right)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(10, 4, 12, 2) };
-        grid.Children.Add(Label(left, 13, DerethPalette.TextBrush));
-        var text = Label(right, 13, DerethPalette.TextBrush);
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(12, 10, 14, 4) };
+        grid.Children.Add(Label(left, 14, DerethPalette.TextBrush));
+        var text = Label(right, 14, DerethPalette.TextBrush);
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
         return grid;
@@ -595,9 +596,9 @@ public sealed class SocialWindow
     {
         var box = new TextBox
         {
-            Foreground = DerethPalette.CreamBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Title, FontSize = 13,
+            Foreground = DerethPalette.CreamBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Title, FontSize = 14,
             Background = EntryBrush, BorderBrush = LineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(2),
-            Padding = new Thickness(5, 0), MinHeight = 0, Height = 20, MaxLength = maxLength, VerticalContentAlignment = VerticalAlignment.Center
+            Padding = new Thickness(5, 0), MinHeight = 0, Height = 22, MaxLength = maxLength, VerticalContentAlignment = VerticalAlignment.Center
         };
         box.TextChanged += (_, _) => changed();
         return box;
@@ -606,7 +607,7 @@ public sealed class SocialWindow
     private static Control Field(string label, TextBox box, Thickness margin)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 6, Margin = margin };
-        grid.Children.Add(Label(label, 13, DerethPalette.TextBrush));
+        grid.Children.Add(Label(label, 14, DerethPalette.TextBrush));
         Grid.SetColumn(box, 1);
         grid.Children.Add(box);
         return grid;
@@ -614,7 +615,7 @@ public sealed class SocialWindow
 
     private static DerethButton Button(string text, Action click, double width = ButtonWidth)
     {
-        var button = new DerethButton { Content = Label(text, 13, DerethPalette.CreamBrush), Width = width, Height = ButtonHeight, Padding = new Thickness(0) };
+        var button = new DerethButton { Content = Label(text, 14, DerethPalette.CreamBrush), Width = width, Height = ButtonHeight, Padding = new Thickness(0) };
         button.Click += (_, _) => click();
         return button;
     }
@@ -654,16 +655,14 @@ public sealed class SocialWindow
         return control;
     }
 
-    private static TextBlock Label(string text, double size, IBrush brush, bool title = false)
-    {
-        var label = new TextBlock
+    /// <summary>Retail's serif text, as every word in retail's social panel is.</summary>
+    private static TextBlock Label(string text, double size, IBrush brush) =>
+        // Palatino's tall ascent would sit words high in their rows.
+        DerethPalette.CentreInk(new TextBlock
         {
-            Text = text, FontSize = size, Foreground = brush, FontFamily = title ? DerethPalette.Title : DerethPalette.Body,
+            Text = text, FontSize = size, Foreground = brush, FontFamily = DerethPalette.Title,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
-        };
-        // Palatino's tall ascent would sit names high in their rows.
-        return title ? DerethPalette.CentreInk(label) : label;
-    }
+        });
 
     /// <summary>
     /// Retail's option switch: a small orb, lit green when on, and its words. A click flips the option in the game; an option that cannot be
@@ -693,7 +692,7 @@ public sealed class SocialWindow
             Background = Brushes.Transparent;
             Cursor = new Cursor(StandardCursorType.Hand);
             Children.Add(_orb);
-            Children.Add(Label(text, 11, DerethPalette.TextBrush));
+            Children.Add(Label(text, 12, DerethPalette.TextBrush));
             PointerPressed += (_, e) =>
             {
                 if (!IsEnabled || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;

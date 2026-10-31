@@ -10,35 +10,52 @@ using Avalonia.Media;
 namespace LegACEy.Client.Themes;
 
 /// <summary>
-/// A row of options in a groove, one of them chosen and lit gold. A click on an option chooses it and raises <see cref="Chosen"/> with its index.
+/// A row of options in a groove, one of them chosen and lit gold, or with <c>tabs</c> retail's panel tabs: a raised plaque per option with a
+/// serif label. A click on an option chooses it and raises <see cref="Chosen"/> with its index.
 /// </summary>
 public sealed class DerethSegmented : Border
 {
     private static readonly IBrush LitBrush = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x29));
     private static readonly IBrush LitBlueBrush = DerethPalette.Brush(DerethPalette.RetailBlue.WithAlpha(0x33));
     private static readonly IBrush LitBlueLabelBrush = DerethPalette.Brush(DerethPalette.RetailLabel);
+    private static readonly IBrush TabBrush = DerethPalette.Brush(Color.FromArgb(0xF0, 0x0C, 0x0A, 0x08));
+    private static readonly IBrush LitTabBrush = DerethPalette.Brush(Color.Parse("#3A3022"));
 
     private readonly List<Border> _cells = new();
     private readonly List<TextBlock> _labels = new();
     private readonly int _blueOption;
+    private readonly bool _tabs;
     private int _selected;
 
     /// <param name="blueOption">The option lit blue rather than gold when chosen, such as a switch's Retail choice; -1 for none.</param>
     /// <param name="cellPadding">Each option's padding around its label; 8 by 4 when not given.</param>
     /// <param name="fitLabels">Each option as wide as its label, rather than all the same width.</param>
-    public DerethSegmented(IReadOnlyList<string> options, int blueOption = -1, Thickness? cellPadding = null, bool fitLabels = false)
+    /// <param name="tabs">Retail's panel tabs, for a window header, rather than a groove.</param>
+    public DerethSegmented(IReadOnlyList<string> options, int blueOption = -1, Thickness? cellPadding = null, bool fitLabels = false, bool tabs = false)
     {
         _blueOption = blueOption;
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions(string.Join(",", options.Select(_ => fitLabels ? "Auto" : "*"))) };
+        _tabs = tabs;
+        var row = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions(string.Join(",", options.Select(_ => fitLabels ? "Auto" : "*"))), ColumnSpacing = tabs ? 2 : 0
+        };
         for (var i = 0; i < options.Count; i++)
         {
             var index = i;
             var label = new TextBlock
             {
-                Text = options[i], FontFamily = DerethPalette.Body, FontSize = 12, Foreground = DerethPalette.MutedBrush,
+                Text = options[i], FontFamily = tabs ? DerethPalette.Title : DerethPalette.Body, FontSize = 12, Foreground = DerethPalette.MutedBrush,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             };
-            var cell = new Border { Background = Brushes.Transparent, Padding = cellPadding ?? new Thickness(8, 4), Child = label };
+            var cell = new Border { Background = Brushes.Transparent, Padding = cellPadding ?? new Thickness(8, 4), Child = tabs ? DerethPalette.CentreInk(label) : label };
+            if (tabs)
+            {
+                cell.Height = 22;
+                cell.Padding = new Thickness(fitLabels ? 7 : 0, 0);
+                cell.BorderThickness = new Thickness(1, 1, 1, 0);
+                cell.CornerRadius = new CornerRadius(6, 6, 0, 0);
+                cell.VerticalAlignment = VerticalAlignment.Bottom;
+            }
             cell.PointerPressed += (_, e) =>
             {
                 if (!e.GetCurrentPoint(cell).Properties.IsLeftButtonPressed || index == Selected) return;
@@ -50,10 +67,13 @@ public sealed class DerethSegmented : Border
             _cells.Add(cell);
             _labels.Add(label);
         }
-        Background = DerethPalette.GrooveBrush;
-        BorderBrush = DerethPalette.GrooveEdgeBrush;
-        BorderThickness = new Thickness(1);
-        CornerRadius = new CornerRadius(3);
+        if (!tabs)
+        {
+            Background = DerethPalette.GrooveBrush;
+            BorderBrush = DerethPalette.GrooveEdgeBrush;
+            BorderThickness = new Thickness(1);
+            CornerRadius = new CornerRadius(3);
+        }
         Child = row;
         Light();
     }
@@ -77,6 +97,13 @@ public sealed class DerethSegmented : Border
         for (var i = 0; i < _cells.Count; i++)
         {
             var lit = i == _selected;
+            if (_tabs)
+            {
+                _cells[i].Background = lit ? LitTabBrush : TabBrush;
+                _cells[i].BorderBrush = lit ? DerethPalette.GoldBrush : DerethPalette.GoldDarkBrush;
+                _labels[i].Foreground = lit ? DerethPalette.CreamBrush : DerethPalette.MutedBrush;
+                continue;
+            }
             _cells[i].Background = !lit ? Brushes.Transparent : i == _blueOption ? LitBlueBrush : LitBrush;
             _labels[i].Foreground = !lit ? DerethPalette.MutedBrush : i == _blueOption ? LitBlueLabelBrush : DerethPalette.CreamBrush;
         }
