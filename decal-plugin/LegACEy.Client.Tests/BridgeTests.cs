@@ -35,7 +35,7 @@ public sealed unsafe class BridgeTests : IDisposable
     private static BridgeCalls FakeCalls() => new()
     {
         Fact = &Fact, Text = &Text, Inventory = &Inventory, Item = &Item,
-        UseItem = &UseItem, SelectItem = &SelectItem, RequestId = &RequestId, DropItem = &DropItem,
+        UseItem = &UseItem, RequestId = &RequestId, DropItem = &DropItem,
         MoveItem = &MoveItem, MergeItem = &MergeItem, AutoWield = &AutoWield,
         ValidLocations = &ValidLocations, Coverage = &Coverage, PluralName = &PluralName
     };
@@ -57,15 +57,15 @@ public sealed unsafe class BridgeTests : IDisposable
         var raw = new byte[] { 0xB0, 0xF7, 0, 0, 1, 2, 3 };
         fixed (byte* bytes = raw) events.ServerMessage(0xF7B0, bytes, raw.Length);
         Assert.True(events.CommandLine == null);
-        // So do the login and logoff slots, which the server's own messages replaced (178).
+        // So do the login, logoff and selection slots, which the server's own messages (178) and the game's selected id (179) replaced.
         events.LoginComplete();
         events.Logoff();
         events.LogoffAuthorized();
-        events.InventoryChanged(unchecked((int)0x80000010), unchecked((int)Character));
         events.ItemSelected();
+        events.InventoryChanged(unchecked((int)0x80000010), unchecked((int)Character));
         events.ContainerOpened();
 
-        Assert.Equal(new[] { "inventory 80000010 50000001", "selected", "container" }, client.Seen);
+        Assert.Equal(new[] { "inventory 80000010 50000001", "container" }, client.Seen);
 
         // The bridge-backed ports read the client's Decal facts and send its actions back out through the calls-out table; the character
         // and server come from the server's messages.
@@ -84,7 +84,7 @@ public sealed unsafe class BridgeTests : IDisposable
         inventory.MergeStack(0x10, 0x11);
         inventory.DropOnGround(0x12);
         inventory.Wield(0x80000020, PaperdollSlot.Weapon);
-        Assert.Equal(new[] { "use 7 0", "select 8", "id 8", "move 9 50000001 3 0", "merge 10 11", "drop 12", "wield 80000020 100000 1 0" },
+        Assert.Equal(new[] { "use 7 0", "id 8", "move 9 50000001 3 0", "merge 10 11", "drop 12", "wield 80000020 100000 1 0" },
             Calls.Where(call => !call.StartsWith("read")));
         // An item the snapshot doesn't hold, such as one dragged from a chest, has its valid locations read from the world.
         Assert.Equal(0x100000u, inventory.WieldMask(0x80000030, PaperdollSlot.Weapon));
@@ -108,7 +108,7 @@ public sealed unsafe class BridgeTests : IDisposable
         var raised = events;
         var raise = new Action[]
         {
-            () => raised.ItemSelected(), () => raised.ContainerOpened(),
+            () => raised.ContainerOpened(),
             () => raised.InventoryChanged(1, 2), () => raised.Shutdown()
         };
         foreach (var raiseOne in raise) raiseOne();
@@ -158,7 +158,6 @@ public sealed unsafe class BridgeTests : IDisposable
             Seen.Add(what);
         }
 
-        public void ItemSelected() => See("selected");
         public void ContainerOpened() => See("container");
         public void InventoryChanged(uint id, uint container) => See($"inventory {id:X} {container:X}");
         public void Shutdown() => See("shutdown");
@@ -226,9 +225,6 @@ public sealed unsafe class BridgeTests : IDisposable
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static int UseItem(int id, int state) => Done($"use {id:X} {state}");
-
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
-    private static int SelectItem(int id) => Done($"select {id:X}");
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static int RequestId(int id) => Done($"id {id:X}");

@@ -92,7 +92,7 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public void Select(uint itemId)
     {
         if (TargetMode?.CancelIfInvalid(itemId) == true) return;
-        Bridge.SelectItem(itemId);
+        NativeSelection.Select(itemId);
         TargetMode?.TryTarget(itemId);
     }
 
@@ -102,7 +102,7 @@ internal sealed class BridgeInventoryPort : IInventoryPort
 
     public void Assess(uint itemId)
     {
-        Bridge.SelectItem(itemId);
+        NativeSelection.Select(itemId);
         Bridge.RequestId(itemId);
     }
 
@@ -170,6 +170,6 @@ internal sealed class BridgeInventoryPort : IInventoryPort
         public int CarryingAugmentations => Bridge.Fact(BridgeFact.CarryingAugmentations);
         // Decal documents OpenedContainer as a chest or corpse. Gate: a side pack and the main pack report here too.
         public uint OpenContainer => (uint)Bridge.Fact(BridgeFact.OpenedContainer);
-        public uint Selected => (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+        public uint Selected => NativeSelection.Selected;
     }
 }

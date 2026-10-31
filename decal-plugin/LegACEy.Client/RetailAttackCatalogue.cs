@@ -9,7 +9,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// validated on its own, so each list logs its own reason; any failed list turns the whole bar off,
 /// so it never shows a control that cannot work. Addresses and byte lists were read from the installed end-of-retail
 /// acclient.exe; acclient.pdb is a near build, so its names were used and each address was checked in the exe. Recipes are in the attack
-/// bar spike note. The combat mode is not here: the attack bar reads it through Decal's BridgeFact.CombatMode.
+/// bar spike note. The combat mode is not here: the attack bar reads it through <see cref="NativeStance"/>.
 /// </summary>
 /// <remarks>
 /// The panel id is not byte-checked (an id is not an address). The push of it in LoadScreenLayout is, and at runtime the port must check
