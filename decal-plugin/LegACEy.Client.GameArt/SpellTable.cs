@@ -22,6 +22,8 @@ public sealed record SpellInfo(string Name, string Description)
     /// <summary>ACE's SpellType: 1 an enchantment, 12 a fellowship enchantment, which last <see cref="Duration"/> seconds.</summary>
     public uint SpellType { get; init; }
     public double Duration { get; init; }
+    /// <summary>The extra mana per target of a fellowship spell, which retail's examination adds to its Mana line.</summary>
+    public uint ManaMod { get; init; }
     /// <summary>The spell components, by their id in the component table, in casting order.</summary>
     public IReadOnlyList<uint> Formula { get; init; } = System.Array.Empty<uint>();
 }
@@ -99,11 +101,13 @@ public static class SpellTable
             var component = stored - key;
             formula.Add(component > HighestComponent ? component & 0xFF : component);
         }
-        Skip(reader, 4 + 4 + 4 + 8 + 4 + 4 + 4 + 4); // caster, target and fizzle effects, recovery, display order, target type, mana mod
+        Skip(reader, 4 + 4 + 4 + 8 + 4 + 4 + 4); // caster, target and fizzle effects, recovery, display order, target type
+        var manaMod = reader.ReadUInt32();
         return new SpellInfo(Text(name), Text(description))
         {
             School = school, Icon = icon, Category = category, Bitfield = bitfield, BaseMana = mana, BaseRangeConstant = rangeConstant,
-            BaseRangeMod = rangeMod, Power = power, FormulaVersion = formulaVersion, SpellType = type, Duration = duration, Formula = formula
+            BaseRangeMod = rangeMod, Power = power, FormulaVersion = formulaVersion, SpellType = type, Duration = duration, Formula = formula,
+            ManaMod = manaMod
         };
     }
 

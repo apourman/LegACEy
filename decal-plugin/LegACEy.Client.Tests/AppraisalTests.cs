@@ -29,6 +29,19 @@ public sealed class AppraisalTests
     private const uint Gem = 0x80000A02;
 
     [Fact]
+    public void Spell_figures_read_as_retails_examination()
+    {
+        // Retail: range = mod × skill level + constant, capped at 75 m, written in yards; a zero range and an unread skill leave the line out.
+        var bolt = new SpellInfo("Flame Bolt I", "") { BaseMana = 5, BaseRangeConstant = 5, BaseRangeMod = 0.25f };
+        Assert.Equal(new[] { "Mana: 5", "Range: 32.8 yds." }, AppraisalSpell.FiguresOf(bolt, 100));
+        Assert.Equal(new[] { "Mana: 5", "Range: 82.0 yds." }, AppraisalSpell.FiguresOf(bolt, 1000));
+        Assert.Equal(new[] { "Mana: 5" }, AppraisalSpell.FiguresOf(bolt, null));
+        var fellow = new SpellInfo("Fellow", "") { BaseMana = 50, ManaMod = 10, Duration = 60 };
+        Assert.Equal(new[] { "Mana: 50 + 10 per target", "Duration: 60 sec." }, AppraisalSpell.FiguresOf(fellow, 300));
+        Assert.Equal("Duration: 30 min.", AppraisalSpell.FiguresOf(new SpellInfo("Long", "") { Duration = 1800 }, 0)[1]);
+    }
+
+    [Fact]
     public void A_potion_appraisal_reads_into_a_short_window_of_figures_use_text_and_description()
     {
         var bytes = new ServerAppraisal(Potion)

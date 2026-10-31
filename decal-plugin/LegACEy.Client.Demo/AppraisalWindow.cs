@@ -109,7 +109,7 @@ public sealed class AppraisalWindow
         var button = new DerethHeaderButton(glyph) { Name = "InspectButton" };
         ToolTip.SetTip(button, "Inspect");
         var window = new DerethWindow(content.Name, retail ? null : Icon(content.Visual, art), Frame(top, behind, scroll, foot), button,
-            centreTitle: retail, iconHeader: true);
+            centreTitle: retail || content.Spell != null, iconHeader: true) { HeaderBarHeight = HeaderHeight(content) };
         // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels. A
         // figure gets room under the lines for its feet, below the body so the body never scrolls for it.
         var needed = measure == null ? layout.Needed : measure(window, new Size(Width, double.PositiveInfinity)).Height;
@@ -140,7 +140,8 @@ public sealed class AppraisalWindow
         SetInspect(inspect);
         _window.Title = content.Name;
         _window.SetIcon(retail ? null : Icon(content.Visual, art));
-        _window.CentreTitle = retail;
+        _window.CentreTitle = retail || content.Spell != null;
+        _window.HeaderBarHeight = HeaderHeight(content);
         _scroll.Content = layout.Body;
         _behind.Margin = _scroll.Margin = layout.MiddleMargin;
         _window.SeeThrough = _behind.Content != null ? _behind : null;
@@ -156,6 +157,10 @@ public sealed class AppraisalWindow
         _field = layout.Field;
         _footObject = content.ObjectId;
     }
+
+    // A spell's header holds only its title, slim as retail's spell panel's; anything else's has room for an icon.
+    private static double HeaderHeight(AppraisalContent content) => content.Spell != null ? SpellHeaderHeight : DerethWindow.IconHeaderHeight;
+    private const double SpellHeaderHeight = 22;
 
     // The header box reaches the frame as the body does; a margin on the box itself would be clipped to its slot.
     private static Thickness HeaderMargin(Thickness middle) => new(middle.Left, 0, middle.Right, 0);
@@ -176,10 +181,12 @@ public sealed class AppraisalWindow
     private static (Control Body, Control? Top, Control? Foot, int Needed, InscriptionField? Field, Thickness MiddleMargin) Layout(AppraisalContent content,
         Func<uint, string, bool> inscribe, bool retail, IGameArtSource? art)
     {
-        var body = content.Formula != null ? SpellBody(content, content.Formula, art) : retail ? RetailBody(content) : SectionsBody(content);
+        var spell = content.Spell;
+        var body = spell != null ? SpellBody(content, spell, art) : retail ? RetailBody(content) : SectionsBody(content);
         var top = retail && content.Creature is { } creature ? HeaderBox(creature) : null;
         InscriptionField? field = null;
-        var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, retail, out field) : null;
+        var foot = spell != null ? FormulaPlate(spell, art)
+            : content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, retail, out field) : null;
         // A window measured before it is shown has no template yet, so the parts are measured and the chrome added to them.
         var needed = Chrome + new[] { body, top, foot }.Sum(part =>
         {
@@ -192,26 +199,65 @@ public sealed class AppraisalWindow
     }
 
     /// <summary>
-    /// A spell, in either layout as retail's examination lays one out (page 0x10000153 of LayoutDesc 0x2100006B): its type line and its
-    /// figures under the name, a rule, the description, a rule, then FORMULA and the components' icons in a centred row.
+    /// A spell, in either layout, as retail's examination lays one out (page 0x10000153 of LayoutDesc 0x2100006B): the school with the spell's
+    /// icon at the right, a rule, its figures, a rule, the description, then COMPONENTS: and their names. The FORMULA plate is the foot.
     /// </summary>
-    private static Control SpellBody(AppraisalContent content, IReadOnlyList<uint> formula, IGameArtSource? art)
+    private static Control SpellBody(AppraisalContent content, AppraisalSpell spell, IGameArtSource? art)
     {
-        var body = new StackPanel { Margin = new Thickness(BodySide, 6, BodySide, 8), Spacing = 2 };
-        if (content.TypeLine.Length > 0) body.Children.Add(RetailText(content.TypeLine, DerethPalette.CreamBrush));
-        if (content.Subtitle.Length > 0) body.Children.Add(RetailText(content.Subtitle, DerethPalette.TextBrush));
-        body.Children.Add(new DerethRule { Margin = new Thickness(0, 6, 0, 6) });
+        var body = new StackPanel { Margin = new Thickness(BodySide, 0, BodySide, 8) };
+        var school = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 4) };
+        var schoolText = RetailText(content.TypeLine, DerethPalette.CreamBrush);
+        schoolText.HorizontalAlignment = HorizontalAlignment.Center;
+        schoolText.VerticalAlignment = VerticalAlignment.Center;
+        school.Children.Add(schoolText);
+        if (art != null && SpellIcon.Draw(art, spell.Info) is { } image)
+        {
+            var icon = DerethItemCells.Icon(GameArtImageExtension.CreateBitmap(image));
+            Grid.SetColumn(icon, 1);
+            school.Children.Add(icon);
+        }
+        body.Children.Add(school);
+        // The rules reach the body's edges; the scroll clips anything wider.
+        body.Children.Add(new DerethRule { Margin = new Thickness(-BodySide, 0, -BodySide, 4) });
+        foreach (var figure in spell.Figures) body.Children.Add(RetailText(figure, DerethPalette.TextBrush));
+        body.Children.Add(new DerethRule { Margin = new Thickness(-BodySide, 4, -BodySide, 4) });
         if (content.Description.Length > 0) body.Children.Add(RetailText(content.Description, DerethPalette.TextBrush, wrap: true));
-        body.Children.Add(new DerethRule { Margin = new Thickness(0, 6, 0, 4) });
-        body.Children.Add(new TextBlock
+        if (spell.Components.Count > 0)
+        {
+            body.Children.Add(RetailText("COMPONENTS:", DerethPalette.TextBrush, margin: new Thickness(0, RetailLineHeight, 0, 0)));
+            foreach (var name in spell.Components)
+                body.Children.Add(RetailText(name, DerethPalette.TextBrush, margin: new Thickness(ComponentIndent, 0, 0, 0)));
+        }
+        return body;
+    }
+
+    // Unheld components' icons sit dimmed on a dark square, as retail's FORMULA plate draws them.
+    private static readonly IBrush UnheldBackground = DerethPalette.Brush(Color.FromArgb(0xC0, 0, 0, 0));
+    private const double UnheldIconOpacity = 0.6;
+    // Retail indents each component name with five spaces.
+    private const double ComponentIndent = 20;
+
+    /// <summary>The FORMULA plate at the foot, under a rule that reaches the frame: the title over the components' icons in a centred row.</summary>
+    private static Control FormulaPlate(AppraisalSpell spell, IGameArtSource? art)
+    {
+        var plate = new StackPanel { Margin = new Thickness(BodySide, 0, BodySide, 4) };
+        plate.Children.Add(new DerethRule { Margin = new Thickness(-BodySide - DerethWindow.Inset, 0, -BodySide - DerethWindow.Inset, 4) });
+        plate.Children.Add(new TextBlock
         {
             Text = "FORMULA", Foreground = DerethPalette.TextBrush, FontFamily = DerethPalette.Title, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center
         });
         var icons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
-        foreach (var icon in formula)
-            icons.Children.Add(new Image { Source = GameArtImageExtension.CreateBitmap(art, icon), Width = 32, Height = 32 });
-        body.Children.Add(icons);
-        return body;
+        foreach (var component in spell.Formula)
+        {
+            var image = new Image
+            {
+                Source = GameArtImageExtension.CreateBitmap(art, component.Icon), Width = 32, Height = 32,
+                Opacity = component.Held ? 1 : UnheldIconOpacity
+            };
+            icons.Children.Add(new Border { Background = component.Held ? null : UnheldBackground, Child = image });
+        }
+        plate.Children.Add(icons);
+        return plate;
     }
 
     /// <summary>The sections layout: the summary, then each section under its heading, then the description under a rule.</summary>
@@ -273,9 +319,9 @@ public sealed class AppraisalWindow
         return body;
     }
 
-    private static TextBlock RetailText(string text, IBrush brush, bool wrap = false) => new()
+    private static TextBlock RetailText(string text, IBrush brush, bool wrap = false, Thickness margin = default) => new()
     {
-        Text = text, Foreground = brush, FontFamily = DerethPalette.Title, FontSize = 13, LineHeight = RetailLineHeight,
+        Text = text, Margin = margin, Foreground = brush, FontFamily = DerethPalette.Title, FontSize = 13, LineHeight = RetailLineHeight,
         TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap, TextTrimming = wrap ? TextTrimming.None : TextTrimming.CharacterEllipsis,
     };
 
