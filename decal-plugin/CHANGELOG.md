@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.24.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.23.0...decal-plugin-v0.24.0) (2026-10-31)
+
+
+### Features
+
+* /saveui and /loadui save LegACEy's UI ([#250](https://github.com/apourman/LegACEy/issues/250)) ([6ba425a](https://github.com/apourman/LegACEy/commit/6ba425a4125fa54da1e7ebba2bb3fbc047c2a1d7))
+* attack bar at retail's size and layout ([#253](https://github.com/apourman/LegACEy/issues/253)) ([445a07c](https://github.com/apourman/LegACEy/commit/445a07cd9e169ef50788edf1f4408d6291b97a0b))
+* Dereth windows show in portal space at login and logout ([#258](https://github.com/apourman/LegACEy/issues/258)) ([b564ee0](https://github.com/apourman/LegACEy/commit/b564ee0bb2029cc053d05e9baa0b695291c2d88f))
+* magic window components look like retail's ([#256](https://github.com/apourman/LegACEy/issues/256)) ([cc5f510](https://github.com/apourman/LegACEy/commit/cc5f510fe0e8fb3fde3399366ca14074485f322a))
+* social window and panel tabs look like retail ([#251](https://github.com/apourman/LegACEy/issues/251)) ([2370346](https://github.com/apourman/LegACEy/commit/2370346b5269de7a31f88cba0e44c5df2b258b52))
+* spell bar scales with its height and shows the held item ([#254](https://github.com/apourman/LegACEy/issues/254)) ([2a10ff2](https://github.com/apourman/LegACEy/commit/2a10ff2e34543ea6eb23cae41e4689232e4bef56))
+* spell details look like retail's ([#252](https://github.com/apourman/LegACEy/issues/252)) ([c8a9a00](https://github.com/apourman/LegACEy/commit/c8a9a0052356d3876442e370382be1bd4d7529ef))
+
+
+### Bug Fixes
+
+* Gameplay Options buttons are centred ([#255](https://github.com/apourman/LegACEy/issues/255)) ([4b0dbda](https://github.com/apourman/LegACEy/commit/4b0dbda64eef2427348e891ba43aeb78f84d4d5d))
+* monsters stand whole in the Dereth appraisal ([#257](https://github.com/apourman/LegACEy/issues/257)) ([b2a0e86](https://github.com/apourman/LegACEy/commit/b2a0e86c71f48a78b875cf478b88d97bf31038f2))
+
+
+### Tests
+
+* start Avalonia before any client test runs ([#260](https://github.com/apourman/LegACEy/issues/260)) ([1421ec0](https://github.com/apourman/LegACEy/commit/1421ec08ee55d342a7bf3f72b6fd3c7af08093b7))
+
 ## [0.23.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.22.0...decal-plugin-v0.23.0) (2026-10-30)
 
 

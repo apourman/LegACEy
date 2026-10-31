@@ -228,7 +228,7 @@ public sealed class AvaloniaPanel : IDisposable
     /// Initialize Avalonia with CPU Skia and a BGRA headless framebuffer once per process, binding
     /// its dispatcher to the calling thread.
     /// </summary>
-    private static void EnsureRuntimeInitialized()
+    internal static void EnsureRuntimeInitialized()
     {
         if (_runtimeInitialized)
         {
