@@ -252,7 +252,7 @@ public sealed class AppraisalFeature
     }
 
     /// <summary>
-    /// Shows a spell (content with a <see cref="AppraisalContent.Formula"/>), as a click in the magic window's spellbook does, opening the
+    /// Shows a spell (content with a <see cref="AppraisalContent.Spell"/>), as a click in the magic window's spellbook does, opening the
     /// window when it is not open. False when the window could not open; nothing thrown escapes.
     /// </summary>
     public bool ShowSpell(AppraisalContent content)
@@ -278,7 +278,7 @@ public sealed class AppraisalFeature
     {
         var id = content.ObjectId;
         var art = _host.Art;
-        var inspect = content.Formula == null && _host.Looks.Knows(id) ? Inspect : (Action<AppraisalContent>?)null;
+        var inspect = content.Spell == null && _host.Looks.Knows(id) ? Inspect : (Action<AppraisalContent>?)null;
         var retail = _retailLayout();
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
@@ -343,7 +343,7 @@ public sealed class AppraisalFeature
     /// </summary>
     private Avalonia.Controls.Control? Figure(AppraisalContent content)
     {
-        if (content.Formula != null || (content.Creature is not { Character: true } && !_host.Looks.Knows(content.ObjectId))) return null;
+        if (content.Spell != null || (content.Creature is not { Character: true } && !_host.Looks.Knows(content.ObjectId))) return null;
         var doll = new PaperdollView(_host.Looks, _host.PortalPath, content.ObjectId) { Still = true, StatusShown = false, Backdrop = DerethPalette.Navy };
         doll.Frame(zoom: 0.84f * ModelView.Framing, focus: 0.48f);
         return doll;
