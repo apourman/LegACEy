@@ -1,6 +1,5 @@
 using System;
 using System.ComponentModel;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -106,9 +105,6 @@ public sealed unsafe class Plugin : FilterBase
             core.FilterInitComplete -= OnFilterInitComplete;
             core.CharacterFilter.LoginComplete += OnLoginComplete;
             core.CharacterFilter.Logoff += OnLogoff;
-            // TEMP 177 parity: Decal's feed beside the client's hooks.
-            core.EchoFilter.ServerDispatch += OnParityDispatch;
-            core.CommandLineText += OnParityCommand;
             // The open container and the selection are part of the inventory snapshot, whoever changed them.
             core.ItemSelected += OnItemSelected;
             core.ContainerOpened += OnContainerOpened;
@@ -122,34 +118,12 @@ public sealed unsafe class Plugin : FilterBase
     }
 
     // Bridge.Raise on the client side catches every exception, so these plain forwards can't unwind into Decal.
-    private void OnLoginComplete(object? sender, EventArgs e)
-    {
-        LogParity("login complete");
-        _events->LoginComplete();
-    }
-
-    // TEMP 177 parity: Decal's feed beside the client's hooks; removed before shipping.
-    private static readonly Dictionary<int, int> ParityCounts = new();
-
-    private void OnParityDispatch(object? sender, NetworkMessageEventArgs e)
-    {
-        var type = e.Message.Type;
-        if (type is not (0xF7B0 or 0xF7EA or 0xF746 or 0xF625 or 0xF745 or 0xF747 or 0xF749 or 0xF74A or 0xF7DB
-            or 0x02CD or 0x02CF or 0x02DD or 0x02E3 or 0x02E7)) return;
-        ParityCounts.TryGetValue(type, out var count);
-        ParityCounts[type] = count + 1;
-    }
-
-    private void OnParityCommand(object? sender, ChatParserInterceptEventArgs e) => Log($"Parity decal command: {e.Text}");
-
-    private static void LogParity(string when) =>
-        Log($"Parity decal at {when}: " + string.Join(" ", ParityCounts.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key:X4}={pair.Value}")));
+    private void OnLoginComplete(object? sender, EventArgs e) => _events->LoginComplete();
     // Retail keeps its windows up through the logout animation, so the session ends when the server lets the logoff through; a refused
     // logoff never ends it.
     private void OnLogoff(object? sender, LogoffEventArgs e)
     {
         if (e.Type != LogoffEventType.Authorized) return;
-        LogParity("logoff");
         _events->Logoff();
         if (_events->LogoffAuthorized != null) _events->LogoffAuthorized();
     }

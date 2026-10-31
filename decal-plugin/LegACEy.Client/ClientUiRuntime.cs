@@ -658,7 +658,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     public bool CommandLine(string text)
     {
-        Log($"Parity hook command: {text}");
         var command = text.Trim();
         var legacey = command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) || command.Equals("@legacey", StringComparison.OrdinalIgnoreCase);
         if (legacey && _failed && _loggedIn)
@@ -877,29 +876,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };
 
     /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
-    // TEMP 177 parity: the hook's feed beside Decal's; removed before shipping.
-    private static readonly Dictionary<int, int> ParityCounts = new();
-    private static int _parityFrameThread;
-    private static bool _parityThreadLogged;
-
-    private static void ParityMessage(int type, ReadOnlySpan<byte> raw)
-    {
-        ParityCounts.TryGetValue(type, out var count);
-        ParityCounts[type] = count + 1;
-        if (count == 0) Log($"Parity hook first {type:X4} ({raw.Length} bytes): {Convert.ToHexString(raw[..Math.Min(raw.Length, 512)])}");
-        if (!_parityThreadLogged && _parityFrameThread != 0)
-        {
-            _parityThreadLogged = true;
-            Log($"Parity threads: frame {_parityFrameThread}, server message {Environment.CurrentManagedThreadId}.");
-        }
-    }
-
-    private static void LogParity(string when) =>
-        Log($"Parity hook at {when}: " + string.Join(" ", ParityCounts.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key:X4}={pair.Value}")));
-
     public void ServerMessage(int type, ReadOnlySpan<byte> raw)
     {
-        ParityMessage(type, raw);
         if (_failed)
             return;
         // The appraisal response is a game event like any other, so it is read whether or not the LegACEy server channel is up.
@@ -947,7 +925,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     public void LoginComplete()
     {
-        LogParity("login complete");
         if (_inGame) return;
         _loggedIn = true;
         HideCharacterSelectToast();
@@ -1167,7 +1144,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>The session ends: the server let the logoff through, at the end of the logout animation, or a rebuild closes it.</summary>
     public void Logoff()
     {
-        LogParity("logoff");
         _enteringCharacterId = 0;
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
@@ -1542,7 +1518,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     public void Frame()
     {
-        if (_parityFrameThread == 0) _parityFrameThread = Environment.CurrentManagedThreadId;
         if (!_windowHooked) _windowHooked = GameWindowHook.TryPlace(WindowMessage, Disable, Log);
         // What this thread allocated since the last frame ended: hooks, the post-UI draw, Decal's events, window and server messages.
         if (_lastFrameEndBytes != 0) _betweenFrameBytes += GC.GetAllocatedBytesForCurrentThread() - _lastFrameEndBytes;
