@@ -578,15 +578,15 @@ public sealed class SocialWindow
         return new Border
         {
             Background = WellBrush, BorderBrush = LineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(2),
-            Padding = new Thickness(2), Margin = new Thickness(8, 0), Child = scroll
+            Padding = new Thickness(2), Margin = new Thickness(3, 0), Child = scroll
         };
     }
 
     private static Control Columns(string left, string right)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(12, 10, 14, 4) };
-        grid.Children.Add(Label(left, 14, DerethPalette.TextBrush));
-        var text = Label(right, 14, DerethPalette.TextBrush);
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(10, 6, 10, 2) };
+        grid.Children.Add(Label(left, 12.5, DerethPalette.TextBrush));
+        var text = Label(right, 12.5, DerethPalette.TextBrush);
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
         return grid;
