@@ -611,6 +611,38 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_layout_saved_from_one_character_replaces_another_characters_rows_and_leaves_the_rest()
+    {
+        var path = TempPath();
+        try
+        {
+            var store = new FileWindowPositionStore(path);
+            store.Save("server-a", "character-a", "vault", (new Point(10, 20), new Size(300, 400)));
+            store.Save("server-a", "character-a", "window-opacity:vault", (new Point(60, 0), null));
+            store.Save("server-b", "character-b", "vault", (new Point(1, 1), null));
+            store.Save("server-b", "character-b", "chat", (new Point(2, 2), null));
+            store.Save("server-b", "character-b", "plugin-option", (new Point(1, 0), null));
+
+            Assert.False(store.Has("layout", "hunting"));
+            Assert.True(store.CopyPlaces("server-a", "character-a", "layout", "hunting"));
+            Assert.True(store.Has("layout", "hunting"));
+            Assert.True(store.CopyPlaces("layout", "hunting", "server-b", "character-b", id => id != "plugin-option"));
+
+            var reloaded = new FileWindowPositionStore(path);
+            Assert.Equal((new Point(10, 20), new Size(300, 400)), reloaded.Load("server-b", "character-b", "vault"));
+            Assert.Equal(new Point(60, 0), reloaded.Load("server-b", "character-b", "window-opacity:vault")!.Value.Location);
+            // The layout had no chat place, so the character's goes; ids the copy does not take stay.
+            Assert.Null(reloaded.Load("server-b", "character-b", "chat"));
+            Assert.Equal(new Point(1, 0), reloaded.Load("server-b", "character-b", "plugin-option")!.Value.Location);
+            Assert.Equal(new Point(10, 20), reloaded.Load("server-a", "character-a", "vault")!.Value.Location);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Forgetting_places_drops_one_characters_window_rows_and_keeps_its_options_and_every_other_row()
     {
         var path = TempPath();

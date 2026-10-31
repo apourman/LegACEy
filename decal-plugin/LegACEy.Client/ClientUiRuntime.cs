@@ -162,6 +162,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _uiSizeChanged;
     // Set by Reset window positions in the Settings window, applied on the next frame, outside that window's click.
     private bool _positionsResetRequested;
+    // Set by /loadui, applied on the next frame, outside the Dereth chat's Enter, since loading rebuilds the chat window too.
+    private string? _layoutToLoad;
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
     // The release build stamps the client with the plugin version, so the menu shows which release is installed.
@@ -643,6 +645,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         var space = command.IndexOf(' ');
         var name = space < 0 ? command : command[..space];
+        if (name.Equals("/saveui", StringComparison.OrdinalIgnoreCase) || name.Equals("@saveui", StringComparison.OrdinalIgnoreCase))
+        {
+            if (space > 0) Guard(() => SaveUiLayout(command[space..].Trim()));
+            return false;
+        }
+        if (name.Equals("/loadui", StringComparison.OrdinalIgnoreCase) || name.Equals("@loadui", StringComparison.OrdinalIgnoreCase))
+        {
+            if (space > 0) _layoutToLoad = command[space..].Trim();
+            return false;
+        }
         if (!name.Equals("/water", StringComparison.OrdinalIgnoreCase) && !name.Equals("@water", StringComparison.OrdinalIgnoreCase))
             return false;
         if (_water.Apply(space < 0 ? "" : command[space..]) is not { } water)
@@ -653,6 +665,54 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         SetWater(water);
         SayInChat(water.ToString());
         return true;
+    }
+
+    // Named UI layouts are rows of the position and settings files under this server, which no game server is called.
+    private const string UiLayoutServer = "\u0001ui-layout";
+
+    /// <summary>
+    /// /saveui name, alongside retail's own: this character's LegACEy window places, sizes, chat options and window opacities, saved under
+    /// the name for every character on this computer. The line still reaches retail, which saves its own layout under the name.
+    /// </summary>
+    private void SaveUiLayout(string name)
+    {
+        var layout = name.ToLowerInvariant();
+        if (!_positionStore.Has(SessionServer(), SessionCharacter()))
+        {
+            SayInChat("LegACEy windows are all where they first open, so there is nothing of theirs to save.");
+            return;
+        }
+        var places = _positionStore.CopyPlaces(SessionServer(), SessionCharacter(), UiLayoutServer, layout);
+        var opacities = _settingsStore.CopyPlaces(SessionServer(), SessionCharacter(), UiLayoutServer, layout, WindowOpacities.IsKey);
+        if (!places || !opacities) Log($"Saving UI layout '{layout}': the position or settings file can't be read or written; it holds for this session.");
+        SayInChat($"LegACEy windows saved in layout '{name}'.");
+    }
+
+    /// <summary>
+    /// /loadui name, alongside retail's own: this character takes the layout's LegACEy windows, which rebuild where it put them. A name
+    /// with no LegACEy layout changes nothing. The line still reaches retail, which loads its own layout.
+    /// </summary>
+    private void LoadUiLayout(string name)
+    {
+        _layoutToLoad = null;
+        if (!_inGame) return;
+        var layout = name.ToLowerInvariant();
+        if (!_positionStore.Has(UiLayoutServer, layout))
+        {
+            SayInChat($"No LegACEy windows saved in layout '{name}'; /saveui {name} saves them.");
+            return;
+        }
+        Log($"Loading UI layout '{layout}': rebuilding the LegACEy UI.");
+        Rebuild(resetPositions: false, closed: () =>
+        {
+            // After the windows close, since closing saves where they stood.
+            var places = _positionStore.CopyPlaces(UiLayoutServer, layout, SessionServer(), SessionCharacter());
+            var opacities = _settingsStore.CopyPlaces(UiLayoutServer, layout, SessionServer(), SessionCharacter(), WindowOpacities.IsKey);
+            if (!places || !opacities)
+                Log($"Loading UI layout '{layout}': the position or settings file can't be read or written; it holds for this session.");
+            _opacities.Forget();
+        });
+        SayInChat($"LegACEy windows loaded from layout '{name}'.");
     }
 
     /// <summary>
@@ -1324,15 +1384,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>
     /// Closes every window and opens the session's again, as a relog does. With <paramref name="resetPositions"/> the saved window places are
     /// forgotten once the windows have closed, since closing saves where they stood, and the Settings window reopens on General rather than
-    /// on the tab it was on.
+    /// on the tab it was on. <paramref name="closed"/> runs once the windows have closed, before they open again.
     /// </summary>
-    private void Rebuild(bool resetPositions)
+    private void Rebuild(bool resetPositions, Action? closed = null)
     {
         var settingsOpen = _windows?.Get(SettingsWindowId) != null;
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
         Logoff();
         if (resetPositions) ForgetWindowPlaces();
+        if (closed != null) Guard(closed);
         _carriedChatHistory = chatHistory;
         LoginComplete();
         // The Settings window comes back on the tab it was on, which the tab store keeps; after a reset, on General.
@@ -1431,6 +1492,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         if (_uiSizeChanged) Guard(ApplyUiSize);
         if (_positionsResetRequested) Guard(ResetPositions);
+        if (_layoutToLoad is { } layout) Guard(() => LoadUiLayout(layout));
         // A failed rebuild has torn the UI down; the block below would build it again this frame.
         if (_failed) return;
 
