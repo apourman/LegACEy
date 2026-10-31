@@ -146,8 +146,6 @@ public sealed class ContainerWindow : UserControl, IDisposable, IRetailItemDropT
     /// <summary>Raised when the player asks for the other layout.</summary>
     public event Action? ToggleRequested;
 
-    public ContainerLayout Layout => _layout;
-
     /// <summary>The object a slot or the header's icon stands for (an item, a pack or the container), or zero for an empty slot.</summary>
     internal static uint ItemIdOf(Control slot) => slot.Tag is CellId cell ? cell.ItemId : 0;
 

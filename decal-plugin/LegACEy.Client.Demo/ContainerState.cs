@@ -28,6 +28,13 @@ public sealed class ContainerState
         ObjScale = 0x80, Friction = 0x100, Elasticity = 0x200, STable = 0x800, PeTable = 0x1000, DefaultScript = 0x2000,
         DefaultScriptIntensity = 0x4000, Position = 0x8000, Movement = 0x10000, AnimationFrame = 0x20000, Translucency = 0x40000;
 
+    // The sizes of the fields each flag names, in the order ACE writes them around the children.
+    private static readonly (uint Flag, int Size)[] BeforeChildren = { (MTable, 4), (STable, 4), (PeTable, 4), (CSetup, 4), (Parent, 8) };
+    private static readonly (uint Flag, int Size)[] AfterChildren =
+    {
+        (ObjScale, 4), (Friction, 4), (Elasticity, 4), (Translucency, 4), (Velocity, 12), (Acceleration, 12), (Omega, 12), (DefaultScript, 4), (DefaultScriptIntensity, 4)
+    };
+
     // WeenieHeaderFlag and the second header's flags.
     private const uint PluralName = 0x1, ItemsCapacity = 0x2, ContainersCapacity = 0x4, Value = 0x8, Usable = 0x10, UseRadius = 0x20,
         Monarch = 0x40, UiEffectsFlag = 0x80, AmmoType = 0x100, CombatUse = 0x200, StructureFlag = 0x400, MaxStructureFlag = 0x800,
@@ -51,8 +58,6 @@ public sealed class ContainerState
 
     /// <summary>The container the player has open: a chest, a corpse or something on the ground. Zero when none is.</summary>
     public uint Opened => _opened;
-
-    public bool IsOpen => _opened != 0;
 
     /// <summary>Forgets everything: logoff, or the windows failing.</summary>
     public void Clear()
@@ -299,11 +304,10 @@ public sealed class ContainerState
         }
         else if ((flags & AnimationFrame) != 0) reader.Skip(4);
         if ((flags & Position) != 0) reader.Skip(32);
-        foreach (var (flag, size) in new[] { (MTable, 4), (STable, 4), (PeTable, 4), (CSetup, 4), (Parent, 8) })
+        foreach (var (flag, size) in BeforeChildren)
             if ((flags & flag) != 0) reader.Skip(size);
         if ((flags & Children) != 0) reader.Skip((int)reader.UInt32() * 8);
-        foreach (var (flag, size) in new[] { (ObjScale, 4), (Friction, 4), (Elasticity, 4), (Translucency, 4), (Velocity, 12), (Acceleration, 12), (Omega, 12),
-                     (DefaultScript, 4), (DefaultScriptIntensity, 4) })
+        foreach (var (flag, size) in AfterChildren)
             if ((flags & flag) != 0) reader.Skip(size);
         reader.Skip(18);
         reader.Align();
