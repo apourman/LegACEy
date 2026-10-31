@@ -57,6 +57,45 @@ public static class AppraisalHeading
         Character = "Character";
 }
 
+/// <summary>A component's icon on a spell's FORMULA plate, and whether the player carries one.</summary>
+public readonly record struct SpellFormulaIcon(uint Icon, bool Held);
+
+/// <summary>
+/// A spell (<see cref="Info"/>) as retail's examination (SpellExamineUI) writes it: its figures (Mana, Range, Duration), the names of the components it is cast
+/// with, and their icons for the FORMULA plate. The content's <see cref="AppraisalContent.TypeLine"/> is its "School: " line.
+/// </summary>
+public sealed record AppraisalSpell(SpellInfo Info, IReadOnlyList<string> Figures, IReadOnlyList<string> Components, IReadOnlyList<SpellFormulaIcon> Formula)
+{
+    // SpellExamineUI::DetermineSpellRange caps a range at 75 metres; ExamineSpell writes it in yards.
+    private const float MaxRange = 75;
+    private const double MetresPerYard = 0.9144;
+
+    /// <summary>
+    /// The figures as retail's ExamineSpell writes them: Mana (and its extra per target), Range when it is not zero, and Duration for an
+    /// enchantment. <paramref name="skillLevel"/> is the player's level in the spell's skill (CACQualities::InqSkillLevel), from which
+    /// retail works out the range; null leaves the range out.
+    /// </summary>
+    public static IReadOnlyList<string> FiguresOf(SpellInfo spell, int? skillLevel)
+    {
+        var figures = new List<string>
+        {
+            spell.ManaMod > 0
+                ? string.Format(CultureInfo.InvariantCulture, "Mana: {0} + {1} per target", spell.BaseMana, spell.ManaMod)
+                : string.Format(CultureInfo.InvariantCulture, "Mana: {0}", spell.BaseMana)
+        };
+        if (skillLevel is { } level)
+        {
+            var range = Math.Min(MaxRange, spell.BaseRangeMod * level + spell.BaseRangeConstant);
+            if (range != 0) figures.Add(string.Format(CultureInfo.InvariantCulture, "Range: {0:0.0} yds.", range / MetresPerYard));
+        }
+        if (spell.Duration > 0)
+            figures.Add(spell.Duration > 60
+                ? string.Format(CultureInfo.InvariantCulture, "Duration: {0} min.", (uint)(spell.Duration / 60))
+                : string.Format(CultureInfo.InvariantCulture, "Duration: {0} sec.", (uint)spell.Duration));
+        return figures;
+    }
+}
+
 /// <summary>
 /// A creature's boxed header in the retail layout: its centred lines (gender and heritage, title and PK status for a character; its type
 /// for a creature), and its level, in a cell beside them. <see cref="Character"/> marks a player, whose cell says Character Level.
@@ -68,13 +107,12 @@ public sealed record AppraisalCreatureHeader(IReadOnlyList<string> Lines, string
 /// draws this model and nothing else, so the rules that build it are tested without drawing. Built by <see cref="From"/>. A creature also
 /// has <see cref="Creature"/>, the header the retail layout boxes. An item also has what the retail layout writes on its own lines:
 /// <see cref="Covers"/>, the body areas a piece of clothing or armour covers ("Chest, Upper Arms"), and <see cref="RetailProperties"/>,
-/// retail's one Properties line. A spell has <see cref="Formula"/>, the icons of the components it is cast with, which the window draws in
-/// retail's spell layout.
+/// retail's one Properties line. A spell has <see cref="Spell"/>, which the window draws in retail's spell layout.
 /// </summary>
 public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Visual, string TypeLine, IReadOnlyList<AppraisalFigure> Figures,
     IReadOnlyList<AppraisalSection> Sections, string Description, AppraisalInscription? Inscription, string Subtitle = "",
     AppraisalCreatureHeader? Creature = null, string Covers = "", IReadOnlyList<string>? RetailProperties = null,
-    IReadOnlyList<uint>? Formula = null)
+    AppraisalSpell? Spell = null)
 {
     // The server's property ids (ACE.Entity PropertyInt, PropertyString and PropertyDataId).
     private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;

@@ -11,14 +11,14 @@ namespace LegACEy.Client.Tests;
 
 public sealed class DerethAttackBarWindowTests
 {
-    // The mockup's layout in window DIPs: the groove's left end and length, and the plaques' and gems' centres.
-    private const double GrooveLeft = 46, GrooveWidth = 168, GrooveY = 19;
-    private const double PlaqueX = 292;
-    private static readonly double[] PlaqueY = { 15, 29, 43 };
-    private static readonly double[] GemX = { 16, 90, 164 };
-    private const double GemY = 42;
+    // Retail's layout in window DIPs: the groove's left end and length, and the plaques' and gems' centres.
+    private const double GrooveLeft = 14, GrooveWidth = 506, GrooveY = 21;
+    private const double PlaqueX = 564;
+    private static readonly double[] PlaqueY = { 18.5, 38, 57.5 };
+    private static readonly double[] GemX = { 19, 125, 213 };
+    private const double GemY = 43;
     // Just inside the groove's click area, which runs 4 DIPs past each end of the bar: a click there is past the bar's end.
-    private const double GrooveHitLeft = 44, GrooveHitRight = 216;
+    private const double GrooveHitLeft = 12, GrooveHitRight = 522;
 
     /// <summary>A panel holding the window at its design size, at 1x, with the window's content as its root.</summary>
     private static AvaloniaPanel Panel(DerethAttackBarWindow view, double scale = 1) =>
@@ -90,6 +90,14 @@ public sealed class DerethAttackBarWindowTests
         Click(panel, GemX[2], GemY);
         Assert.True(port.ViewCombatTarget);
         Assert.True(view.Face.KeepInView);
+
+        // A click near the end of a label flips it too.
+        Click(panel, GemX[0] + 80, GemY);
+        Assert.False(port.AutoRepeatAttack);
+        Click(panel, GemX[1] + 65, GemY);
+        Assert.True(port.AutoTarget);
+        Click(panel, GemX[2] + 73, GemY);
+        Assert.False(port.ViewCombatTarget);
     });
 
     [Fact]
@@ -227,17 +235,17 @@ public sealed class DerethAttackBarWindowTests
         var windows = new WindowManager(new Size(1600, 1000), new MemoryWindowPositionStore(), "Thistledown", "Alice");
         var window = windows.Open(DerethAttackBarWindow.DefinitionOf(() => port.UiLocked), new Point(100, 100));
         Drag(windows, new Point(window.Bounds.Right - 2, window.Bounds.Top + 29), 160, 0);
-        Assert.Equal(new Size(480, 58), window.Size);
+        Assert.Equal(new Size(770, 90), window.Size);
         Drag(windows, new Point(window.Bounds.Left + 200, window.Bounds.Bottom - 2), 0, 40);
-        Assert.Equal(new Size(480, 98), window.Size);
+        Assert.Equal(new Size(770, 130), window.Size);
         Drag(windows, new Point(window.Bounds.Right - 2, window.Bounds.Bottom - 2), 2000, 2000);
-        Assert.Equal(new Size(960, 150), window.Size);
+        Assert.Equal(new Size(1220, 180), window.Size);
         Drag(windows, new Point(window.Bounds.Right - 2, window.Bounds.Bottom - 2), -2000, -2000);
-        Assert.Equal(new Size(280, 58), window.Size);
+        Assert.Equal(new Size(400, 90), window.Size);
 
         port.UiLocked = true;
         Drag(windows, new Point(window.Bounds.Right - 2, window.Bounds.Top + 29), 160, 0);
-        Assert.Equal(new Size(280, 58), window.Size);
+        Assert.Equal(new Size(400, 90), window.Size);
         panel.PointerMove(400, 400);
         panel.PointerMove(150, 3);
         panel.Tick();
@@ -249,7 +257,7 @@ public sealed class DerethAttackBarWindowTests
     {
         var port = new FakeAttackBarPort();
         var view = new DerethAttackBarWindow(port, () => { });
-        using var panel = AvaloniaPanel.Create(() => view, 480, 58, 1);
+        using var panel = AvaloniaPanel.Create(() => view, 770, 90, 1);
 
         // The groove is 160 DIPs longer, so its middle is 80 further right.
         Click(panel, GrooveLeft + (GrooveWidth + 160) / 2, GrooveY);
@@ -257,8 +265,8 @@ public sealed class DerethAttackBarWindowTests
         // The plaques moved 160 right with the edge.
         Click(panel, PlaqueX + 160, PlaqueY[2]);
         Assert.Equal(AttackHeight.Low, port.Height);
-        // The gems spread: the third sits a further 2 × 160 / 3 DIPs right.
-        Click(panel, GemX[2] + 2 * 160 / 3.0, GemY);
+        // The gems stay at retail's places.
+        Click(panel, GemX[2], GemY);
         Assert.True(port.ViewCombatTarget);
     });
 
@@ -267,7 +275,7 @@ public sealed class DerethAttackBarWindowTests
     {
         var port = new FakeAttackBarPort();
         var view = new DerethAttackBarWindow(port, () => { });
-        using var panel = AvaloniaPanel.Create(() => view, 640, 116, 1);
+        using var panel = AvaloniaPanel.Create(() => view, 1220, 180, 1);
 
         // Twice the design size: every control sits at twice its design place.
         Click(panel, 2 * FractionAt(0.5), 2 * GrooveY);
@@ -305,7 +313,7 @@ public sealed class DerethAttackBarWindowTests
                 Render(Path.Combine(folder, $"{name}-{scale:0}x.png"), port, scale);
             }
         // Stretched: wider, taller, and both.
-        foreach (var (width, height) in new[] { (480, 58), (320, 98), (560, 120), (640, 116) })
+        foreach (var (width, height) in new[] { (770, 90), (610, 130), (900, 170), (1220, 180) })
         {
             var port = new FakeAttackBarPort { SetPoint = 0.75, Charge = 0.45, Height = AttackHeight.Medium, AutoRepeatAttack = true, AutoTarget = true };
             var view = new DerethAttackBarWindow(port, () => { });

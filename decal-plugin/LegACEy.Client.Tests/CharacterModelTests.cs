@@ -47,6 +47,23 @@ public sealed class CharacterModelTests
     }
 
     [Fact]
+    public void Real_dat_monster_keeps_its_own_pose_when_asked_for_the_paperdoll_stance()
+    {
+        var path = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");
+        if (string.IsNullOrWhiteSpace(path)) return;
+        using var dat = new PortalDat(path);
+
+        // the mosswarts' setup: the human stance's frames would scatter its parts (Backlog 170)
+        var mosswart = new CharacterAppearance(0x02000B4F, 0, Array.Empty<SubPalette>(), Array.Empty<TextureChange>(), Array.Empty<PartChange>());
+        var rest = CharacterModel.Build(dat, mosswart);
+        var still = CharacterModel.Build(dat, mosswart, CharacterModel.PaperDollPose);
+
+        Assert.Equal(rest.Top, still.Top);
+        Assert.Equal(rest.Bottom, still.Bottom);
+        Assert.Equal(rest.Radius, still.Radius);
+    }
+
+    [Fact]
     public void Real_dat_human_holds_a_wielded_sword_in_the_right_hand()
     {
         var path = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");

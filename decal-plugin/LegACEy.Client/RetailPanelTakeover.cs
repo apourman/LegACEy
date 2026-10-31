@@ -143,6 +143,17 @@ internal sealed class RetailPanelTakeover : IDisposable
         }
     }
 
+    /// <summary>
+    /// Before retail's /saveui: puts the parked panel back at its place, so retail saves that and not the parked one. Our window stays up,
+    /// and the next <see cref="Tick"/> parks the panel again.
+    /// </summary>
+    public void Unpark()
+    {
+        if (_disposed || !_parked) return;
+        try { Restore(); }
+        catch (Exception exception) { Fail(exception); }
+    }
+
     /// <summary>Logoff: gives the panel back and forgets the session, so the next login takes the panel over afresh.</summary>
     public void EndSession()
     {

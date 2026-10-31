@@ -28,6 +28,9 @@ public sealed class WindowOpacities
     /// <summary>Sets the All windows value. Windows with their own value keep it until the caller sets them too.</summary>
     public void SetAll(string server, string character, int percent) => Write(server, character, AllKey, percent);
 
+    /// <summary>Drops the values read so far, after something other than this class changed the store's opacity rows.</summary>
+    public void Forget() => _read.Clear();
+
     /// <summary>An opacity kept within the bounds and rounded to the step.</summary>
     public static int Clamp(int percent) => Math.Max(Faintest, Math.Min(Opaque, (int)Math.Round(percent / (double)Step) * Step));
 

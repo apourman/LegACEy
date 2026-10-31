@@ -11,6 +11,8 @@ internal static class RenderThread
     {
         new Thread(() =>
         {
+            // Start Avalonia before any test runs, so a test that builds a view without a panel never meets an unset platform.
+            LegACEy.Client.PanelHost.AvaloniaPanel.EnsureRuntimeInitialized();
             foreach (var action in Work.GetConsumingEnumerable())
                 action();
         })

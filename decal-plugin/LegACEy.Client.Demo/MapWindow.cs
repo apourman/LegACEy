@@ -63,7 +63,7 @@ public sealed class MapWindow
     public MapWindow(IRetailMap map, IGameArtSource? art)
     {
         _map = map;
-        _tabs = new DerethSegmented(TabNames, cellPadding: new Thickness(4, 4)) { VerticalAlignment = VerticalAlignment.Center };
+        _tabs = new DerethSegmented(TabNames, tabs: true) { VerticalAlignment = VerticalAlignment.Center };
         _tabs.Chosen += ShowTab;
 
         // The map: retail's art, a hover box on each place it names, then the house and player markers and the place's name above them.

@@ -192,13 +192,18 @@ public sealed class DerethFrame : Decorator
         base.Render(context);
         var width = Bounds.Width;
         var height = Bounds.Height;
-        var corner = _art.Corner;
-        var edge = _art.Edge;
+        // In a scaled window the pieces snap to whole screen pixels, or each side's rim smooths to a different thickness and the corners
+        // miss the edges. Layout rounding already puts the frame's own bounds on whole pixels.
+        var scale = (VisualRoot as TopLevel)?.RenderScaling ?? 1;
+        double Snap(double size) => Math.Max(1, Math.Round(size * scale)) / scale;
+        // The edge snaps to whole pixels and the corner scales by the same factor, so the rim lines in the corner meet the edge's.
+        var edge = Snap(_art.Edge);
+        var corner = _art.Corner * edge / _art.Edge;
         if (width < 2 * corner || height < 2 * corner) return;
         // The button's art has a rounded, see-through shadow ring outside its gold, so its fill stays inside the ring, or red shows
         // through at the corners.
         if (_kind == DerethFrameArt.Button)
-            context.FillRectangle(_art.Fill, new Rect(Bounds.Size).Deflate(1), ButtonFillRadius);
+            context.FillRectangle(_art.Fill, new Rect(Bounds.Size).Deflate(Snap(1)), ButtonFillRadius);
         else
         {
             using var faded = context.PushOpacity(GetFillOpacity(this));
@@ -597,6 +602,16 @@ public sealed class DerethWindow : UserControl
             Grid.SetColumnSpan(_name, value ? _header.ColumnDefinitions.Count : 1);
             _name.Margin = value ? new Thickness(_titleClear, 0) : default;
         }
+    }
+
+    /// <summary>
+    /// The header's height, as the constructor set it (<see cref="IconHeaderHeight"/> or <see cref="HeaderHeight"/>). A window can slim it
+    /// down while it shows no icon; below <see cref="HeaderButtonSize"/> the header buttons would not fit.
+    /// </summary>
+    public double HeaderBarHeight
+    {
+        get => _header.Height;
+        set => _header.Height = value;
     }
 
     /// <summary>A control in the content whose area the window's fill leaves see-through (see <see cref="DerethFrame.SeeThrough"/>).</summary>

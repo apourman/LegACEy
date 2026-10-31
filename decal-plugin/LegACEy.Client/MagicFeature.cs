@@ -25,6 +25,8 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     {
         [1] = "War Magic", [2] = "Life Magic", [3] = "Item Enchantment", [4] = "Creature Enchantment", [5] = "Void Magic"
     };
+    // Each school's skill (ACE's Skill), as retail's CSpellBase::InqSkillForSpell maps them.
+    private static readonly Dictionary<uint, uint> SchoolSkills = new() { [1] = 34, [2] = 33, [3] = 32, [4] = 31, [5] = 43 };
 
     private readonly ILegACEyPluginHost _host;
     private readonly RetailPanelTakeover? _panel;
@@ -163,6 +165,14 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         return carried;
     }
 
+    void IMagicGame.SelectComponent(uint wcid)
+    {
+        var item = _inventory().Items.FirstOrDefault(i => (uint)i.Wcid == wcid);
+        if (item == null) return;
+        // Decal's SelectItem only when the running client doesn't match retail's own selection.
+        if (!NativeSelection.TrySelect(item.Id, _log)) Bridge.SelectItem(item.Id);
+    }
+
     bool IMagicGame.SendFilters(uint filters) => Send(SpellbookFilterAction, BitConverter.GetBytes(filters), "change the spellbook filters");
 
     bool IMagicGame.DeleteSpell(uint spell) => Send(RemoveSpellAction, BitConverter.GetBytes(spell), "delete the spell");
@@ -206,25 +216,22 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
     public bool Examine(uint spell) => _spells().TryGetValue(spell, out var info) && _examine(Examination(info));
 
     /// <summary>
-    /// The spell as the appraisal window shows it: its school and level, its mana and duration, its description, and the components the
-    /// player casts it with: the account's tapers, or scarabs and prismatic tapers when a focus or Infused augmentation allows them.
+    /// The spell as retail's examination shows it: its school, its figures, its description, and the components the player casts it with
+    /// (the account's tapers, or scarabs and prismatic tapers when a focus or Infused augmentation allows them), each marked held when the
+    /// player carries one.
     /// </summary>
     private AppraisalContent Examination(SpellInfo spell)
     {
-        var focus = State.Infused.Contains(spell.School)
-            || Foci.TryGetValue(spell.School, out var wcid) && _inventory().Items.Any(i => i.Wcid == wcid);
+        var carried = new HashSet<int>(_inventory().Items.Select(i => i.Wcid));
+        var focus = State.Infused.Contains(spell.School) || Foci.TryGetValue(spell.School, out var wcid) && carried.Contains(wcid);
         var formula = focus ? SpellFormula.ScarabOnly(spell) : SpellFormula.ForAccount(spell, MagicNatives.AccountName(_log));
         var table = _components().Components;
-        var icons = formula.Select(c => table.TryGetValue(c, out var component) ? component.Icon : 0).Where(i => i != 0).ToList();
-        var level = SpellFormula.Level(spell);
+        var components = formula.Where(table.ContainsKey).Select(c => table[c]).ToList();
         var school = SchoolNames.TryGetValue(spell.School, out var name) ? name : string.Empty;
-        var type = level > 0 ? string.Format(CultureInfo.InvariantCulture, "Level {0} {1}", level, school) : school;
-        var figures = new List<string> { string.Format(CultureInfo.InvariantCulture, "Mana Cost: {0}.", spell.BaseMana) };
-        if (spell.Duration > 0)
-            figures.Add(spell.Duration >= 60
-                ? string.Format(CultureInfo.InvariantCulture, "Duration: {0} min.", (int)(spell.Duration / 60))
-                : string.Format(CultureInfo.InvariantCulture, "Duration: {0} sec.", (int)spell.Duration));
-        return new AppraisalContent(0, spell.Name, new ItemVisual(spell.Icon, 0, 0, 0), type, Array.Empty<AppraisalFigure>(),
-            Array.Empty<AppraisalSection>(), spell.Description, null, Subtitle: string.Join("  ", figures), Formula: icons);
+        int? level = SchoolSkills.TryGetValue(spell.School, out var skill) && NativeVitals.TryReadSkillLevel(skill, _log, out var read) ? read : null;
+        var details = new AppraisalSpell(spell, AppraisalSpell.FiguresOf(spell, level), components.Select(c => c.Name).ToList(),
+            components.Where(c => c.Icon != 0).Select(c => new SpellFormulaIcon(c.Icon, carried.Contains((int)c.Wcid))).ToList());
+        return new AppraisalContent(0, spell.Name, null, "School: " + school, Array.Empty<AppraisalFigure>(),
+            Array.Empty<AppraisalSection>(), spell.Description, null, Spell: details);
     }
 }
