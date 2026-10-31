@@ -20,6 +20,11 @@ Windows tab switches each window between Dereth and Retail, and sets size and
 opacity. Each switch is an empty `retail-<window>-native` file beside the main
 DLL, so it holds for every character on the install.
 
+Retail's `/saveui <name>` and `/loadui <name>` also save and load every
+LegACEy setting under that name: window places, sizes and opacity, options such
+as the vitals layout, chat tabs, the UI size, and which windows are Dereth or
+Retail. Any character on the computer can load it.
+
 Other files beside the main DLL:
 
 | File | Effect |
