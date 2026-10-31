@@ -81,9 +81,8 @@ internal sealed class BridgeInventoryPort : IInventoryPort
             _refresh.MarkStale();
     }
 
-    // Opening a pack is Decal's UseItem with state 0, as retail's double-click does it.
-    // Gate: opening an already-open pack, and the main pack, match retail.
-    public void OpenContainer(uint containerId) => Bridge.UseItem(containerId, 0);
+    // Retail's own client-side pack switch: its inventory lists follow the pack the window shows, so a drag handed to retail finds the item.
+    public void OpenContainer(uint containerId) => NativeContainerOpener.Open(containerId, _log);
 
     /// <summary>Retail's target mode, set once the native UI is checked; null leaves a click a plain selection.</summary>
     public RetailTargetMode? TargetMode { get; set; }

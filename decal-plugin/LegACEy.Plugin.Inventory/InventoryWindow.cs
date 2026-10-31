@@ -424,6 +424,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             if (slot.Container != 0)
             {
                 _picked = slot.Container;
+                // Retail's lists open it too: an item dragged from it onto the world is handed to retail's drag, which gives it to an NPC.
+                _port.OpenContainer(slot.Container);
                 Render(_port.Snapshot);
             }
             // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit). A side

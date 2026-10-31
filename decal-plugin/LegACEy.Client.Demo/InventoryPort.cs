@@ -14,7 +14,7 @@ public interface IInventoryPort
     InventorySnapshot Snapshot { get; }
     /// <summary>Raised on the render thread when <see cref="Snapshot"/> changed. Several game events in one frame raise it once.</summary>
     event Action? Changed;
-    /// <summary>Opens a pack through retail's own use of it.</summary>
+    /// <summary>Opens a pack in retail's inventory lists, as retail's own pack click does, without asking the server. Does nothing while retail's panel is closed (takeover off).</summary>
     void OpenContainer(uint containerId);
     /// <summary>Selects an item through retail's selection, or clears the selection with zero.</summary>
     void Select(uint itemId);
