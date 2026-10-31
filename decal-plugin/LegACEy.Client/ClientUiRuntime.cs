@@ -207,6 +207,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly Dictionary<uint, IntPtr> _datCursors = new();
     private readonly Dictionary<int, IntPtr> _systemCursors = new();
     private PostUiDrawHook? _postUiDrawHook;
+    private FrameHook? _frameHook;
     private ServerMessageHook? _serverMessages;
     private ChatCommandHook? _chatCommands;
     // Until the game window is subclassed, each frame tries again: a loader may start the client before the window exists.
@@ -544,6 +545,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Moving several items at once waits two seconds between items: {exception.Message}"); }
             LoadPlugins();
             // The client's own frame, server messages and chat lines, in place of Decal's events.
+            _frameHook = FrameHook.Place(Frame, Disable, Log);
             _serverMessages = ServerMessageHook.Place(ServerMessage, Disable, Log);
             _chatCommands = ChatCommandHook.Place(CommandLine, Disable, Log);
             EnsurePostUiDrawHook();
@@ -582,6 +584,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _gameMessages = null;
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
+            _frameHook?.Dispose();
+            _frameHook = null;
             _serverMessages?.Dispose();
             _serverMessages = null;
             _chatCommands?.Dispose();
@@ -1285,8 +1289,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private bool EnsurePostUiDrawHook()
     {
-        // Placed at startup: it runs every frame. Asked again after a draw failure, it draws again.
-        _postUiDrawHook ??= new PostUiDrawHook(Frame, DrawAfterRetailUi, Disable, Log);
+        // Placed at startup, which reads the game's device from the first frame; entry rendering needs it before LoginComplete creates
+        // character windows.
+        _postUiDrawHook ??= new PostUiDrawHook(DrawAfterRetailUi, Disable, Log);
         try
         {
             if (_postUiDrawHook.Install()) return true;
@@ -1298,7 +1303,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             DisableWindows(exception);
             return false;
         }
-        Log("LegACEy is off: the checked retail EndScene hook, which runs its every frame, could not be installed.");
+        Log("Post-UI drawing unavailable: checked retail EndScene hook could not be installed. Retail replacements use pre-UI drawing.");
         return false;
     }
 
@@ -1873,7 +1878,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
-    /// <summary>Called by the EndScene hook after the frame's work, once retail and Decal have drawn their UI.</summary>
+    /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
     private void DrawAfterRetailUi()
     {
         var start = Stopwatch.GetTimestamp();
