@@ -38,6 +38,13 @@ internal sealed unsafe class WorldEffects : IDisposable
         (int*)0x00847050, (int*)0x00867304, (int*)0x008470D0, (int*)0x008470CC, (int*)0x00867300
     };
     private readonly int[] _savedView = new int[ViewGlobals.Length];
+    // Retail draws translucent and alpha-cut surfaces late: D3DPolyRender::AddMeshToAlphaList queues each, with no part in sight, and
+    // FlushAlphaList draws the alpha list and then the clip list, record by record, once the world is drawn. Their counts, and the part
+    // behind each record in the order queued, which the flush draws them in.
+    private const uint AddToAlphaListAddress = 0x0059D240, RenderSubsetAddress = 0x0059DA60;
+    private static readonly ushort* AlphaCount = (ushort*)0x008729BC, ClipCount = (ushort*)0x008729C0;
+    private readonly Queue<(int Mesh, int Index, int Surface, int Part)> _alphaList = new(), _clipList = new();
+    private int _queuedLogs;
     private const uint Gold = 0xFFFFC040;
     // ColorWriteEnable: the selection into the mask's colour, the player into its alpha.
     private const int SelectionChannels = 0x7, PlayerChannels = 0x8;
@@ -86,6 +93,15 @@ internal sealed unsafe class WorldEffects : IDisposable
             Source, "the globals it writes, saved and put back around the full-screen view"),
         new NativeUiEntry("The view-cone sphere test", SphereTestAddress, NativeUiCatalogue.Bytes("83 EC 1C D9 05 84 FC 81 00 8B 15 34 73 86 00"),
             Source, "Cdecl (CSphere*): 0 when a part's bounding sphere is outside the view cone; RenderDeviceD3D::DrawMesh skips the part then. Hooked only while the culled selection is drawn"),
+        new NativeUiEntry("D3DPolyRender::AddMeshToAlphaList", AddToAlphaListAddress,
+            NativeUiCatalogue.Bytes("8A 44 24 18 84 C0 56 57 0F 84 8F 00 00 00 66 8B 15 BC 29 87 00"),
+            Source, "Cdecl (mesh, surface index, surface, 3 flags): queues a translucent (last flag) or alpha-cut surface to draw late; hooked, to remember the part being drawn. 0x8729BC counts the alpha list"),
+        new NativeUiEntry("AddMeshToAlphaList: the clip list", 0x0059D2DD, NativeUiCatalogue.Bytes("66 8B 15 C0 29 87 00 66 81 FA B8 0B"),
+            Source, "the other list, counted in 0x8729C0"),
+        new NativeUiEntry("D3DPolyRender::RenderMeshSubset", RenderSubsetAddress, NativeUiCatalogue.Bytes("83 EC 58 8B 0D 40 03 87 00 53 55 8B 6C 24 74"),
+            Source, "Cdecl (surface index, surface, 2 flags, mesh): draws one surface, in CPhysicsPart::Draw or from FlushAlphaList; hooked, to put the queued part back in 0x008EE3D8"),
+        new NativeUiEntry("FlushAlphaList draws each queued record", 0x0059E4B4, NativeUiCatalogue.Bytes("8B 4E F0 8B 46 F8 33 D2 8A 56 41 51 8B 4E F4 52 6A 00 50 51"),
+            Source, "the layout read here: record +0x0 mesh, +0x4 surface index, +0x8 surface, drawn in queue order; the clip list follows (0x59E554)"),
         new NativeUiEntry("CPhysicsObj::SetLuminosity reads the part array", 0x00512374, NativeUiCatalogue.Bytes("8B 4E 10 85 C9 74 76"),
             Source, "the layout read here: CPhysicsObj +0x10 is its CPartArray")
     };
@@ -130,6 +146,12 @@ internal sealed unsafe class WorldEffects : IDisposable
     [Function(CallingConventions.Cdecl)]
     private delegate int SphereTestFn(IntPtr sphere);
 
+    [Function(CallingConventions.Cdecl)]
+    private delegate int AddToAlphaListFn(int mesh, int index, int surface, int matrix, int flag, int alpha);
+
+    [Function(CallingConventions.Cdecl)]
+    private delegate int RenderSubsetFn(int index, int surface, int a, int b, int mesh);
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void FullViewFn();
 
@@ -159,6 +181,8 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<DrawFn> _drawPrimitiveHook;
     private readonly IHook<ResetFn> _resetHook;
     private readonly IHook<SphereTestFn> _sphereHook;
+    private readonly IHook<AddToAlphaListFn> _alphaHook;
+    private readonly IHook<RenderSubsetFn> _subsetHook;
     private readonly StormFog _fog;
     private readonly Weather _weather;
     private readonly Water _water;
@@ -194,6 +218,10 @@ internal sealed unsafe class WorldEffects : IDisposable
         _sphereHook = ReloadedHooks.Instance.CreateHook<SphereTestFn>(OnSphereTest, SphereTestAddress);
         _sphereHook.Activate();
         _sphereHook.Disable();
+        _alphaHook = ReloadedHooks.Instance.CreateHook<AddToAlphaListFn>(OnAddToAlphaList, AddToAlphaListAddress);
+        _subsetHook = ReloadedHooks.Instance.CreateHook<RenderSubsetFn>(OnRenderSubset, RenderSubsetAddress);
+        _alphaHook.Activate();
+        _subsetHook.Activate();
         _resetHook.Activate();
         _drawHook.Activate();
         _drawPrimitiveHook.Activate();
@@ -494,6 +522,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         _worldFog = _failed ? null : _fog.TakeFog();
         _viewIndoors = _landscapeHook != null && (*(uint*)(smartBox + 0xC) & 0xFFFF) >= 0x100;
         _outsideDrawn = false;
+        _alphaList.Clear();
+        _clipList.Clear();
         int[]? retailFog = null;
         try
         {
@@ -608,6 +638,56 @@ internal sealed unsafe class WorldEffects : IDisposable
             _drawingCulledSelection = false;
             for (var i = 0; i < ViewGlobals.Length; i++) *ViewGlobals[i] = _savedView[i];
         }
+    }
+
+    /// <summary>
+    /// Remembers the part behind each surface retail queues to draw late. FlushAlphaList draws it when no part is being drawn, and the
+    /// outline took it for nobody's: the player's translucent costume (a cloak, a pumpkin head) never reached the player's mask, and a
+    /// rim was drawn over it (backlog 186).
+    /// </summary>
+    private int OnAddToAlphaList(int mesh, int index, int surface, int matrix, int flag, int alpha)
+    {
+        var translucent = (alpha & 0xFF) != 0;
+        var count = translucent ? AlphaCount : ClipCount;
+        var list = translucent ? _alphaList : _clipList;
+        var before = *count;
+        var result = _alphaHook.OriginalFunction(mesh, index, surface, matrix, flag, alpha);
+        // A list restarts at zero after each flush; a record retail refused (a full list) is not in ours either.
+        if (before == 0) list.Clear();
+        if (Selected != 0 && _inWorld && !_failed && *count == before + 1)
+        {
+            var part = *DrawingPart;
+            list.Enqueue((mesh, index, surface, part));
+            // ponytail: confirms the 31 Oct cause in a play-test (the costume's surfaces are queued); drop once it has.
+            if (part != 0 && _queuedLogs < 3 && *(int*)(part + 0xE0) == PlayerObject())
+            {
+                _queuedLogs++;
+                _log($"Alpha list: a part of the player is queued for a late draw (mesh {mesh:X8}, surface {surface:X8}, {(translucent ? "alpha" : "clip")} list).");
+            }
+        }
+        return result;
+    }
+
+    /// <summary>A queued surface drawn by the flush has no part in 0x008EE3D8; it gets back the one that queued it, so the mask sees it.</summary>
+    private int OnRenderSubset(int index, int surface, int a, int b, int mesh)
+    {
+        var part = 0;
+        if (*DrawingPart != 0 || !_inWorld || !(Take(_alphaList, mesh, index, surface, out part) || Take(_clipList, mesh, index, surface, out part)) || part == 0)
+            return _subsetHook.OriginalFunction(index, surface, a, b, mesh);
+        *DrawingPart = part;
+        try { return _subsetHook.OriginalFunction(index, surface, a, b, mesh); }
+        finally { *DrawingPart = 0; }
+    }
+
+    // The flush draws the records in the order they were queued, so the next one is the head.
+    private static bool Take(Queue<(int Mesh, int Index, int Surface, int Part)> list, int mesh, int index, int surface, out int part)
+    {
+        part = 0;
+        if (list.Count == 0) return false;
+        var head = list.Peek();
+        if (head.Mesh != mesh || head.Index != index || head.Surface != surface) return false;
+        part = list.Dequeue().Part;
+        return true;
     }
 
     // Enabled only for the culled selection. Retail's test still runs for what it records; outside the cone (0) becomes 1, partly in view.
@@ -758,6 +838,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         _drawPrimitiveHook.Disable();
         _resetHook.Disable();
         _sphereHook.Disable();
+        _alphaHook.Disable();
+        _subsetHook.Disable();
         ReleaseTextures();
         _fog.Dispose();
         _weather.Dispose();
