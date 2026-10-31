@@ -138,12 +138,14 @@ public sealed class CharacterModel
     /// Assemble a character from portal.dat: the setup's parts in its first placement (the default pose), with the
     /// appearance's part swaps, texture swaps and palette applied. Unreadable parts and textures are skipped or drawn grey. A pose (an
     /// animation, such as <see cref="PaperDollPose"/>) stands the parts in its second frame instead: the first leads in from another pose.
+    /// A pose made for another body (a human stance on a monster's setup, with a different part count) is ignored.
     /// </summary>
     public static CharacterModel Build(PortalDat dat, CharacterAppearance appearance, uint pose = 0)
     {
         var setup = DatModels.ReadSetup(dat, appearance.SetupId) ?? throw new InvalidDataException($"Setup {appearance.SetupId:X8} is not in portal.dat.");
-        if (pose != 0 && DatModels.ReadPose(dat, pose, 1) is { } frames)
-            for (var i = 0; i < Math.Min(frames.Length, setup.Frames.Length); i++) setup.Frames[i] = frames[i];
+        // an animation fits only a body with its part count; on another (a monster's) it would scatter the parts
+        if (pose != 0 && DatModels.ReadPose(dat, pose, 1) is { } frames && frames.Length == setup.Frames.Length)
+            setup.Frames = frames;
         var ordered = new List<ModelMesh>();
         AddParts(dat, setup, appearance, ordered, null);
         // Each held item in its own setup's default pose, scaled, then placed by the holding location on its part, then by that part.
