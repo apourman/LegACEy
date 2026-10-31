@@ -165,6 +165,14 @@ internal sealed class MagicFeature : IMagicGame, IDisposable
         return carried;
     }
 
+    void IMagicGame.SelectComponent(uint wcid)
+    {
+        var item = _inventory().Items.FirstOrDefault(i => (uint)i.Wcid == wcid);
+        if (item == null) return;
+        // Decal's SelectItem only when the running client doesn't match retail's own selection.
+        if (!NativeSelection.TrySelect(item.Id, _log)) Bridge.SelectItem(item.Id);
+    }
+
     bool IMagicGame.SendFilters(uint filters) => Send(SpellbookFilterAction, BitConverter.GetBytes(filters), "change the spellbook filters");
 
     bool IMagicGame.DeleteSpell(uint spell) => Send(RemoveSpellAction, BitConverter.GetBytes(spell), "delete the spell");

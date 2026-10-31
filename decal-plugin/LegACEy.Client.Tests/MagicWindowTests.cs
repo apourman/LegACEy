@@ -117,9 +117,14 @@ public sealed class MagicWindowTests
         state.SetDesired(691, 25);
         MagicWindow view = null!;
         using var panel = AvaloniaPanel.Create(() => (view = new MagicWindow(state, game, () => Spells, () => Components, null)).Window, MagicWindow.Width, 400);
-        // Ginseng is carried, Lead Scarab wanted; weenie class 999 is no component.
-        Assert.Equal(new[] { ("Ginseng", 12, 0), ("Lead Scarab", 0, 25) },
+        // Ginseng is carried, Lead Scarab wanted; weenie class 999 is no component. Scarabs list before herbs, as retail groups them.
+        Assert.Equal(new[] { ("Lead Scarab", 0, 25), ("Ginseng", 12, 0) },
             view.ListedComponents().Select(r => (r.Component.Name, r.Carried, r.Desired)));
+
+        // A click lights the row and selects the carried item in the game; a click on empty space only clears the row.
+        view.SelectComponent(702);
+        view.SelectComponent(0);
+        Assert.Equal(new[] { 702u }, game.SelectedComponents);
 
         view.SetDesired(702, 30);
         view.SetDesired(691, 0);
@@ -175,16 +180,24 @@ public sealed class MagicWindowTests
             "Harm Other I", "Heal Other I", "Heal Self I", "Imperil Other I", "Invulnerability Other I", "Invulnerability Self I", "Shock Wave I" };
         foreach (var id in spells.Where(s => names.Contains(s.Value.Name)).GroupBy(s => s.Value.Name).Select(g => g.Min(s => s.Key)))
             state.Receive(GameEvent, Event(MagicState.UpdateSpellEvent).U16((ushort)id).U16(0).ToArray());
-        state.SetDesired(components.Components.Values.First().Wcid, 50);
         var game = new FakeGame();
-        foreach (var component in components.Components.Values.Skip(60).Take(4)) game.Carried[component.Wcid] = 25;
+        // The tester's packs (backlog 172's screenshot); the fake table has only some of them.
+        var carried = new Dictionary<string, int>
+        {
+            ["Copper Scarab"] = 97, ["Diamond Scarab"] = 10, ["Ginseng"] = 75, ["Gold Scarab"] = 101, ["Gold Scarab Pea"] = 1, ["Hazel Talisman"] = 89,
+            ["Iron Scarab"] = 189, ["Lead Scarab"] = 80, ["Mana Scarab"] = 88, ["Myrrh"] = 89, ["Platinum Scarab"] = 83, ["Powdered Lapis Lazuli"] = 70,
+            ["Prismatic Taper"] = 2497, ["Pyreal Scarab"] = 98, ["Silver Scarab"] = 100, ["White Taper"] = 56
+        };
+        foreach (var component in components.Components.Values.Where(c => c.Wcid != 0 && carried.ContainsKey(c.Name)).GroupBy(c => c.Name).Select(g => g.First()))
+            game.Carried[component.Wcid] = carried[component.Name];
         foreach (var (name, tab) in new[] { ("spellbook", 0), ("components", 1) })
         {
             MagicWindow view = null!;
             using var panel = AvaloniaPanel.Create(() => (view = new MagicWindow(state, game, () => spells, () => components, portal)).Window,
-                MagicWindow.Width, 640);
+                MagicWindow.Width, 760);
             view.ShowTab(tab);
             if (tab == 0) view.Select(view.ListedSpells()[2].Id);
+            else view.SelectComponent(view.ListedComponents()[4].Component.Wcid);
             panel.Tick();
             panel.Tick();
             PanelPng.Save(panel, Path.Combine(folder, name + ".png"));
@@ -194,7 +207,7 @@ public sealed class MagicWindowTests
     private sealed class FakeGame : IMagicGame
     {
         public readonly Dictionary<uint, int> Carried = new();
-        public readonly List<uint> Filters = new(), Deleted = new(), Examined = new(), AddedToBar = new();
+        public readonly List<uint> Filters = new(), Deleted = new(), Examined = new(), AddedToBar = new(), SelectedComponents = new();
         public readonly List<(uint, int)> Desired = new();
         public IReadOnlyDictionary<uint, int> CarriedComponents() => Carried;
         public bool SendFilters(uint filters) { Filters.Add(filters); return true; }
@@ -204,5 +217,6 @@ public sealed class MagicWindowTests
         public bool DropOnSpellBar(uint spell) => AddToSpellBar(spell);
         public void HoverSpellBar(bool dragging) { }
         public void Examine(uint spell) => Examined.Add(spell);
+        public void SelectComponent(uint wcid) => SelectedComponents.Add(wcid);
     }
 }
