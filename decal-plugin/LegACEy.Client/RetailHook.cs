@@ -26,11 +26,27 @@ internal static unsafe class RetailHook
         return next;
     }
 
-    /// <summary>Points a jump <see cref="TakeJump"/> took back at the other hook.</summary>
-    public static void GiveJumpBack(uint address, IntPtr next, string name, Action<string> log)
+    /// <summary>
+    /// Points a jump <see cref="TakeJump"/> took back at the other hook, while it still leads to <paramref name="detour"/>. Once the other
+    /// hook has gone and put retail's bytes back, the function is left alone. True once the jump leads to the other hook again.
+    /// </summary>
+    public static bool GiveJumpBack(uint address, IntPtr detour, IntPtr next, string name, Action<string> log)
     {
-        try { WriteJump(address, next); }
-        catch (InvalidOperationException exception) { log($"The {name} hook could not be removed; it stays and forwards: {exception.Message}"); }
+        if (*(byte*)address != Jump || (IntPtr)(address + 5 + *(int*)(address + 1)) != detour)
+        {
+            log($"The {name} hook was left in place: another hook changed the function's start after it.");
+            return false;
+        }
+        try
+        {
+            WriteJump(address, next);
+            return true;
+        }
+        catch (InvalidOperationException exception)
+        {
+            log($"The {name} hook could not be removed; it stays and forwards: {exception.Message}");
+            return false;
+        }
     }
 
     private static void WriteJump(uint address, IntPtr target)

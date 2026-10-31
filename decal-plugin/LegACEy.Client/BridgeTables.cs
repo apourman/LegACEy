@@ -12,7 +12,7 @@ namespace LegACEy.Client.DecalPlugin;
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct BridgeEvents
 {
-    /// <summary>Decal's RenderFrame. Unused since 177: the client's EndScene hook runs its frame.</summary>
+    /// <summary>Decal's RenderFrame. Unused since 177: the client hooks retail's SceneTool::EndFrame.</summary>
     public delegate* unmanaged[Stdcall]<void> Frame;
     /// <summary>Decal's WindowMessage: (hwnd, msg, wParam, lParam), returning 1 to eat the message. Unused since 177: the client subclasses the game window.</summary>
     public delegate* unmanaged[Stdcall]<int, int, int, int, int> WindowMessage;

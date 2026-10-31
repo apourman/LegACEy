@@ -97,6 +97,8 @@ internal sealed unsafe class ChatCommandHook : IDisposable
     public void Dispose()
     {
         RetailHook.Remove(_hook, "chat command", _log);
-        if (_next != null) RetailHook.GiveJumpBack(OnChatCommand, (IntPtr)_next, "chat command", _log);
+        if (_next == null) return;
+        // A jump still leading here keeps the hook, which forwards, reachable.
+        if (RetailHook.GiveJumpBack(OnChatCommand, (IntPtr)(delegate* unmanaged[Thiscall]<IntPtr, IntPtr, uint, byte>)&OnCommandOverJump, (IntPtr)_next, "chat command", _log) && _overJump == this) _overJump = null;
     }
 }

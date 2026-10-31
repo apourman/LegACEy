@@ -70,11 +70,11 @@ public sealed class LookCache
         return forgotten;
     }
 
-    /// <summary>Reads one server message, as Decal's ServerDispatch raises it. Anything malformed is left out.</summary>
+    /// <summary>Reads one server message, as the message hook delivers it. Anything malformed is left out.</summary>
     public void Receive(int messageType, ReadOnlySpan<byte> raw)
     {
         if (!Reads(messageType)) return;
-        // Decal's raw bytes may or may not start with the message type; an object id never equals it.
+        // The raw bytes may start with the message type (the hook's always do); an object id never equals it.
         if (raw.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(raw) == (uint)messageType) raw = raw.Slice(4);
         try { Read(messageType, raw); }
         catch (ArgumentOutOfRangeException) { }

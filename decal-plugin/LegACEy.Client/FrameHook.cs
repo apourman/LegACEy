@@ -95,6 +95,8 @@ internal sealed unsafe class FrameHook : IDisposable
     public void Dispose()
     {
         RetailHook.Remove(_hook, "frame", _log);
-        if (_next != null) RetailHook.GiveJumpBack(EndFrame, (IntPtr)_next, "frame", _log);
+        if (_next == null) return;
+        // A jump still leading here keeps the hook, which forwards, reachable.
+        if (RetailHook.GiveJumpBack(EndFrame, (IntPtr)(delegate* unmanaged[Cdecl]<int, void>)&OnEndFrameOverJump, (IntPtr)_next, "frame", _log) && _overJump == this) _overJump = null;
     }
 }

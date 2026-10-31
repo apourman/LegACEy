@@ -113,7 +113,7 @@ public sealed class CharacterSheet
     public void Receive(int messageType, ReadOnlySpan<byte> raw)
     {
         if (messageType is not (GameEventMessage or UpdateInt or UpdateInt64 or UpdateSkill or UpdateAttribute or UpdateVital)) return;
-        // Decal's raw bytes may or may not start with the message type; no first field of these messages equals it.
+        // The raw bytes may start with the message type (the hook's always do); no first field of these messages equals it.
         if (raw.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(raw) == (uint)messageType) raw = raw.Slice(4);
         try
         {
