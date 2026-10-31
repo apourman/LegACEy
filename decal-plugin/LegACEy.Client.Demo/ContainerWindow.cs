@@ -385,9 +385,9 @@ public sealed class ContainerWindow : UserControl, IDisposable, IRetailItemDropT
         if (_dragged == 0)
         {
             if (!PastThreshold(point)) return;
-            // Past the threshold the press is a drag or nothing, never a click. The container's icon carries the container, as retail's
-            // does: a pack opened on the ground is looted by dragging it to the inventory.
-            _dragged = press.ItemId;
+            // Past the threshold the press is a drag or nothing, never a click. The icon of a pack opened on the ground carries the
+            // pack, as retail's does, so dragging it to the inventory loots it; a chest or corpse stays put.
+            _dragged = press.Kind == CellKind.Root && !_state.IsPack(press.ItemId) ? 0 : press.ItemId;
             if (_dragged == 0)
             {
                 _press = null;

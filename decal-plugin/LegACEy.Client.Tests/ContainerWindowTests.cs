@@ -348,17 +348,30 @@ public sealed class ContainerWindowTests
     });
 
     [Fact]
-    public void The_container_s_icon_drags_the_container_itself_as_retail_s_does() => RenderThread.Run(() =>
+    public void A_ground_pack_s_icon_drags_the_pack_itself_as_retail_s_does_and_a_chest_s_stays_put() => RenderThread.Run(() =>
     {
         using var rig = new Rig(ContainerLayout.Strip, ContainerWindow.StripHeight);
-        var start = InventoryDriver.Centre(rig.Panel, rig.Item(Chest));
         var outside = ContainerWindow.Width + 40;
+        var start = InventoryDriver.Centre(rig.Panel, rig.Item(Chest));
+        rig.Panel.PointerDown(start.X, start.Y, Avalonia.Input.KeyModifiers.None);
+        rig.Panel.PointerMove(start.X + 10, start.Y);
+        rig.Panel.PointerMove(outside, start.Y);
+        rig.Panel.PointerUp(outside, start.Y);
+        Assert.Equal(0, rig.Drag.IconsOpen);
+        Assert.Empty(rig.Drag.Delivered);
+
+        // A pack opened on the ground: the server sends it as a world object, then its contents.
+        rig.State.Receive(GameEvent, Event(0x0052, w => w.U32(Chest)));
+        rig.State.Receive(CreateObject, Created(Pack, "Leather Sack", 0x06002002, capacity: 24));
+        rig.State.Receive(GameEvent, View(Pack, (InPack, 0)));
+        rig.Panel.Tick();
+        start = InventoryDriver.Centre(rig.Panel, rig.Item(Pack));
         rig.Panel.PointerDown(start.X, start.Y, Avalonia.Input.KeyModifiers.None);
         rig.Panel.PointerMove(start.X + 10, start.Y);
         Assert.Equal(1, rig.Drag.IconsOpen);
         rig.Panel.PointerMove(outside, start.Y);
         rig.Panel.PointerUp(outside, start.Y);
-        Assert.Equal(new[] { (Chest, "Chest of Lyre") }, rig.Drag.Delivered);
+        Assert.Equal(new[] { (Pack, "Leather Sack") }, rig.Drag.Delivered);
         Assert.Empty(rig.Port.Commands.Where(command => command.StartsWith("move")));
     });
 
