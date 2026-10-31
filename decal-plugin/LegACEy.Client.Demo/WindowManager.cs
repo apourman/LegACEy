@@ -274,17 +274,15 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
         ForgetWhere(key => Decode(key.Substring(key.LastIndexOf('|') + 1))?.EndsWith(WindowManager.SizeKeySuffix, StringComparison.Ordinal) == true);
 
     /// <summary>
-    /// Makes the target server and character's rows a copy of the source's, for the ids <paramref name="only"/> takes (all when null): the
-    /// target's other rows of those ids go. A named UI layout is a server and character no game has, so this saves one and loads one.
-    /// Returns false as <see cref="ForgetPlaces"/> does.
+    /// Makes the target server and character's rows a copy of the source's: the target's other rows go. A named UI layout is a server and
+    /// character no game has, so this saves one and loads one. Returns false as <see cref="ForgetPlaces"/> does.
     /// </summary>
-    public bool CopyPlaces(string fromServer, string fromCharacter, string toServer, string toCharacter, Func<string, bool>? only = null)
+    public bool CopyPlaces(string fromServer, string fromCharacter, string toServer, string toCharacter)
     {
         string from = Encode(fromServer) + "|" + Encode(fromCharacter) + "|", to = Encode(toServer) + "|" + Encode(toCharacter) + "|";
-        bool Owned(string key, string owner) =>
-            key.StartsWith(owner, StringComparison.Ordinal) && (only == null || Decode(key.Substring(owner.Length)) is { } id && only(id));
-        return Edit(rows => rows.Keys.Where(key => Owned(key, to)).Select(key => new KeyValuePair<string, WindowPlacement?>(key, null))
-            .Concat(rows.Where(row => Owned(row.Key, from))
+        return Edit(rows => rows.Keys.Where(key => key.StartsWith(to, StringComparison.Ordinal))
+            .Select(key => new KeyValuePair<string, WindowPlacement?>(key, null))
+            .Concat(rows.Where(row => row.Key.StartsWith(from, StringComparison.Ordinal))
                 .Select(row => new KeyValuePair<string, WindowPlacement?>(to + row.Key.Substring(from.Length), row.Value))));
     }
 

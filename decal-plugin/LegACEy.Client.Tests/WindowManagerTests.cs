@@ -611,7 +611,7 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
-    public void A_layout_saved_from_one_character_replaces_another_characters_rows_and_leaves_the_rest()
+    public void A_layout_saved_from_one_character_replaces_another_characters_rows()
     {
         var path = TempPath();
         try
@@ -621,19 +621,17 @@ public sealed class WindowManagerTests
             store.Save("server-a", "character-a", "window-opacity:vault", (new Point(60, 0), null));
             store.Save("server-b", "character-b", "vault", (new Point(1, 1), null));
             store.Save("server-b", "character-b", "chat", (new Point(2, 2), null));
-            store.Save("server-b", "character-b", "plugin-option", (new Point(1, 0), null));
 
             Assert.False(store.Has("layout", "hunting"));
             Assert.True(store.CopyPlaces("server-a", "character-a", "layout", "hunting"));
             Assert.True(store.Has("layout", "hunting"));
-            Assert.True(store.CopyPlaces("layout", "hunting", "server-b", "character-b", id => id != "plugin-option"));
+            Assert.True(store.CopyPlaces("layout", "hunting", "server-b", "character-b"));
 
             var reloaded = new FileWindowPositionStore(path);
             Assert.Equal((new Point(10, 20), new Size(300, 400)), reloaded.Load("server-b", "character-b", "vault"));
             Assert.Equal(new Point(60, 0), reloaded.Load("server-b", "character-b", "window-opacity:vault")!.Value.Location);
-            // The layout had no chat place, so the character's goes; ids the copy does not take stay.
+            // The layout had no chat place, so the character's goes.
             Assert.Null(reloaded.Load("server-b", "character-b", "chat"));
-            Assert.Equal(new Point(1, 0), reloaded.Load("server-b", "character-b", "plugin-option")!.Value.Location);
             Assert.Equal(new Point(10, 20), reloaded.Load("server-a", "character-a", "vault")!.Value.Location);
         }
         finally

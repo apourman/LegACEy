@@ -717,7 +717,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _layoutToLoad = null;
         if (!_inGame) return;
         var layout = name.ToLowerInvariant();
-        if (!_positionStore.Has(UiLayoutServer, layout) && !_settingsStore.Has(UiLayoutSwitchServer, layout))
+        if (!_settingsStore.Has(UiLayoutSwitchServer, layout))
         {
             SayInChat($"No LegACEy UI saved in layout '{name}'; /saveui {name} saves it.");
             return;
@@ -728,8 +728,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // After the windows close, since closing saves where they stood.
             string server = SessionServer(), character = SessionCharacter();
             var loaded = _positionStore.CopyPlaces(UiLayoutServer, layout, server, character)
-                & _settingsStore.CopyPlaces(UiLayoutServer, layout, server, character);
-            if (_settingsStore.Has(UiLayoutInstallServer, layout)) loaded &= _settingsStore.CopyPlaces(UiLayoutInstallServer, layout, "", "");
+                & _settingsStore.CopyPlaces(UiLayoutServer, layout, server, character)
+                & _settingsStore.CopyPlaces(UiLayoutInstallServer, layout, "", "");
             foreach (var file in SwitchFiles)
                 if (_settingsStore.Load(UiLayoutSwitchServer, layout, file) is { Location.X: var retail })
                     SetSwitch(IOPath.Combine(PluginDirectory, file), custom: retail == 0);
