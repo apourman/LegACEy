@@ -639,9 +639,10 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>
-    /// Remembers the part behind each surface retail queues to draw late. FlushAlphaList draws it when no part is being drawn, and the
-    /// outline took it for nobody's: the player's translucent costume (a cloak, a pumpkin head) never reached the player's mask, and a
-    /// rim was drawn over it (backlog 186).
+    /// Remembers the player's part behind each surface retail queues to draw late. FlushAlphaList draws it when no part is being drawn,
+    /// and the outline took it for nobody's: the player's translucent costume (a cloak, a pumpkin head) never reached the player's mask,
+    /// and a rim was drawn over it (backlog 186). Only the player's: a selected portal's swirl is a spinning glow square, outlined as a
+    /// square box (backlog 124), so late surfaces of the selection stay out of the outline.
     /// </summary>
     private int OnAddToAlphaList(int mesh, int index, int surface, int matrix, int flag, int alpha)
     {
@@ -654,7 +655,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (before == 0) list.Clear();
         if (Selected != 0 && _inWorld && !_failed && *count == before + 1)
         {
-            list.Enqueue(new Queued(mesh, index, surface, *DrawingPart));
+            var part = *DrawingPart;
+            list.Enqueue(new Queued(mesh, index, surface, part != 0 && *(int*)(part + 0xE0) == PlayerObject() ? part : 0));
         }
         return result;
     }
