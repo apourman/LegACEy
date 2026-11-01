@@ -46,19 +46,30 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public void Flush(bool inGame)
     {
         if (!inGame) return;
-        // A buff or debuff on Strength moves the burden limit without any inventory event, so the meter follows it here.
-        // The read fails while the character leaves the world, or when the client does not match; the meter keeps its last Strength then,
+        // The burden meter follows Strength, the carrying augmentation and the burden itself, none of which come with an inventory event:
+        // a buff moves the limit, and the server's burden update lands after the rebuild a drop or an unwield triggered.
+        // A read fails while the character leaves the world, or when the client does not match; the meter keeps the last value then,
         // and the snapshot still rebuilds on the inventory's own events.
         if (NativeCharacterStats.TryReadAttribute(NativeCharacterStats.Strength, raw: false, _log, out var strength) && strength != _strength)
         {
             _strength = strength;
             _refresh.MarkStale();
         }
+        if (NativeCharacterStats.TryReadInt(NativeCharacterStats.EncumbranceVal, _log, out var burden) && burden != _burden)
+        {
+            _burden = burden;
+            _refresh.MarkStale();
+        }
+        if (NativeCharacterStats.TryReadInt(NativeCharacterStats.CarryingAugmentations, _log, out var carrying) && carrying != _carrying)
+        {
+            _carrying = carrying;
+            _refresh.MarkStale();
+        }
         _refresh.Flush();
         _moves.Pump();
     }
 
-    private int _strength;
+    private int _strength, _burden, _carrying;
 
     /// <summary>Logoff: the snapshot empties.</summary>
     public void Clear()
