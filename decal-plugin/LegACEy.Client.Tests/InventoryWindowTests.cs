@@ -720,6 +720,37 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void A_pack_from_outside_goes_only_into_an_empty_side_pack_slot() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot(sackOnGround: true));
+        const uint GroundPack = 0x90000002; // a pack opened on the ground, dragged by the container window's icon
+        port.WorldPacks.Add(GroundPack);
+        using var host = new InventoryHost(port, showSlots: true);
+        var target = (IRetailItemDropTarget)host.Window;
+        var indicator = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator");
+
+        // A pack cell is red, as retail crosses it out: packs don't go in a pack.
+        var cell = InventoryDriver.Centre(host.Host, host.Cells[10]);
+        target.RetailDragOver(GroundPack, "Sack", cell);
+        Assert.True(indicator.IsVisible);
+        Assert.Equal(DerethPalette.InvalidBrush, indicator.BorderBrush);
+        Assert.False(target.RetailDrop(GroundPack, "Sack", cell));
+
+        // The empty side-pack slot takes it.
+        var empty = InventoryDriver.Slots(host.Host).Single(slot =>
+        {
+            var id = InventoryDriver.Id(slot);
+            return id.Place == SlotPlace.Pack && id.Container == 0 && id.SlotIndex == 0;
+        });
+        var over = InventoryDriver.Centre(host.Host, empty);
+        target.RetailDragOver(GroundPack, "Sack", over);
+        Assert.NotEqual(DerethPalette.InvalidBrush, indicator.BorderBrush);
+        Assert.True(target.RetailDrop(GroundPack, "Sack", over));
+        Assert.Equal(new[] { $"move 0x{GroundPack:X8} to 0x{InventorySample.Character:X8} slot 0" }, port.Commands);
+    });
+
+    [Fact]
     public void A_vault_withdraw_over_the_window_lights_the_cell_or_pack_under_it_but_not_a_paperdoll_slot() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

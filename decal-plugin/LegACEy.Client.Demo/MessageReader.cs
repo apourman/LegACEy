@@ -21,6 +21,7 @@ internal ref struct MessageReader
         _at += count;
     }
 
+    public byte Byte() => Take(1)[0];
     public ushort UInt16() => BinaryPrimitives.ReadUInt16LittleEndian(Take(2));
     public uint UInt32() => BinaryPrimitives.ReadUInt32LittleEndian(Take(4));
     public int Int32() => BinaryPrimitives.ReadInt32LittleEndian(Take(4));
@@ -44,6 +45,22 @@ internal ref struct MessageReader
         // Names are plain ASCII; the rest of 1252 is close enough to Latin-1 for what the windows show.
         for (var i = 0; i < length; i++) chars[i] = (char)bytes[i];
         return new string(chars);
+    }
+
+    /// <summary>Skips the padding that brings the next field to a multiple of four from the message's start (after its type).</summary>
+    public void Align() => Skip((4 - _at % 4) % 4);
+
+    public float Single() => BitConverter.ToSingle(BitConverter.GetBytes(UInt32()), 0);
+
+    /// <summary>
+    /// A packed dword: two bytes, or four when the first has its top bit. A file id cut off to its low bits has <paramref name="type"/>
+    /// (its high byte) put back; zero stays zero.
+    /// </summary>
+    public uint Packed(uint type)
+    {
+        uint value = UInt16();
+        if ((value & 0x8000) != 0) value = ((value & 0x7FFF) << 16) | UInt16();
+        return value != 0 && (value & 0xFF000000) == 0 ? value | type : value;
     }
 
     private ReadOnlySpan<byte> Take(int count)

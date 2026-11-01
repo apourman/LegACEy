@@ -52,6 +52,13 @@ internal static class NativeUi
     /// inventory (0x1000018B, built from 0x21000023/0x100001CC), so the base id finds nothing.
     /// </summary>
     public const uint Examination = 0x100005F7;
+    /// <summary>
+    /// Retail's container view for an opened chest, corpse or ground container (gmExternalContainerUI, type 0x1000000D): placed as 0x1000005D
+    /// from LayoutDesc 0x21000008's RootExternalContainer_Field (0x10000063) in the floaty environment panel (0x2100006D, placed in
+    /// 0x21000005 as 0x100005FD, and in the older 0x21000035). Its container icon is 0x10000064, its side packs' list 0x10000067, its items'
+    /// list 0x1000006A and its close box 0x10000068; the box's click is a SetVisible(false) of this element (ListenToElementMessage at 0x004CC6C0).
+    /// </summary>
+    public const uint ExternalContainer = 0x1000005D;
     /// <summary>The examination layout's inscription field (0x2100006B): it sits under <see cref="Examination"/>.</summary>
     public const uint ExaminationInscription = 0x1000013E;
 
