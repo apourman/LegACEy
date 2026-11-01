@@ -453,8 +453,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _looks = new GameLooks(_lookCache, () => ((ILegACEyPluginHost)this).ServerChannel, action => _plugins?.SupportsAction(action) == true,
             () => Identity.CharacterId);
-        _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
-            error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
+        _gameStatePoller = new GameStatePoller(_gameState, () => NativeVitals.ReadSnapshot(Identity.CharacterName, Identity.Server, Log),
+            () => Log("Character stats are not readable yet; keeping UI active and retrying."));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
             names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale),
             retailLayout: AppraisalRetailLayout);
@@ -3895,7 +3895,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     private NativeRetailChatPort NewChatPort(RetailChatNatives natives) =>
-        new(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false);
+        new(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false, () => _social?.State);
 
     /// <summary>
     /// While retail's chat is shown in a session that had the Dereth chat, a port keeps the Dereth chat's history filling, so the lines that

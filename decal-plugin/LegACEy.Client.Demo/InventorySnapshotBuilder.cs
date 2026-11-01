@@ -57,7 +57,7 @@ public sealed class InventoryObjectRead
     public double? PartFull { get; }
 }
 
-/// <summary>The Decal-facing reads the snapshot needs. The client implements it over WorldFilter and CharacterFilter on the game thread.</summary>
+/// <summary>The reads the snapshot needs. The client implements it over WorldFilter and the game's own qualities on the game thread.</summary>
 public interface IInventoryReader
 {
     uint CharacterId { get; }

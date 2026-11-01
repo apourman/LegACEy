@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
+using LegACEy.Client.Demo;
 
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The player's vitals as retail's own vitals window reads them: CACQualities::InqAttribute2nd(type, out value, raw) on the player's
 /// qualities. Not raw, maximums carry enchantments and vitae; raw, they are the base the character window compares against.
-/// Checked against the running client once; Decal stands in when it does not match. Also a skill's level as retail's spell examination
-/// reads it for a spell's range (<see cref="TryReadSkillLevel"/>), checked on its own.
+/// Checked against the running client once; a client that does not match reads as no player. Also a skill's level as retail's spell
+/// examination reads it for a spell's range (<see cref="TryReadSkillLevel"/>), checked on its own.
 /// </summary>
 internal static unsafe class NativeVitals
 {
@@ -19,7 +20,7 @@ internal static unsafe class NativeVitals
     /// <summary>ACCWeenieObject's CACQualities*, as every ClientObjMaintSystem quality update reads it.</summary>
     private const int WeenieQualities = 0x14C;
 
-    private static readonly NativeUiEntry QualitiesRead = new("ClientObjMaintSystem's quality update reads the weenie's CACQualities at +0x14C",
+    internal static readonly NativeUiEntry QualitiesRead = new("ClientObjMaintSystem's quality update reads the weenie's CACQualities at +0x14C",
         0x00558B05, NativeUiCatalogue.Bytes("8B 8E 4C 01 00 00"), Source, "instruction reference");
 
     // The prologue is left out: Decal patches prologues in the running client.
@@ -53,12 +54,12 @@ internal static unsafe class NativeVitals
 
     /// <summary>
     /// One vital by ACE's numbering (PropertyAttribute2nd): 1 max health, 2 health, 3 max stamina, 4 stamina, 5 max mana, 6 mana. Raw leaves
-    /// out enchantments. False when the running client does not match or the player is not in the world yet, so the caller asks Decal.
+    /// out enchantments. False when the running client does not match or the player is not in the world yet.
     /// </summary>
     public static bool TryRead(uint type, bool raw, Action<string> log, out int value)
     {
         value = 0;
-        if (!Checked(ref _ok, Entries, "Native vitals are off; vitals come from Decal.", log)) return false;
+        if (!Checked(ref _ok, Entries, "Native vitals are off; the vitals are not read.", log)) return false;
         var qualities = PlayerQualities();
         if (qualities == null) return false;
         uint read;
@@ -83,7 +84,7 @@ internal static unsafe class NativeVitals
         return true;
     }
 
-    private static bool Checked(ref bool? ok, IReadOnlyList<NativeUiEntry> entries, string off, Action<string> log)
+    internal static bool Checked(ref bool? ok, IReadOnlyList<NativeUiEntry> entries, string off, Action<string> log)
     {
         if (ok == null)
         {
@@ -98,9 +99,27 @@ internal static unsafe class NativeVitals
         return ok == true;
     }
 
-    private static byte* PlayerQualities()
+    /// <summary>The player's ACCWeenieObject, null before the world has it. Gate: <see cref="RetailHudCatalogue.WeenieLookup"/> and <see cref="RetailHudCatalogue.PlayerIdRead"/>.</summary>
+    internal static byte* PlayerWeenie() =>
+        ((delegate* unmanaged[Cdecl]<uint, byte*>)RetailHudCatalogue.GetWeenieObject)(RetailHudCatalogue.PlayerId());
+
+    /// <summary>The player's CACQualities, null before the world has it. Gate: <see cref="QualitiesRead"/> besides the weenie's.</summary>
+    internal static byte* PlayerQualities()
     {
-        var weenie = ((delegate* unmanaged[Cdecl]<uint, byte*>)RetailHudCatalogue.GetWeenieObject)(RetailHudCatalogue.PlayerId());
+        var weenie = PlayerWeenie();
         return weenie == null ? null : *(byte**)(weenie + WeenieQualities);
+    }
+
+    /// <summary>
+    /// The six vitals as retail's vitals window shows them, for the vitals meters; null while any is unreadable (before the player is in the
+    /// world, or when the running client does not match), and the caller tries again next frame.
+    /// </summary>
+    public static GameStateSnapshot? ReadSnapshot(string character, string server, Action<string> log)
+    {
+        // ACE's vital numbering: 1 max health, 2 health, 3 max stamina, 4 stamina, 5 max mana, 6 mana.
+        Span<int> vitals = stackalloc int[6];
+        for (var type = 0; type < vitals.Length; type++)
+            if (!TryRead((uint)type + 1, raw: false, log, out vitals[type])) return null;
+        return new GameStateSnapshot(character, server, vitals[1], vitals[0], vitals[3], vitals[2], vitals[5], vitals[4]);
     }
 }

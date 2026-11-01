@@ -68,16 +68,15 @@ public sealed unsafe class BridgeTests : IDisposable
         Assert.Equal(new[] { "inventory 80000010 50000001", "container" }, client.Seen);
 
         // The bridge-backed ports read the client's Decal facts and send its actions back out through the calls-out table; the character
-        // and server come from the server's messages.
+        // and server come from the server's messages. The stats come from the game itself, which is not here, so they read as nothing.
         ClientUiRuntime.Identity.Receive(0xF7E1, SessionIdentityTests.WorldInfo("Coldeve"));
         ClientUiRuntime.Identity.Receive(0xF7B0, SessionIdentityTests.Description(Character, "Aerbax"));
-        Assert.Equal(new GameStateSnapshot("Aerbax", "Coldeve", 40, 50, 60, 70, 80, 90), Bridge.ReadGameState());
+        Assert.Null(NativeVitals.ReadSnapshot("Aerbax", "Coldeve", _ => { }));
         var inventory = new BridgeInventoryPort(_ => { });
         inventory.MarkStale();
         inventory.Flush(inGame: true);
         var sword = Assert.Single(inventory.Snapshot.Wielded);
         Assert.Equal(("Ŧhe Sword", new ItemVisual(0x06001234, 0x06000001, 0, 1, 0x06000002)), (sword.Name, sword.Visual));
-        Assert.Equal(123, inventory.Snapshot.Burden);
         inventory.Use(7);
         inventory.Assess(8);
         inventory.MoveToContainer(9, Character, 3);
@@ -95,12 +94,9 @@ public sealed unsafe class BridgeTests : IDisposable
             .CopyTo(new Span<byte>(row.Name, BridgeItem.NameCapacity));
         Assert.Equal(new string('a', BridgeItem.NameCapacity - 1), row.ToRead().Name);
 
-        // A Decal call that fails in the stub comes back as its HRESULT and is raised here as the COMException Decal threw, which the
-        // game-state poller rides out while stats are unreadable.
+        // A Decal call that fails in the stub comes back as its HRESULT and is raised here as the COMException Decal threw.
         _failFacts = true;
-        Assert.Equal(EFail, Assert.Throws<COMException>(Bridge.ReadGameState).HResult);
-        // So does the inventory's per-frame Strength read while the character leaves the world.
-        inventory.Flush(inGame: true);
+        Assert.Equal(EFail, Assert.Throws<COMException>(() => Bridge.Fact(BridgeFact.OpenedContainer)).HResult);
         _failFacts = false;
 
         // A failure inside the client, in any event, switches its UI off and returns to the stub normally.
@@ -179,13 +175,7 @@ public sealed unsafe class BridgeTests : IDisposable
     private static int Fact(int fact, int* value)
     {
         if (_failFacts) return EFail;
-        *value = (BridgeFact)fact switch
-        {
-            BridgeFact.Health => 40, BridgeFact.MaxHealth => 50, BridgeFact.Stamina => 60, BridgeFact.MaxStamina => 70,
-            BridgeFact.Mana => 80, BridgeFact.MaxMana => 90, BridgeFact.Burden => 123, BridgeFact.Strength => 100,
-            BridgeFact.MainPackCapacity => 102, BridgeFact.SidePackCapacity => 7,
-            _ => 0
-        };
+        *value = 0;
         return 0;
     }
 

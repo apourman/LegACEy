@@ -10,7 +10,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>
 /// The client's side of each Decal event. <see cref="ClientUiRuntime"/> is the client. The frame, the game window's messages, the server's
 /// messages and chat lines come from the client's own hooks since backlog 177, login and logoff from the server's messages since 178,
-/// and the selection from the game since 179.
+/// the selection from the game since 179 and the character's stats since 180.
 /// </summary>
 internal interface IClientEvents
 {
@@ -126,20 +126,10 @@ public static unsafe class Bridge
 
     internal static int Fact(BridgeFact fact)
     {
-        // Vitals come from the client as retail's vitals window reads them; Decal only when that read is off.
-        if (VitalType(fact) is { } type && NativeVitals.TryRead(type, raw: false, ClientUiRuntime.Log, out var native)) return native;
         int value;
         Check(_calls.Fact((int)fact, &value), fact.ToString());
         return value;
     }
-
-    /// <summary>ACE's vital type (InqAttribute2nd's) for a vitals fact, null for any other fact.</summary>
-    private static uint? VitalType(BridgeFact fact) => fact switch
-    {
-        BridgeFact.MaxHealth => 1, BridgeFact.Health => 2, BridgeFact.MaxStamina => 3,
-        BridgeFact.Stamina => 4, BridgeFact.MaxMana => 5, BridgeFact.Mana => 6,
-        _ => null
-    };
 
     internal static string Text(BridgeText text) => ReadText(_calls.Text, (int)text, text.ToString());
 
@@ -198,10 +188,6 @@ public static unsafe class Bridge
         return new RetailSelection(id, name, kind, StackCount: row.StackCount);
     }
 
-    internal static GameStateSnapshot ReadGameState() => new(ClientUiRuntime.Identity.CharacterName, ClientUiRuntime.Identity.Server,
-        Fact(BridgeFact.Health), Fact(BridgeFact.MaxHealth), Fact(BridgeFact.Stamina), Fact(BridgeFact.MaxStamina),
-        Fact(BridgeFact.Mana), Fact(BridgeFact.MaxMana));
-
     internal static uint ValidLocations(uint id)
     {
         int mask;
@@ -235,14 +221,6 @@ public static unsafe class Bridge
         int eaten;
         fixed (byte* first = bytes) Check(_calls.ChatClick((int)id, first, bytes.Length, &eaten), nameof(ChatClick));
         return eaten != 0;
-    }
-
-    /// <summary>An attribute, vital or skill as Decal reports it: kind 0 attribute, 1 vital (Decal's ids), 2 skill.</summary>
-    internal static (int Base, int Buffed) Stat(int kind, uint id)
-    {
-        int @base, buffed;
-        Check(_calls.Stat(kind, (int)id, &@base, &buffed), nameof(Stat));
-        return (@base, buffed);
     }
 
     internal static void UseItem(uint id, int state) => Check(_calls.UseItem((int)id, state), nameof(UseItem));

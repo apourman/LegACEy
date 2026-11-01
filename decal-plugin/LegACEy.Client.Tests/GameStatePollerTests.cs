@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using LegACEy.Client.DecalPlugin;
 using LegACEy.Client.Demo;
 
@@ -16,7 +15,7 @@ public sealed class GameStatePollerTests
         var poller = new GameStatePoller(state, () =>
         {
             reads++;
-            throw new COMException("CharacterStats.get_Health returned E_FAIL", unchecked((int)0x80004005));
+            return null;
         });
         var error = Record.Exception(() => poller.Poll(isSessionReady: false));
         Assert.Null(error);
@@ -28,15 +27,11 @@ public sealed class GameStatePollerTests
     {
         var reads = 0;
         var notifications = 0;
+        var reports = 0;
         var initial = Snapshot(80);
         var state = new GameStatePort(initial);
         state.Changed += (_, _) => notifications++;
-        var poller = new GameStatePoller(state, () =>
-        {
-            if (++reads == 1)
-                throw new COMException("CharacterStats.get_Health returned E_FAIL", unchecked((int)0x80004005));
-            return Snapshot(60);
-        });
+        var poller = new GameStatePoller(state, () => ++reads == 1 ? null : Snapshot(60), () => reports++);
         var rendered = false;
         var error = Record.Exception(() =>
         {
@@ -47,21 +42,22 @@ public sealed class GameStatePollerTests
         Assert.True(rendered);
         Assert.Same(initial, state.Current);
         Assert.Equal(0, notifications);
+        Assert.Equal(1, reports);
         poller.Poll(isSessionReady: true);
         Assert.Equal(60, state.Current.Health);
         Assert.Equal(1, notifications);
         poller.Poll(isSessionReady: false);
         Assert.Equal(2, reads);
     }
+
     [Fact]
-    public void Only_character_read_COM_failures_are_treated_as_unavailable()
+    public void A_failing_reader_or_subscriber_is_not_treated_as_unavailable()
     {
         var state = new GameStatePort(Snapshot(80));
         var brokenRead = new GameStatePoller(state, () => throw new InvalidOperationException("Reader bug"));
         Assert.Throws<InvalidOperationException>(() => brokenRead.Poll(true));
         var poller = new GameStatePoller(state, () => Snapshot(60));
-        state.Changed += (_, _) => throw new COMException("Subscriber failed");
-        Assert.Throws<COMException>(() => poller.Poll(true));
+        state.Changed += (_, _) => throw new InvalidOperationException("Subscriber failed");
+        Assert.Throws<InvalidOperationException>(() => poller.Poll(true));
     }
-
 }

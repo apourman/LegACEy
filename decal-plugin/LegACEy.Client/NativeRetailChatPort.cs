@@ -13,7 +13,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// Retail's chat over the installed client, the port the Dereth chat window uses. Incoming lines come through our own notice handler on
 /// retail's chat notice (0x186B6): its strings are copied and queued in the callback, and <see cref="Poll"/> raises them on the game thread
 /// between frames. A send calls the live target of retail's own chat box call, so the chat parser and plugins' command handlers see it.
-/// Membership comes from the native reads that were checked, and from Decal's allegiance and society facts through the bridge.
+/// Membership comes from the native reads that were checked, from the server's allegiance update and from the player's society and heritage.
 /// </summary>
 /// <remarks>
 /// Every address was checked against the installed acclient.exe by <see cref="RetailChatCatalogue"/>. The chat features that do not check
@@ -77,7 +77,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private readonly HashSet<string> _unmatchedChannels = new(StringComparer.OrdinalIgnoreCase);
     private readonly NoticeCallback _callback;
     private readonly Func<uint, byte[], bool> _sendAction;
-    private bool _membershipFailLogged;
+    private readonly Func<SocialState?> _allegiance;
     private bool _clickFailLogged;
     private IntPtr _handler;
     private IntPtr _vtable;
@@ -115,8 +115,10 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// <param name="log">Writes a line to the client's log.</param>
     /// <param name="natives">Which chat features the running client matched; a feature that did not match is off.</param>
     /// <param name="sendAction">Sends a retail game action (opcode, payload) through the client's own send; false when it was not sent.</param>
-    public NativeRetailChatPort(Action<string> log, RetailChatNatives natives, Func<uint, byte[], bool> sendAction)
+    /// <param name="allegiance">The allegiance as the server last described it; null when the social state is not up.</param>
+    public NativeRetailChatPort(Action<string> log, RetailChatNatives natives, Func<uint, byte[], bool> sendAction, Func<SocialState?> allegiance)
     {
+        _allegiance = allegiance ?? throw new ArgumentNullException(nameof(allegiance));
         _sendAction = sendAction ?? throw new ArgumentNullException(nameof(sendAction));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _natives = natives;
@@ -235,30 +237,25 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     }
 
     /// <summary>
-    /// What the player is in: the bridge's allegiance and society facts, the fellowship pointer and the channel options. A feature that did not
-    /// match its catalogue reads as not in it, so its talk targets are dimmed.
+    /// What the player is in: the allegiance the server described (the social window's state), the society and heritage qualities, the
+    /// fellowship pointer and the channel options. A feature that did not match its catalogue reads as not in it, so its talk targets are dimmed.
     /// </summary>
     public RetailChatMembership Membership
     {
         get
         {
-            // A membership Decal cannot read dims the targets it gates; it never fails the chat.
-            int facts;
-            try { facts = Bridge.Fact(BridgeFact.CharacterMembership); }
-            catch (COMException exception)
-            {
-                if (!_membershipFailLogged) _log($"Could not read the character's allegiance and society; their talk targets are dimmed: {exception.Message}");
-                _membershipFailLogged = true;
-                facts = 0;
-            }
+            var allegiance = _allegiance();
+            // Faction1Bits holds the society's bits; the Olthoi are heritage groups 12 and 13.
+            var society = NativeCharacterStats.TryReadInt(NativeCharacterStats.Faction1Bits, _log, out var bits) && (bits & 7) != 0;
+            var olthoi = NativeCharacterStats.TryReadInt(NativeCharacterStats.HeritageGroup, _log, out var heritage) && heritage is 12 or 13;
             return new RetailChatMembership(
                 Fellowship: _natives.Fellowship && InFellowship(),
-                Allegiance: (facts & 1) != 0,
-                Monarch: (facts & 2) != 0,
-                Patron: (facts & 4) != 0,
-                Vassals: (facts & 8) != 0,
-                Society: (facts & 16) != 0,
-                Olthoi: (facts & 32) != 0,
+                Allegiance: allegiance?.Monarch != null,
+                Monarch: allegiance?.Monarch != null,
+                Patron: allegiance?.Patron != null,
+                Vassals: allegiance?.Vassals.Count > 0,
+                Society: society,
+                Olthoi: olthoi,
                 Open: OpenChannels());
         }
     }
