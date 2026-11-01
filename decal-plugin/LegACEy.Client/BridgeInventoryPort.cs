@@ -50,26 +50,20 @@ internal sealed class BridgeInventoryPort : IInventoryPort
         // a buff moves the limit, and the server's burden update lands after the rebuild a drop or an unwield triggered.
         // A read fails while the character leaves the world, or when the client does not match; the meter keeps the last value then,
         // and the snapshot still rebuilds on the inventory's own events.
-        if (NativeCharacterStats.TryReadAttribute(NativeCharacterStats.Strength, raw: false, _log, out var strength) && strength != _strength)
+        var (strength, burden, carrying) = _load;
+        if (NativeCharacterStats.TryReadAttribute(NativeCharacterStats.Strength, raw: false, _log, out var s)) strength = s;
+        if (NativeCharacterStats.TryReadInt(NativeCharacterStats.EncumbranceVal, _log, out var b)) burden = b;
+        if (NativeCharacterStats.TryReadInt(NativeCharacterStats.CarryingAugmentations, _log, out var c)) carrying = c;
+        if ((strength, burden, carrying) != _load)
         {
-            _strength = strength;
-            _refresh.MarkStale();
-        }
-        if (NativeCharacterStats.TryReadInt(NativeCharacterStats.EncumbranceVal, _log, out var burden) && burden != _burden)
-        {
-            _burden = burden;
-            _refresh.MarkStale();
-        }
-        if (NativeCharacterStats.TryReadInt(NativeCharacterStats.CarryingAugmentations, _log, out var carrying) && carrying != _carrying)
-        {
-            _carrying = carrying;
+            _load = (strength, burden, carrying);
             _refresh.MarkStale();
         }
         _refresh.Flush();
         _moves.Pump();
     }
 
-    private int _strength, _burden, _carrying;
+    private (int Strength, int Burden, int Carrying) _load;
 
     /// <summary>Logoff: the snapshot empties.</summary>
     public void Clear()

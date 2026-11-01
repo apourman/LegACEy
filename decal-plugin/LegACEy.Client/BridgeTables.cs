@@ -95,13 +95,27 @@ public enum BridgeFact
 {
     /// <summary>CharacterFilter.Id. Unused since 178: the server's PlayerDescription names the character.</summary>
     CharacterId,
-    /// <summary>Unused since 180, as the vitals, Burden, Strength, CarryingAugmentations, the pack capacities and CharacterMembership: the client reads
-    /// the player's qualities and weenie, and the server's allegiance update.</summary>
-    Health, MaxHealth, Stamina, MaxStamina, Mana, MaxMana,
+    /// <summary>CharacterFilter.Health. Unused since 180: the client reads the player's qualities.</summary>
+    Health,
+    /// <summary>CharacterFilter.MaxHealth. Unused since 180: the client reads the player's qualities.</summary>
+    MaxHealth,
+    /// <summary>CharacterFilter.Stamina. Unused since 180: the client reads the player's qualities.</summary>
+    Stamina,
+    /// <summary>CharacterFilter.MaxStamina. Unused since 180: the client reads the player's qualities.</summary>
+    MaxStamina,
+    /// <summary>CharacterFilter.Mana. Unused since 180: the client reads the player's qualities.</summary>
+    Mana,
+    /// <summary>CharacterFilter.MaxMana. Unused since 180: the client reads the player's qualities.</summary>
+    MaxMana,
+    /// <summary>CharacterFilter.BurdenUnits. Unused since 180: the client reads the player's EncumbranceVal.</summary>
     Burden,
+    /// <summary>The effective Strength. Unused since 180: the client reads the player's qualities.</summary>
     Strength,
+    /// <summary>Property 230, the carrying augmentation. Unused since 180: the client reads the player's qualities.</summary>
     CarryingAugmentations,
+    /// <summary>The character object's ItemSlots. Unused since 180: the client reads the player's weenie.</summary>
     MainPackCapacity,
+    /// <summary>The character object's PackSlots. Unused since 180: the client reads the player's weenie.</summary>
     SidePackCapacity,
     /// <summary>Actions.OpenedContainer.</summary>
     OpenedContainer,
@@ -109,6 +123,7 @@ public enum BridgeFact
     CurrentSelection,
     /// <summary>Actions.CombatMode: the player's combat stance (1 peace, 2 melee, 4 missile, 8 magic). Unused since 179: the client reads retail's own combat mode.</summary>
     CombatMode,
+    /// <summary>The allegiance and society bits. Unused since 180: the client reads the server's allegiance update.</summary>
     CharacterMembership
 }
 
