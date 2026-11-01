@@ -18,7 +18,7 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public BridgeInventoryPort(Action<string> log)
     {
         _log = log;
-        _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader()).WithShortcuts(Shortcuts()), log);
+        _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader(log)).WithShortcuts(Shortcuts()), log);
         var clock = Stopwatch.StartNew();
         // Without retail's request flag, every move after the first waits out the queue's timeout.
         _moves = new InventoryMoveQueue(Send, () => clock.Elapsed, () => Request?.Pending ?? true);
@@ -46,21 +46,24 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public void Flush(bool inGame)
     {
         if (!inGame) return;
-        // A buff or debuff on Strength moves the burden limit without any inventory event, so the meter follows it here.
-        // While the character leaves the world (logout, closing the game) Decal has no attributes: skip the frame.
-        int strength;
-        try { strength = Bridge.Fact(BridgeFact.Strength); }
-        catch (COMException) { return; }
-        if (strength != _strength)
+        // The burden meter follows Strength, the carrying augmentation and the burden itself, none of which come with an inventory event:
+        // a buff moves the limit, and the server's burden update lands after the rebuild a drop or an unwield triggered.
+        // A read fails while the character leaves the world, or when the client does not match; the meter keeps the last value then,
+        // and the snapshot still rebuilds on the inventory's own events.
+        var (strength, burden, carrying) = _load;
+        if (NativeCharacterStats.TryReadAttribute(NativeCharacterStats.Strength, raw: false, _log, out var s)) strength = s;
+        if (NativeCharacterStats.TryReadInt(NativeCharacterStats.EncumbranceVal, _log, out var b)) burden = b;
+        if (NativeCharacterStats.TryReadInt(NativeCharacterStats.CarryingAugmentations, _log, out var c)) carrying = c;
+        if ((strength, burden, carrying) != _load)
         {
-            _strength = strength;
+            _load = (strength, burden, carrying);
             _refresh.MarkStale();
         }
         _refresh.Flush();
         _moves.Pump();
     }
 
-    private int _strength;
+    private (int Strength, int Burden, int Carrying) _load;
 
     /// <summary>Logoff: the snapshot empties.</summary>
     public void Clear()
@@ -164,17 +167,24 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     /// <summary>The client's inventory reads, made on the game thread once per rebuild.</summary>
     private sealed class BridgeInventoryReader : IInventoryReader
     {
+        private readonly Action<string> _log;
+
+        public BridgeInventoryReader(Action<string> log) => _log = log;
+
         public uint CharacterId => ClientUiRuntime.Identity.CharacterId;
         public string CharacterName => ClientUiRuntime.Identity.CharacterName;
         public IReadOnlyList<InventoryObjectRead> Objects => Bridge.Inventory();
-        public int MainPackCapacity => Bridge.Fact(BridgeFact.MainPackCapacity);
-        public int SidePackCapacity => Bridge.Fact(BridgeFact.SidePackCapacity);
-        public int Burden => Bridge.Fact(BridgeFact.Burden);
-        public int Strength => Bridge.Fact(BridgeFact.Strength);
+        // What the game cannot give reads as 0, which the snapshot builder takes as unknown (the default pack size, no burden limit).
+        public int MainPackCapacity => NativeCharacterStats.TryReadPackCapacities(_log, out var main, out _) ? main : 0;
+        public int SidePackCapacity => NativeCharacterStats.TryReadPackCapacities(_log, out _, out var side) ? side : 0;
+        public int Burden => Int(NativeCharacterStats.EncumbranceVal);
+        public int Strength => NativeCharacterStats.TryReadAttribute(NativeCharacterStats.Strength, raw: false, _log, out var strength) ? strength : 0;
         // Gate: BurdenLimit must match the server's EncumbranceCapacity.
-        public int CarryingAugmentations => Bridge.Fact(BridgeFact.CarryingAugmentations);
+        public int CarryingAugmentations => Int(NativeCharacterStats.CarryingAugmentations);
         // Decal documents OpenedContainer as a chest or corpse. Gate: a side pack and the main pack report here too.
         public uint OpenContainer => (uint)Bridge.Fact(BridgeFact.OpenedContainer);
         public uint Selected => NativeSelection.Selected;
+
+        private int Int(uint property) => NativeCharacterStats.TryReadInt(property, _log, out var value) ? value : 0;
     }
 }

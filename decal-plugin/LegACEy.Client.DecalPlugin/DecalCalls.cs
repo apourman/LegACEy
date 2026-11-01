@@ -63,74 +63,12 @@ internal static unsafe class DecalCalls
 
     private static int Fact(int fact, int* value) => Act(() => *value = ReadFact((BridgeFact)fact));
 
-    // The augmentation count is ACE's AugmentationIncreasedCarryingCapacity (PropertyInt 230).
-    private const int CarryingAugmentationProperty = 230;
-    private const int SocietyProperty = 281;
-    private const int HeritageProperty = 188;
-
-    private static int ReadFact(BridgeFact fact)
+    // Only the opened container is left (backlog 181): the stats and membership facts are read by the client since 180.
+    private static int ReadFact(BridgeFact fact) => fact switch
     {
-        var core = CoreManager.Current;
-        var character = core.CharacterFilter;
-        return fact switch
-        {
-            BridgeFact.Health => character.Health,
-            BridgeFact.MaxHealth => Maximum(CharFilterVitalType.Health),
-            BridgeFact.Stamina => character.Stamina,
-            BridgeFact.MaxStamina => Maximum(CharFilterVitalType.Stamina),
-            BridgeFact.Mana => character.Mana,
-            BridgeFact.MaxMana => Maximum(CharFilterVitalType.Mana),
-            BridgeFact.Burden => (int)character.BurdenUnits,
-            BridgeFact.Strength => character.EffectiveAttribute[CharFilterAttributeType.Strength],
-            BridgeFact.CarryingAugmentations => character.GetCharProperty(CarryingAugmentationProperty),
-            // The main pack is the character's own object: ItemSlots is its slot count, and PackSlots counts the side packs.
-            BridgeFact.MainPackCapacity => CharacterObject()?.Values(LongValueKey.ItemSlots, 0) ?? 0,
-            BridgeFact.SidePackCapacity => CharacterObject()?.Values(LongValueKey.PackSlots, 0) ?? 0,
-            BridgeFact.OpenedContainer => core.Actions.OpenedContainer,
-            BridgeFact.CharacterMembership => Membership(character),
-            _ => throw new ArgumentOutOfRangeException(nameof(fact), fact, "Unknown bridge fact.")
-        };
-    }
-
-    /// <summary>
-    /// A vital's maximum as retail shows it, through Decal's hooks: the character filter's effective value leaves out vitae (43 where retail
-    /// shows 41 with 5% vitae). The filter's value stands in when the hooks give nothing.
-    /// </summary>
-    private static int Maximum(CharFilterVitalType vital)
-    {
-        var hooked = CoreManager.Current.Actions.Vital[vital switch
-        {
-            CharFilterVitalType.Health => VitalType.MaximumHealth,
-            CharFilterVitalType.Stamina => VitalType.MaximumStamina,
-            _ => VitalType.MaximumMana
-        }];
-        return hooked > 0 ? hooked : CoreManager.Current.CharacterFilter.EffectiveVital[vital];
-    }
-
-    /// <summary>The allegiance, society and Olthoi bits of <see cref="BridgeFact.CharacterMembership"/>. Vassals are the followers count.</summary>
-    private static int Membership(CharacterFilter character)
-    {
-        var bits = 0;
-        if (Has(() => character.Allegiance != null)) bits |= 1;
-        if (Has(() => character.Monarch != null)) bits |= 2;
-        if (Has(() => character.Patron != null)) bits |= 4;
-        if (Has(() => character.Followers > 0)) bits |= 8;
-        // Faction1Bits (281): any of the three society bits.
-        if ((character.GetCharProperty(SocietyProperty) & 7) != 0) bits |= 16;
-        // HeritageGroup (188): 12 and 13 are the Olthoi heritages.
-        var heritage = character.GetCharProperty(HeritageProperty);
-        if (heritage == 12 || heritage == 13) bits |= 32;
-        return bits;
-    }
-
-    // Decal's allegiance getters throw for a character with no allegiance, monarch or patron rather than return null.
-    private static bool Has(Func<bool> read)
-    {
-        try { return read(); }
-        catch (Exception exception) when (exception is NullReferenceException or COMException) { return false; }
-    }
-
-    private static WorldObject? CharacterObject() => CoreManager.Current.WorldFilter[CoreManager.Current.CharacterFilter.Id];
+        BridgeFact.OpenedContainer => CoreManager.Current.Actions.OpenedContainer,
+        _ => throw new ArgumentOutOfRangeException(nameof(fact), fact, "Unknown bridge fact.")
+    };
 
     private static int Text(int text, byte* buffer, int capacity, int* length) => Act(() =>
     {
@@ -265,28 +203,8 @@ internal static unsafe class DecalCalls
         *eaten = (bool)arguments[2] ? 1 : 0;
     });
 
-    private static int Stat(int kind, int id, int* @base, int* buffed) => Act(() =>
-    {
-        var character = CoreManager.Current.CharacterFilter;
-        switch (kind)
-        {
-            case 0:
-                var attribute = character.Attributes[(CharFilterAttributeType)id];
-                *@base = attribute.Base;
-                *buffed = attribute.Buffed;
-                break;
-            case 1:
-                var vital = character.Vitals[(CharFilterVitalType)id];
-                *@base = vital.Base;
-                *buffed = Maximum((CharFilterVitalType)id);
-                break;
-            default:
-                var skill = character.Skills[(CharFilterSkillType)id];
-                *@base = skill.Base;
-                *buffed = skill.Buffed;
-                break;
-        }
-    });
+    // Unused since 180: the client reads the player's qualities. The slot answers, as Device's does.
+    private static int Stat(int kind, int id, int* @base, int* buffed) => ENotImpl;
 
     // ponytail: a closure per call, some every frame; plain try/catch per call if the allocations ever show up.
     private static int Act(Action action)

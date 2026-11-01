@@ -8,8 +8,8 @@ namespace LegACEy.Client.Tests;
 /// <summary>
 /// Everything the client gets from Decal crosses these bridge tables, and the Decal plugin answers them from the Decal members listed
 /// below, so these lists are the whole Decal surface. Decal is on its way out: read state and send actions through the client's own
-/// functions (NativeAppraisalSender, NativeWieldSender, NativeVitals) rather than adding to it. When Decal really is the only way, add the
-/// name here and say why in a comment where it is used.
+/// functions (NativeAppraisalSender, NativeWieldSender, NativeVitals, NativeCharacterStats) rather than adding to it. When Decal really
+/// is the only way, add the name here and say why in a comment where it is used.
 /// </summary>
 public sealed class DecalSurfaceTests
 {
@@ -44,25 +44,17 @@ public sealed class DecalSurfaceTests
     {
         Assert.Equal(new[]
         {
-            "CharFilterAttributeType.Strength",
-            "CharFilterVitalType.Health", "CharFilterVitalType.Mana", "CharFilterVitalType.Stamina",
-            "CharacterFilter", "CharacterFilter.Allegiance", "CharacterFilter.Attributes", "CharacterFilter.BurdenUnits",
-            "CharacterFilter.EffectiveAttribute", "CharacterFilter.EffectiveVital", "CharacterFilter.Followers",
-            "CharacterFilter.GetCharProperty", "CharacterFilter.Health", "CharacterFilter.Id",
-            "CharacterFilter.Mana", "CharacterFilter.Monarch", "CharacterFilter.Patron",
-            "CharacterFilter.Skills", "CharacterFilter.Stamina",
-            "CharacterFilter.Vitals",
+            "CharacterFilter.Id",
             "Core.Actions.AddChatText", "Core.Actions.AutoWield", "Core.Actions.DropItem", "Core.Actions.MoveItem",
-            "Core.Actions.OpenedContainer", "Core.Actions.UseItem", "Core.Actions.Vital", "Core.ContainerOpened", "Core.FilterInitComplete",
+            "Core.Actions.OpenedContainer", "Core.Actions.UseItem", "Core.ContainerOpened", "Core.FilterInitComplete",
             "Core.IDQueue.ShortcircuitID",
             "LongValueKey.Behavior", "LongValueKey.Category", "LongValueKey.Coverage", "LongValueKey.EquipableSlots",
             "LongValueKey.EquippedSlots", "LongValueKey.IconOutline", "LongValueKey.IconOverlay", "LongValueKey.IconUnderlay",
-            "LongValueKey.ItemSlots", "LongValueKey.Material", "LongValueKey.MaximumMana", "LongValueKey.PackSlots", "LongValueKey.Slot",
+            "LongValueKey.ItemSlots", "LongValueKey.Material", "LongValueKey.MaximumMana", "LongValueKey.Slot",
             "LongValueKey.StackCount", "LongValueKey.StackMax", "LongValueKey.Type", "LongValueKey.UsesRemaining",
             "LongValueKey.UsesTotal",
             "ObjectClass.Container", "ObjectClass.Monster", "ObjectClass.Npc", "ObjectClass.Player",
             "StringValueKey.SecondaryName",
-            "VitalType.MaximumHealth", "VitalType.MaximumMana", "VitalType.MaximumStamina",
             "WorldFilter", "WorldFilter.ChangeObject", "WorldFilter.CreateObject", "WorldFilter.GetByContainer",
             "WorldFilter.GetInventory", "WorldFilter.MoveObject", "WorldFilter.ReleaseObject",
             "WorldObject.Container", "WorldObject.Icon", "WorldObject.Id", "WorldObject.Name", "WorldObject.ObjectClass",

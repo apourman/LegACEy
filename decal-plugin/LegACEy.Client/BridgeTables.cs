@@ -85,8 +85,8 @@ public unsafe struct BridgeCalls
     /// <summary>(id, UTF-8 tag text, length, out eaten): raises CoreManager.ChatNameClicked as a click on a chat link in retail does;
     /// eaten is 1 when a plugin ate it.</summary>
     public delegate* unmanaged[Stdcall]<int, byte*, int, int*, int> ChatClick;
-    /// <summary>(kind, id, out base, out buffed): an attribute (kind 0, 1 Strength to 6 Self), a vital's maximum (kind 1, Decal's 2 health,
-    /// 4 stamina, 6 mana) or a skill (kind 2, its id), as CharacterFilter reports it without and with buffs.</summary>
+    /// <summary>(kind, id, out base, out buffed): an attribute, a vital's maximum or a skill. Unused since 180: the client reads the player's
+    /// qualities; the stub fails it.</summary>
     public delegate* unmanaged[Stdcall]<int, int, int*, int*, int> Stat;
 }
 
@@ -95,16 +95,27 @@ public enum BridgeFact
 {
     /// <summary>CharacterFilter.Id. Unused since 178: the server's PlayerDescription names the character.</summary>
     CharacterId,
-    Health, MaxHealth, Stamina, MaxStamina, Mana, MaxMana,
-    /// <summary>CharacterFilter.BurdenUnits.</summary>
+    /// <summary>CharacterFilter.Health. Unused since 180: the client reads the player's qualities.</summary>
+    Health,
+    /// <summary>CharacterFilter.MaxHealth. Unused since 180: the client reads the player's qualities.</summary>
+    MaxHealth,
+    /// <summary>CharacterFilter.Stamina. Unused since 180: the client reads the player's qualities.</summary>
+    Stamina,
+    /// <summary>CharacterFilter.MaxStamina. Unused since 180: the client reads the player's qualities.</summary>
+    MaxStamina,
+    /// <summary>CharacterFilter.Mana. Unused since 180: the client reads the player's qualities.</summary>
+    Mana,
+    /// <summary>CharacterFilter.MaxMana. Unused since 180: the client reads the player's qualities.</summary>
+    MaxMana,
+    /// <summary>CharacterFilter.BurdenUnits. Unused since 180: the client reads the player's EncumbranceVal.</summary>
     Burden,
-    /// <summary>The effective Strength attribute.</summary>
+    /// <summary>The effective Strength. Unused since 180: the client reads the player's qualities.</summary>
     Strength,
-    /// <summary>Character property 230, ACE's AugmentationIncreasedCarryingCapacity.</summary>
+    /// <summary>Property 230, the carrying augmentation. Unused since 180: the client reads the player's qualities.</summary>
     CarryingAugmentations,
-    /// <summary>The character object's ItemSlots.</summary>
+    /// <summary>The character object's ItemSlots. Unused since 180: the client reads the player's weenie.</summary>
     MainPackCapacity,
-    /// <summary>The character object's PackSlots.</summary>
+    /// <summary>The character object's PackSlots. Unused since 180: the client reads the player's weenie.</summary>
     SidePackCapacity,
     /// <summary>Actions.OpenedContainer.</summary>
     OpenedContainer,
@@ -112,10 +123,7 @@ public enum BridgeFact
     CurrentSelection,
     /// <summary>Actions.CombatMode: the player's combat stance (1 peace, 2 melee, 4 missile, 8 magic). Unused since 179: the client reads retail's own combat mode.</summary>
     CombatMode,
-    /// <summary>
-    /// The player's allegiance and society facts as bits: 1 in an allegiance, 2 with a monarch, 4 with a patron, 8 with vassals, 16 in a
-    /// society, 32 an Olthoi (heritage 12 or 13). Decal reads them from CharacterFilter.
-    /// </summary>
+    /// <summary>The allegiance and society bits. Unused since 180: the client reads the server's allegiance update.</summary>
     CharacterMembership
 }
 

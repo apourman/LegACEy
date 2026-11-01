@@ -24,7 +24,7 @@ public sealed record CharacterRow(StatKind Kind, uint Id, string Name, Character
     public bool AtMax => NextCost == null && Group is not (CharacterGroup.Untrained or CharacterGroup.Unusable);
 }
 
-/// <summary>Builds the character window's rows from the server's sheet, the portal's tables and the values Decal reports.</summary>
+/// <summary>Builds the character window's rows from the server's sheet, the portal's tables and the values the game reports.</summary>
 public static class CharacterRows
 {
     private static readonly string[] AttributeNames = { "", "Strength", "Endurance", "Quickness", "Coordination", "Focus", "Self" };
@@ -81,7 +81,7 @@ public static class CharacterRows
         return rows.OrderBy(row => row.Group).ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    /// <summary>Decal's value with the ranks a raise bought that Decal has not heard of yet.</summary>
+    /// <summary>The game's value with the ranks a raise bought that the game has not heard of yet.</summary>
     private static StatValue Ahead(StatValue value, uint ranks) => ranks == 0 ? value : new StatValue(value.Base + (int)ranks, value.Buffed + (int)ranks);
 
     /// <summary>The experience list a row's ranks are bought from, or null for a row experience cannot raise.</summary>

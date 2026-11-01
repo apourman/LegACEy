@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
-using System.Runtime.InteropServices;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
@@ -12,7 +11,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>
 /// The Dereth character window in place of retail's character panel (Attributes, Skills, Titles). Retail's panel is parked while it is
 /// open, as the inventory's is, so retail's key and toolbar button open and close our window; its close box closes retail's panel. The
-/// character comes from the server's messages (<see cref="CharacterSheet"/>) and the values the player sees from Decal. Raises, trains
+/// character comes from the server's messages (<see cref="CharacterSheet"/>) and the values the player sees from the game. Raises, trains
 /// and the display title go out as retail's own game actions. Call everything on the game thread.
 /// </summary>
 internal sealed class CharacterFeature : ICharacterGame, IDisposable
@@ -34,7 +33,6 @@ internal sealed class CharacterFeature : ICharacterGame, IDisposable
     private Action? _hide;
     private bool _shown;
     private long _refreshedAt;
-    private bool _statFailed;
 
     public CharacterFeature(ILegACEyPluginHost host, IRetailPanelPort? port, Func<CharacterTables> tables, Func<IReadOnlyDictionary<uint, string>> titleNames,
         Func<GameChannelTransport?> transport, IWindowPositionStore store, Func<(string Server, string Character)> who, Action<string> log)
@@ -56,7 +54,7 @@ internal sealed class CharacterFeature : ICharacterGame, IDisposable
     public void Tick(bool enabled, bool canShow)
     {
         _panel?.Tick(enabled, canShow);
-        // Buffs come and go with no message the sheet reads, so an open window reads Decal's values again about once a second.
+        // Buffs come and go with no message the sheet reads, so an open window reads the game's values again about once a second.
         var now = Environment.TickCount64;
         if (_shown && _view != null && now - _refreshedAt >= RefreshMs)
         {
@@ -157,33 +155,21 @@ internal sealed class CharacterFeature : ICharacterGame, IDisposable
     string ICharacterGame.Race => ClientUiRuntime.Identity.Race;
     string ICharacterGame.Gender => ClientUiRuntime.Identity.Gender;
 
-    StatValue? ICharacterGame.Value(StatKind kind, uint id)
-    {
-        // A vital's maximum (ACE's 1, 3 or 5) from the client, as retail's character window shows it: base without spells, buffed with them.
-        if (kind == StatKind.Vital && NativeVitals.TryRead(id, raw: true, _log, out var unbuffed) && NativeVitals.TryRead(id, raw: false, _log, out var buffedMaximum))
-            return new StatValue(unbuffed, buffedMaximum);
-        try
-        {
-            // Decal numbers the vitals' maximums 2, 4 and 6; ACE 1, 3 and 5.
-            var (@base, buffed) = Bridge.Stat((int)kind, kind == StatKind.Vital ? id + 1 : id);
-            return new StatValue(@base, buffed);
-        }
-        catch (COMException exception)
-        {
-            if (!_statFailed) _log($"Decal could not read a character value ({kind} {id}); the window shows the server's: {exception.Message}");
-            _statFailed = true;
-            return null;
-        }
-    }
+    // The values as retail's character window shows them: base without enchantments, buffed with them (and vitae, for skills and vitals).
+    // A value the client cannot read is null, and the window shows the server's.
+    StatValue? ICharacterGame.Value(StatKind kind, uint id) =>
+        Read(kind, id, raw: true, out var @base) && Read(kind, id, raw: false, out var buffed) ? new StatValue(@base, buffed) : null;
 
-    int ICharacterGame.Current(uint vital)
+    // A vital is its maximum, by ACE's id: 1, 3 or 5.
+    private bool Read(StatKind kind, uint id, bool raw, out int value) => kind switch
     {
-        try
-        {
-            return Bridge.Fact(vital switch { 1 => BridgeFact.Health, 3 => BridgeFact.Stamina, _ => BridgeFact.Mana });
-        }
-        catch (COMException) { return 0; }
-    }
+        StatKind.Vital => NativeVitals.TryRead(id, raw, _log, out value),
+        StatKind.Attribute => NativeCharacterStats.TryReadAttribute(id, raw, _log, out value),
+        _ => NativeCharacterStats.TryReadSkill(id, raw, _log, out value)
+    };
+
+    // A vital's current value: the maximum's id is one below it in ACE's numbering.
+    int ICharacterGame.Current(uint vital) => NativeVitals.TryRead(vital + 1, raw: false, _log, out var current) ? current : 0;
 
     bool ICharacterGame.Raise(StatKind kind, uint id, uint experience) =>
         Send(kind switch { StatKind.Attribute => RaiseAttributeAction, StatKind.Vital => RaiseVitalAction, _ => RaiseSkillAction }, id, experience);

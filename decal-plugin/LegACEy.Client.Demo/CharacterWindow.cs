@@ -12,7 +12,7 @@ using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>What the character window reads from the game and asks of it. The client implements it over Decal and retail's actions.</summary>
+/// <summary>What the character window reads from the game and asks of it. The client implements it over the game and retail's actions.</summary>
 public interface ICharacterGame
 {
     string Name { get; }
